@@ -66,8 +66,8 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 errors["base"] = "invalid_device_id"
             except InvalidLocalKey:
                 errors["base"] = "invalid_local_key"
-            except Exception:  # pylint: disable=broad-except
-                _LOGGER.exception("Unexpected exception")
+            except HomeAssistantError:
+                _LOGGER.exception("Unexpected config flow error")
                 errors["base"] = "unknown"
             else:
                 return self.async_create_entry(title=info["title"], data=user_input)
