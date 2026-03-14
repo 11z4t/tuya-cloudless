@@ -3,10 +3,13 @@
   "name": "Tuya Cloudless",
   "version": "0.1.0",
   "integration_type": "hub",
-  "documentation": "https://github.com/11z4t/tuya-cloudless",
-  "issue_tracker": "https://github.com/11z4t/tuya-cloudless/issues",
-  "codeowners": ["@11z4t"],
-  "config_flow": false,
+  "documentation": "https://git.malmgrens.me/4recon/tuya-cloudless",
+  "issue_tracker": "https://git.malmgrens.me/4recon/tuya-cloudless/issues",
+  "codeowners": [
+    "@kvista-se"
+  ],
+  "config_flow": true,
   "iot_class": "local_push",
-  "requirements": ["cryptography>=42.0"]
+  "loggers": ["tuya_cloudless"],
+  "requirements": ["cryptography>=42.0", "aiohttp>=3.9"]
 }
