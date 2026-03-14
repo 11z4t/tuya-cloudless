@@ -3,6 +3,7 @@
 import hashlib
 
 from Crypto.Cipher import AES
+from cryptography.exceptions import InvalidTag
 
 from .exceptions import TuyaCryptoError
 
@@ -202,7 +203,7 @@ class TuyaCrypto:
 
             return plaintext
 
-        except (ValueError, TypeError) as e:
+        except (InvalidTag, ValueError, TypeError) as e:
             raise TuyaCryptoError(f"GCM decryption or authentication failed: {e}") from e
 
     def _pkcs7_pad(self, data: bytes) -> bytes:
