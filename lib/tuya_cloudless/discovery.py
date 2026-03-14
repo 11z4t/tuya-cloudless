@@ -36,6 +36,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import struct
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import AsyncIterator
@@ -50,7 +51,7 @@ from tuya_cloudless.const import (
     VERSIONS_GCM,
 )
 from tuya_cloudless.crypto import decrypt_payload
-from tuya_cloudless.exceptions import DiscoveryError, MalformedPacketError
+from tuya_cloudless.exceptions import CryptoError, DiscoveryError, MalformedPacketError
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -302,7 +303,7 @@ class DiscoveryListener:
                             device.gw_id,
                             device.ip,
                         )
-            except Exception:
+            except (MalformedPacketError, struct.error, json.JSONDecodeError, UnicodeDecodeError, ValueError, TypeError, KeyError):
                 _LOGGER.debug("Failed to parse discovery datagram from %s", addr[0], exc_info=True)
 
     def _parse_datagram(self, data: bytes, source_ip: str) -> DiscoveredDevice | None:
@@ -404,7 +405,7 @@ class DiscoveryListener:
                     json.loads(decrypted.decode("utf-8", errors="strict"))
                     _LOGGER.debug("Discovery payload decrypted with key for gwId=%s", gw_id)
                     return decrypted
-                except Exception:
+                except (CryptoError, json.JSONDecodeError, UnicodeDecodeError, ValueError):
                     continue
 
         _LOGGER.debug("Could not decode discovery payload (%d bytes)", len(raw))
