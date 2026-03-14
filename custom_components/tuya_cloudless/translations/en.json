@@ -3,47 +3,84 @@
     "flow_title": "{name}",
     "step": {
       "user": {
-        "title": "Add Tuya Cloudless device",
-        "description": "Enter your Tuya WiFi device details. No cloud account required. The local key is obtained during initial pairing via the Web Bluetooth pairing page.",
+        "title": "Add a Tuya device",
+        "description": "Choose how you want to add your device. **Search** scans your network automatically — make sure the device is powered on and connected to the same Wi-Fi as Home Assistant.",
         "data": {
-          "gw_id": "Device ID (gwId)",
-          "local_key": "Local Key",
+          "setup_mode": "Setup method"
+        },
+        "data_description": {
+          "setup_mode": "Search finds devices automatically. Choose manual if your device is not found."
+        }
+      },
+      "select": {
+        "title": "Found {count} device(s)",
+        "description": "Select the device you want to add.",
+        "data": {
+          "device": "Device"
+        }
+      },
+      "local_key": {
+        "title": "Enter the security key",
+        "description": "Your device at **{ip_address}** (firmware {firmware}) requires a security key to communicate locally.\n\nThe key is shown when you pair the device using the Tuya Cloudless pairing tool. It is stored only on your Home Assistant instance.",
+        "data": {
+          "local_key": "Security key",
+          "device_name": "Device name",
+          "device_type": "Device type"
+        },
+        "data_description": {
+          "local_key": "16-character key from the pairing tool",
+          "device_name": "A friendly name shown in Home Assistant (optional — defaults to the IP address)",
+          "device_type": "Select the closest match — affects which controls are created"
+        }
+      },
+      "confirm": {
+        "title": "Ready to connect",
+        "description": "**{device_name}** at `{ip_address}` will be added to Home Assistant.\n\nClick **Connect** to test the connection and finish setup.",
+        "data": {}
+      },
+      "manual": {
+        "title": "Add device manually",
+        "description": "Enter the details for your Tuya device. The device ID and security key are shown in the Tuya Cloudless pairing tool.",
+        "data": {
+          "gw_id": "Device ID",
+          "local_key": "Security key",
           "ip_address": "IP address",
-          "protocol_version": "Protocol version",
+          "protocol_version": "Device generation",
           "device_type": "Device type",
           "device_name": "Device name"
         },
         "data_description": {
-          "gw_id": "Tuya device ID, shown during BLE pairing (e.g. abc123def456)",
-          "local_key": "16-character local key from pairing (kept secret on your HA instance)",
-          "ip_address": "Device IP address (assign a static DHCP lease for reliability)",
-          "protocol_version": "Version 3.3 works for most devices from 2020 onwards",
-          "device_type": "Select the closest match — affects which entities are created"
+          "gw_id": "Unique identifier for the device (shown during pairing, e.g. abc123def456)",
+          "local_key": "16-character security key from the pairing tool",
+          "ip_address": "Device IP address (set a static address in your router for reliability)",
+          "protocol_version": "Generation 3.3 works for most devices made after 2020",
+          "device_type": "Select the closest match — affects which controls are created"
         }
       },
       "discovery": {
-        "title": "Discovered Tuya device",
-        "description": "A Tuya device was found at **{ip_address}** (protocol v{version}).\n\nEnter the local key to complete setup.",
+        "title": "Tuya device found",
+        "description": "A device was detected at **{ip_address}** (firmware {firmware}).\n\nEnter the security key to complete setup.",
         "data": {
-          "local_key": "Local Key",
+          "local_key": "Security key",
           "device_type": "Device type",
           "device_name": "Device name"
         },
         "data_description": {
-          "local_key": "16-character local key from BLE pairing"
+          "local_key": "16-character key from the Tuya Cloudless pairing tool"
         }
       }
     },
     "error": {
-      "cannot_connect": "Could not connect to device — check IP address and that the device is on the same network",
-      "invalid_local_key": "Invalid local key — must be exactly 16 characters",
+      "cannot_connect": "Could not reach the device — check the IP address and that the device is on the same network as Home Assistant",
+      "invalid_local_key": "Invalid security key — must be exactly 16 characters",
       "invalid_gw_id": "Invalid device ID — must not be empty",
-      "auth_failed": "Authentication failed — local key may be incorrect or device was re-paired to Tuya cloud",
-      "unknown": "Unexpected error — check Home Assistant logs for details"
+      "auth_failed": "Connection refused — the security key may be wrong, or the device was re-paired using the Tuya cloud app",
+      "no_devices_found": "No Tuya devices found on your network. Make sure your device is powered on and on the same Wi-Fi. Switch to Manual above to enter details by hand.",
+      "unknown": "Unexpected error — check the Home Assistant log for details"
     },
     "abort": {
-      "already_configured": "This device is already added",
-      "not_tuya_device": "Device did not respond as a Tuya device"
+      "already_configured": "This device is already set up",
+      "not_tuya_device": "The device did not respond as expected"
     }
   },
   "options": {
@@ -52,11 +89,11 @@
         "title": "Device settings",
         "data": {
           "ip_address": "IP address",
-          "protocol_version": "Protocol version"
+          "protocol_version": "Device generation"
         },
         "data_description": {
-          "ip_address": "Update if the device IP changed",
-          "protocol_version": "Change only if the device stopped responding"
+          "ip_address": "Update if the device IP address changed",
+          "protocol_version": "Change only if the device stopped responding after a firmware update"
         }
       }
     }
