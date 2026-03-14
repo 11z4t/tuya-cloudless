@@ -23,6 +23,7 @@ import os
 import struct
 from typing import NamedTuple
 
+from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey, X25519PublicKey
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
@@ -246,7 +247,7 @@ def decrypt_gcm(key: bytes, data: bytes) -> bytes:
     aesgcm = AESGCM(key)
     try:
         return aesgcm.decrypt(iv, ct_plus_tag, None)
-    except Exception as exc:
+    except (InvalidTag, ValueError) as exc:
         raise AuthenticationError(
             "AES-GCM authentication tag mismatch — payload may be tampered"
         ) from exc
@@ -306,7 +307,7 @@ def derive_session_key(
     try:
         peer_public = X25519PublicKey.from_public_bytes(peer_public_bytes)
         shared_secret = private_key.exchange(peer_public)
-    except Exception as exc:
+    except (ValueError, TypeError) as exc:
         raise KeyDerivationError("X25519 ECDH exchange failed") from exc
 
     mac = hmac.new(local_key, shared_secret, hashlib.sha256).digest()
