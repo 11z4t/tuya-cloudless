@@ -1,0 +1,27 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Anslut Tuya-enhet",
+        "description": "Ange enhetsuppgifter för lokal kontroll",
+        "data": {
+          "name": "Enhetsnamn",
+          "host": "IP-adress",
+          "device_id": "Enhets-ID",
+          "local_key": "Lokal nyckel (16 tecken)",
+          "protocol_version": "Protokollversion"
+        }
+      }
+    },
+    "error": {
+      "invalid_host": "Ogiltig IP-adress",
+      "invalid_device_id": "Ogiltigt enhets-ID",
+      "invalid_local_key": "Lokal nyckel måste vara exakt 16 tecken",
+      "cannot_connect": "Kunde inte ansluta till enheten",
+      "unknown": "Oväntat fel inträffade"
+    },
+    "abort": {
+      "already_configured": "Enheten är redan konfigurerad"
+    }
+  }
+}

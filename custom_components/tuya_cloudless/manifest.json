@@ -1,0 +1,20 @@
+{
+  "domain": "tuya_cloudless",
+  "name": "Tuya Cloudless",
+  "codeowners": ["@4recon"],
+  "config_flow": true,
+  "documentation": "https://git.malmgrens.me/4recon/tuya-cloudless",
+  "iot_class": "local_polling",
+  "issue_tracker": "https://git.malmgrens.me/4recon/tuya-cloudless/issues",
+  "requirements": [
+    "cryptography>=41.0.0",
+    "pycryptodome>=3.19.0"
+  ],
+  "version": "0.1.0",
+  "dependencies": [],
+  "after_dependencies": [],
+  "dhcp": [],
+  "homekit": {},
+  "ssdp": [],
+  "zeroconf": []
+}
