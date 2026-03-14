@@ -1,0 +1,84 @@
+{
+  "config": {
+    "flow_title": "{name}",
+    "step": {
+      "user": {
+        "title": "Add Tuya Cloudless device",
+        "description": "Enter your Tuya WiFi device details. No cloud account required. The local key is obtained during initial pairing via the Web Bluetooth pairing page.",
+        "data": {
+          "gw_id": "Device ID (gwId)",
+          "local_key": "Local Key",
+          "ip_address": "IP address",
+          "protocol_version": "Protocol version",
+          "device_type": "Device type",
+          "device_name": "Device name"
+        },
+        "data_description": {
+          "gw_id": "Tuya device ID, shown during BLE pairing (e.g. abc123def456)",
+          "local_key": "16-character local key from pairing (kept secret on your HA instance)",
+          "ip_address": "Device IP address (assign a static DHCP lease for reliability)",
+          "protocol_version": "Version 3.3 works for most devices from 2020 onwards",
+          "device_type": "Select the closest match — affects which entities are created"
+        }
+      },
+      "discovery": {
+        "title": "Discovered Tuya device",
+        "description": "A Tuya device was found at **{ip_address}** (protocol v{version}).\n\nEnter the local key to complete setup.",
+        "data": {
+          "local_key": "Local Key",
+          "device_type": "Device type",
+          "device_name": "Device name"
+        },
+        "data_description": {
+          "local_key": "16-character local key from BLE pairing"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Could not connect to device — check IP address and that the device is on the same network",
+      "invalid_local_key": "Invalid local key — must be exactly 16 characters",
+      "invalid_gw_id": "Invalid device ID — must not be empty",
+      "auth_failed": "Authentication failed — local key may be incorrect or device was re-paired to Tuya cloud",
+      "unknown": "Unexpected error — check Home Assistant logs for details"
+    },
+    "abort": {
+      "already_configured": "This device is already added",
+      "not_tuya_device": "Device did not respond as a Tuya device"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Device settings",
+        "data": {
+          "ip_address": "IP address",
+          "protocol_version": "Protocol version"
+        },
+        "data_description": {
+          "ip_address": "Update if the device IP changed",
+          "protocol_version": "Change only if the device stopped responding"
+        }
+      }
+    }
+  },
+  "entity": {
+    "switch": {
+      "main_switch": {
+        "name": "Switch"
+      }
+    },
+    "light": {
+      "main_light": {
+        "name": "Light"
+      }
+    },
+    "sensor": {
+      "rssi": {
+        "name": "Signal strength"
+      },
+      "last_seen": {
+        "name": "Last seen"
+      }
+    }
+  }
+}
