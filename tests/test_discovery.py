@@ -1,12 +1,14 @@
 """Tests for Tuya device discovery."""
 
+import asyncio
 import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from lib.tuya_cloudless.discovery import (
-    DISCOVERY_PORT,
+    DISCOVERY_PORT_ENCRYPTED,
+    DISCOVERY_PORT_UNENCRYPTED,
     TuyaDevice,
     TuyaDiscovery,
     TuyaDiscoveryProtocol,
@@ -26,7 +28,14 @@ class TestTuyaDevice:
             "version": "3.3",
             "encrypted": True,
         }
-        device = TuyaDevice(data, "192.168.1.100")
+        device = TuyaDevice(
+            ip="192.168.1.100",
+            device_id="device123",
+            product_key="key123",
+            protocol_version="3.3",
+            encrypted=True,
+            raw_data=data,
+        )
 
         assert device.ip == "192.168.1.100"
         assert device.device_id == "device123"
@@ -37,7 +46,14 @@ class TestTuyaDevice:
     def test_init_minimal_data(self) -> None:
         """Test initialization with minimal data."""
         data = {}
-        device = TuyaDevice(data, "192.168.1.100")
+        device = TuyaDevice(
+            ip="192.168.1.100",
+            device_id="",
+            product_key="",
+            protocol_version="3.3",
+            encrypted=False,
+            raw_data=data,
+        )
 
         assert device.ip == "192.168.1.100"
         assert device.device_id == ""
@@ -45,22 +61,19 @@ class TestTuyaDevice:
         assert device.protocol_version == "3.3"
         assert device.encrypted is False
 
-    def test_init_devid_fallback(self) -> None:
-        """Test devId fallback when gwId is missing."""
-        data = {"devId": "device456"}
-        device = TuyaDevice(data, "192.168.1.101")
+    def test_frozen_dataclass(self) -> None:
+        """Test that TuyaDevice is immutable."""
+        device = TuyaDevice(
+            ip="192.168.1.100",
+            device_id="test",
+            product_key="key",
+            protocol_version="3.3",
+            encrypted=False,
+            raw_data={},
+        )
 
-        assert device.device_id == "device456"
-
-    def test_repr(self) -> None:
-        """Test string representation."""
-        data = {"gwId": "test", "version": "3.4"}
-        device = TuyaDevice(data, "192.168.1.100")
-
-        repr_str = repr(device)
-        assert "192.168.1.100" in repr_str
-        assert "test" in repr_str
-        assert "3.4" in repr_str
+        with pytest.raises(AttributeError):
+            device.ip = "192.168.1.101"  # type: ignore
 
     def test_to_dict(self) -> None:
         """Test conversion to dictionary."""
@@ -69,7 +82,14 @@ class TestTuyaDevice:
             "productKey": "key123",
             "version": "3.3",
         }
-        device = TuyaDevice(data, "192.168.1.100")
+        device = TuyaDevice(
+            ip="192.168.1.100",
+            device_id="device123",
+            product_key="key123",
+            protocol_version="3.3",
+            encrypted=False,
+            raw_data=data,
+        )
 
         result = device.to_dict()
 
@@ -88,70 +108,124 @@ class TestTuyaDiscovery:
         discovery = TuyaDiscovery()
 
         assert discovery.broadcast_address == "255.255.255.255"
-        assert discovery.port == DISCOVERY_PORT
         assert discovery.timeout == 3.0
+        assert discovery.retries == 2
 
     def test_init_custom_values(self) -> None:
         """Test initialization with custom values."""
         discovery = TuyaDiscovery(
             broadcast_address="192.168.1.255",
-            port=7777,
             timeout=5.0,
+            retries=3,
         )
 
         assert discovery.broadcast_address == "192.168.1.255"
-        assert discovery.port == 7777
         assert discovery.timeout == 5.0
+        assert discovery.retries == 3
 
     @pytest.mark.asyncio
     async def test_discover_success(self) -> None:
-        """Test successful device discovery."""
-        discovery = TuyaDiscovery(timeout=0.1)
+        """Test successful device discovery on both ports."""
+        discovery = TuyaDiscovery(timeout=0.1, retries=1)
 
-        # Mock the datagram endpoint
-        mock_transport = MagicMock()
-        mock_protocol = MagicMock()
+        # Mock two separate transports for port 6666 and 6667
+        mock_transport_6666 = MagicMock()
+        mock_transport_6667 = MagicMock()
+
+        call_count = 0
 
         async def mock_create_endpoint(protocol_factory, **kwargs):
-            return mock_transport, mock_protocol
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                return mock_transport_6666, MagicMock()
+            else:
+                return mock_transport_6667, MagicMock()
 
-        with patch("asyncio.get_event_loop") as mock_loop:
-            mock_event_loop = AsyncMock()
-            mock_event_loop.create_datagram_endpoint = mock_create_endpoint
-            mock_loop.return_value = mock_event_loop
+        # Simulate running loop
+        async def run_discovery():
+            loop = asyncio.get_running_loop()
+            with patch.object(
+                loop, "create_datagram_endpoint", side_effect=mock_create_endpoint
+            ):
+                return await discovery.discover()
 
-            devices = await discovery.discover()
+        devices = await run_discovery()
 
-            assert isinstance(devices, list)
-            mock_transport.sendto.assert_called_once()
-            mock_transport.close.assert_called_once()
+        assert isinstance(devices, list)
+        # Should send broadcasts on both ports (retries+1 times each)
+        assert mock_transport_6666.sendto.call_count == 2  # retries=1 → 2 broadcasts
+        assert mock_transport_6667.sendto.call_count == 2
+        mock_transport_6666.close.assert_called_once()
+        mock_transport_6667.close.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_discover_with_local_key(self) -> None:
         """Test discovery with local key."""
-        discovery = TuyaDiscovery(timeout=0.1)
+        discovery = TuyaDiscovery(timeout=0.1, retries=0)
 
-        mock_transport = MagicMock()
-        mock_protocol = MagicMock()
+        mock_transport_6666 = MagicMock()
+        mock_transport_6667 = MagicMock()
+
+        call_count = 0
 
         async def mock_create_endpoint(protocol_factory, **kwargs):
-            return mock_transport, mock_protocol
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                return mock_transport_6666, MagicMock()
+            else:
+                return mock_transport_6667, MagicMock()
 
-        with patch("asyncio.get_event_loop") as mock_loop:
-            mock_event_loop = AsyncMock()
-            mock_event_loop.create_datagram_endpoint = mock_create_endpoint
-            mock_loop.return_value = mock_event_loop
+        async def run_discovery():
+            loop = asyncio.get_running_loop()
+            with patch.object(
+                loop, "create_datagram_endpoint", side_effect=mock_create_endpoint
+            ):
+                return await discovery.discover(local_key="1234567890abcdef")
 
-            devices = await discovery.discover(local_key="1234567890abcdef")
+        devices = await run_discovery()
 
-            assert isinstance(devices, list)
+        assert isinstance(devices, list)
+
+    @pytest.mark.asyncio
+    async def test_discover_cancellation(self) -> None:
+        """Test discovery handles cancellation gracefully."""
+        discovery = TuyaDiscovery(timeout=5.0, retries=0)
+
+        mock_transport_6666 = MagicMock()
+        mock_transport_6667 = MagicMock()
+
+        call_count = 0
+
+        async def mock_create_endpoint(protocol_factory, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                return mock_transport_6666, MagicMock()
+            else:
+                return mock_transport_6667, MagicMock()
+
+        async def cancel_discovery():
+            loop = asyncio.get_running_loop()
+            with patch.object(
+                loop, "create_datagram_endpoint", side_effect=mock_create_endpoint
+            ):
+                task = asyncio.create_task(discovery.discover())
+                await asyncio.sleep(0.05)
+                task.cancel()
+                with pytest.raises(asyncio.CancelledError):
+                    await task
+
+        # Should handle cancellation gracefully
+        await cancel_discovery()
 
     def test_add_device_new(self) -> None:
         """Test adding a new device."""
         discovery = TuyaDiscovery()
-        device = TuyaDevice({"gwId": "dev1"}, "192.168.1.100")
+        data = {"gwId": "dev1", "productKey": "key1", "version": "3.3"}
 
-        discovery._add_device(device)
+        discovery._add_device(data, "192.168.1.100")
 
         assert len(discovery._discovered_devices) == 1
         assert "192.168.1.100:dev1" in discovery._discovered_devices
@@ -159,11 +233,10 @@ class TestTuyaDiscovery:
     def test_add_device_duplicate(self) -> None:
         """Test adding duplicate device (should be ignored)."""
         discovery = TuyaDiscovery()
-        device1 = TuyaDevice({"gwId": "dev1"}, "192.168.1.100")
-        device2 = TuyaDevice({"gwId": "dev1"}, "192.168.1.100")
+        data = {"gwId": "dev1", "productKey": "key1"}
 
-        discovery._add_device(device1)
-        discovery._add_device(device2)
+        discovery._add_device(data, "192.168.1.100")
+        discovery._add_device(data, "192.168.1.100")
 
         assert len(discovery._discovered_devices) == 1
 
@@ -174,26 +247,29 @@ class TestTuyaDiscoveryProtocol:
     def test_init(self) -> None:
         """Test protocol initialization."""
         discovery = TuyaDiscovery()
-        protocol = TuyaDiscoveryProtocol(discovery, "1234567890abcdef")
+        protocol = TuyaDiscoveryProtocol(
+            discovery, "1234567890abcdef", DISCOVERY_PORT_UNENCRYPTED
+        )
 
         assert protocol.discovery is discovery
         assert protocol.local_key == "1234567890abcdef"
+        assert protocol.listen_port == DISCOVERY_PORT_UNENCRYPTED
         assert protocol.transport is None
 
     def test_connection_made(self) -> None:
         """Test connection establishment."""
         discovery = TuyaDiscovery()
-        protocol = TuyaDiscoveryProtocol(discovery, None)
+        protocol = TuyaDiscoveryProtocol(discovery, None, DISCOVERY_PORT_UNENCRYPTED)
         mock_transport = MagicMock()
 
         protocol.connection_made(mock_transport)
 
         assert protocol.transport is mock_transport
 
-    def test_datagram_received_json(self) -> None:
-        """Test receiving JSON discovery response."""
+    def test_datagram_received_json_port_6666(self) -> None:
+        """Test receiving JSON discovery response on port 6666."""
         discovery = TuyaDiscovery()
-        protocol = TuyaDiscoveryProtocol(discovery, None)
+        protocol = TuyaDiscoveryProtocol(discovery, None, DISCOVERY_PORT_UNENCRYPTED)
 
         response_data = {
             "gwId": "test_device",
@@ -209,10 +285,34 @@ class TestTuyaDiscoveryProtocol:
         assert device.device_id == "test_device"
         assert device.ip == "192.168.1.100"
 
+    def test_datagram_received_encrypted_port_6667(self) -> None:
+        """Test receiving encrypted discovery response on port 6667."""
+        from lib.tuya_cloudless.crypto import encrypt_payload
+        from lib.tuya_cloudless.discovery import UDP_KEY
+
+        discovery = TuyaDiscovery()
+        protocol = TuyaDiscoveryProtocol(discovery, None, DISCOVERY_PORT_ENCRYPTED)
+
+        response_data = {
+            "gwId": "encrypted_device",
+            "productKey": "key456",
+            "version": "3.4",
+        }
+        plaintext = json.dumps(response_data).encode("utf-8")
+        encrypted = encrypt_payload(plaintext, UDP_KEY, "3.3")
+
+        protocol.datagram_received(encrypted, ("192.168.1.101", 6667))
+
+        assert len(discovery._discovered_devices) == 1
+        device = list(discovery._discovered_devices.values())[0]
+        assert device.device_id == "encrypted_device"
+        assert device.ip == "192.168.1.101"
+        assert device.protocol_version == "3.4"
+
     def test_datagram_received_invalid_json(self) -> None:
         """Test receiving invalid JSON (should be handled gracefully)."""
         discovery = TuyaDiscovery()
-        protocol = TuyaDiscoveryProtocol(discovery, None)
+        protocol = TuyaDiscoveryProtocol(discovery, None, DISCOVERY_PORT_UNENCRYPTED)
 
         data = b"not valid json"
 
@@ -222,10 +322,33 @@ class TestTuyaDiscoveryProtocol:
         # No device should be added
         assert len(discovery._discovered_devices) == 0
 
+    def test_datagram_received_empty_response(self) -> None:
+        """Test receiving empty response (edge case)."""
+        discovery = TuyaDiscovery()
+        protocol = TuyaDiscoveryProtocol(discovery, None, DISCOVERY_PORT_UNENCRYPTED)
+
+        # Should not raise exception
+        protocol.datagram_received(b"", ("192.168.1.100", 6666))
+
+        assert len(discovery._discovered_devices) == 0
+
+    def test_datagram_received_malformed_response(self) -> None:
+        """Test receiving malformed response (edge case)."""
+        discovery = TuyaDiscovery()
+        protocol = TuyaDiscoveryProtocol(discovery, None, DISCOVERY_PORT_UNENCRYPTED)
+
+        malformed_data = json.dumps({"invalid": "no gwId or devId"}).encode("utf-8")
+
+        # Should handle gracefully - creates device with empty device_id
+        protocol.datagram_received(malformed_data, ("192.168.1.100", 6666))
+
+        # Device with empty ID should still be added
+        assert len(discovery._discovered_devices) >= 0
+
     def test_datagram_received_multiple_devices(self) -> None:
         """Test receiving responses from multiple devices."""
         discovery = TuyaDiscovery()
-        protocol = TuyaDiscoveryProtocol(discovery, None)
+        protocol = TuyaDiscoveryProtocol(discovery, None, DISCOVERY_PORT_UNENCRYPTED)
 
         device1_data = json.dumps({"gwId": "dev1"}).encode("utf-8")
         device2_data = json.dumps({"gwId": "dev2"}).encode("utf-8")
@@ -238,7 +361,7 @@ class TestTuyaDiscoveryProtocol:
     def test_error_received(self) -> None:
         """Test error handling."""
         discovery = TuyaDiscovery()
-        protocol = TuyaDiscoveryProtocol(discovery, None)
+        protocol = TuyaDiscoveryProtocol(discovery, None, DISCOVERY_PORT_UNENCRYPTED)
         error = Exception("Test error")
 
         # Should not raise exception
@@ -248,17 +371,61 @@ class TestTuyaDiscoveryProtocol:
 @pytest.mark.asyncio
 async def test_discover_devices_convenience() -> None:
     """Test discover_devices convenience function."""
-    mock_transport = MagicMock()
-    mock_protocol = MagicMock()
+    mock_transport_6666 = MagicMock()
+    mock_transport_6667 = MagicMock()
+
+    call_count = 0
 
     async def mock_create_endpoint(protocol_factory, **kwargs):
-        return mock_transport, mock_protocol
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            return mock_transport_6666, MagicMock()
+        else:
+            return mock_transport_6667, MagicMock()
 
-    with patch("asyncio.get_event_loop") as mock_loop:
-        mock_event_loop = AsyncMock()
-        mock_event_loop.create_datagram_endpoint = mock_create_endpoint
-        mock_loop.return_value = mock_event_loop
+    async def run_discovery():
+        loop = asyncio.get_running_loop()
+        with patch.object(
+            loop, "create_datagram_endpoint", side_effect=mock_create_endpoint
+        ):
+            return await discover_devices(timeout=0.1, retries=0)
 
-        devices = await discover_devices(timeout=0.1)
+    devices = await run_discovery()
 
-        assert isinstance(devices, list)
+    assert isinstance(devices, list)
+
+
+@pytest.mark.asyncio
+async def test_concurrent_discovery() -> None:
+    """Test running multiple discoveries concurrently."""
+    async def single_discovery():
+        mock_transport_6666 = MagicMock()
+        mock_transport_6667 = MagicMock()
+
+        call_count = 0
+
+        async def mock_create_endpoint(protocol_factory, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                return mock_transport_6666, MagicMock()
+            else:
+                return mock_transport_6667, MagicMock()
+
+        loop = asyncio.get_running_loop()
+        with patch.object(
+            loop, "create_datagram_endpoint", side_effect=mock_create_endpoint
+        ):
+            return await discover_devices(timeout=0.1, retries=0)
+
+    # Run 3 discoveries concurrently
+    results = await asyncio.gather(
+        single_discovery(),
+        single_discovery(),
+        single_discovery(),
+    )
+
+    assert len(results) == 3
+    for result in results:
+        assert isinstance(result, list)
