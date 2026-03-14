@@ -21,6 +21,8 @@ from typing import Any
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
+from tuya_cloudless.exceptions import TuyaCloudlessError
+
 from .const import (
     CONF_GW_ID,
     CONF_IP_ADDRESS,
@@ -178,7 +180,7 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 delay = RECONNECT_INITIAL_DELAY  # Reset on success
             except asyncio.CancelledError:
                 return
-            except Exception as exc:
+            except (OSError, asyncio.TimeoutError, TuyaCloudlessError) as exc:
                 self.state.available = False
                 self.state.last_error = str(exc)
                 _LOGGER.warning(
@@ -224,7 +226,7 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             try:
                 self._writer.close()
                 await self._writer.wait_closed()
-            except Exception:
+            except OSError:
                 pass
             self._writer = None
             self._reader = None
@@ -247,7 +249,7 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 self._writer.write(frame)
                 await self._writer.drain()
                 _LOGGER.debug("[%s] Heartbeat sent", self._gw_id)
-            except Exception as exc:
+            except OSError as exc:
                 _LOGGER.warning("[%s] Heartbeat failed: %s", self._gw_id, exc)
                 break
 
@@ -278,7 +280,7 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                         session_key=self._session_key,
                     )
                     self._on_frame(frame)
-                except Exception as exc:
+                except (TuyaCloudlessError, ValueError) as exc:
                     _LOGGER.debug("[%s] Frame decode error: %s", self._gw_id, exc)
 
     @callback
@@ -286,7 +288,7 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Handle a decoded frame — update DPS state and notify listeners."""
         try:
             dps = frame.dps
-        except Exception:
+        except AttributeError:
             return
 
         if dps:
