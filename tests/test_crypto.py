@@ -140,7 +140,7 @@ class TestTuyaCrypto:
         tampered[-1] ^= 0xFF
         tampered_bytes = bytes(tampered)
 
-        with pytest.raises(TuyaCryptoError, match="GCM authentication failed"):
+        with pytest.raises(TuyaCryptoError, match="GCM decryption or authentication failed"):
             crypto.decrypt(tampered_bytes)
 
     def test_gcm_ciphertext_too_short(self) -> None:

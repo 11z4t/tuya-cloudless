@@ -112,7 +112,7 @@ class TuyaDiscovery:
             _LOGGER.info("Discovery complete: found %d device(s)", len(devices))
             return devices
 
-        except Exception as e:
+        except (OSError, ValueError) as e:
             raise TuyaDiscoveryError(f"Discovery failed: {e}") from e
 
     def _add_device(self, device: TuyaDevice) -> None:
@@ -142,7 +142,7 @@ class TuyaDiscoveryProtocol(asyncio.DatagramProtocol):
         """
         self.discovery = discovery
         self.local_key = local_key
-        self.transport = None
+        self.transport: asyncio.BaseTransport | None = None
 
     def connection_made(self, transport: asyncio.BaseTransport) -> None:
         """Called when connection is established.
@@ -174,7 +174,7 @@ class TuyaDiscoveryProtocol(asyncio.DatagramProtocol):
                     try:
                         decrypted = decrypt_payload(data, self.local_key, "3.3")
                         response = json.loads(decrypted.decode("utf-8"))
-                    except Exception as e:
+                    except (ValueError, UnicodeDecodeError, json.JSONDecodeError) as e:
                         _LOGGER.warning("Failed to decrypt response from %s: %s", ip, e)
                         return
                 else:
@@ -185,7 +185,7 @@ class TuyaDiscoveryProtocol(asyncio.DatagramProtocol):
             device = TuyaDevice(response, ip)
             self.discovery._add_device(device)
 
-        except Exception as e:
+        except (KeyError, TypeError, AttributeError) as e:
             _LOGGER.warning("Failed to process discovery response from %s: %s", ip, e)
 
     def error_received(self, exc: Exception) -> None:

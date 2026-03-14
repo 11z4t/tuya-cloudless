@@ -163,7 +163,7 @@ class TuyaProtocolParser:
 
         # Verify CRC
         crc_expected = struct.unpack(">I", data[payload_end : payload_end + 4])[0]
-        crc_actual = self._calculate_crc(data[: payload_end])
+        crc_actual = self._calculate_crc(data[:payload_end])
 
         if crc_expected != crc_actual:
             raise TuyaProtocolError(
@@ -234,7 +234,8 @@ class TuyaProtocolParser:
 
         # Try to parse as JSON
         try:
-            return json.loads(payload.decode("utf-8"))
+            result: dict[str, Any] = json.loads(payload.decode("utf-8"))
+            return result
         except (json.JSONDecodeError, UnicodeDecodeError):
             # Return raw bytes if not JSON
             return payload

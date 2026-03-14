@@ -28,7 +28,7 @@ jobs:
         run: ruff check .
 
       - name: Run mypy
-        run: mypy lib/ custom_components/ || true
+        run: mypy lib/ custom_components/
 
       - name: Check formatting
         run: black --check .

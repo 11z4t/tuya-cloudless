@@ -1,7 +1,6 @@
 """Cryptographic functions for Tuya protocol encryption/decryption."""
 
 import hashlib
-from typing import Any
 
 from Crypto.Cipher import AES
 
@@ -109,7 +108,7 @@ class TuyaCrypto:
 
             return ciphertext
 
-        except Exception as e:
+        except (ValueError, TypeError) as e:
             raise TuyaCryptoError(f"ECB encryption failed: {e}") from e
 
     def _decrypt_ecb(self, ciphertext: bytes) -> bytes:
@@ -136,7 +135,7 @@ class TuyaCrypto:
 
             return plaintext
 
-        except Exception as e:
+        except (ValueError, TypeError) as e:
             raise TuyaCryptoError(f"ECB decryption failed: {e}") from e
 
     def _encrypt_gcm(self, plaintext: bytes) -> bytes:
@@ -166,7 +165,7 @@ class TuyaCrypto:
             # Return nonce + tag + ciphertext
             return nonce + tag + ciphertext
 
-        except Exception as e:
+        except (ValueError, TypeError) as e:
             raise TuyaCryptoError(f"GCM encryption failed: {e}") from e
 
     def _decrypt_gcm(self, ciphertext: bytes) -> bytes:
@@ -198,10 +197,8 @@ class TuyaCrypto:
 
             return plaintext
 
-        except ValueError as e:
-            raise TuyaCryptoError(f"GCM authentication failed: {e}") from e
-        except Exception as e:
-            raise TuyaCryptoError(f"GCM decryption failed: {e}") from e
+        except (ValueError, TypeError) as e:
+            raise TuyaCryptoError(f"GCM decryption or authentication failed: {e}") from e
 
     def _pkcs7_pad(self, data: bytes) -> bytes:
         """Apply PKCS7 padding to data.
@@ -255,9 +252,7 @@ def generate_device_id_hash(device_id: str) -> str:
     return hashlib.md5(device_id.encode("utf-8")).hexdigest()
 
 
-def encrypt_payload(
-    plaintext: bytes, local_key: str, protocol_version: str = "3.3"
-) -> bytes:
+def encrypt_payload(plaintext: bytes, local_key: str, protocol_version: str = "3.3") -> bytes:
     """Convenience function to encrypt payload.
 
     Args:
@@ -272,9 +267,7 @@ def encrypt_payload(
     return crypto.encrypt(plaintext)
 
 
-def decrypt_payload(
-    ciphertext: bytes, local_key: str, protocol_version: str = "3.3"
-) -> bytes:
+def decrypt_payload(ciphertext: bytes, local_key: str, protocol_version: str = "3.3") -> bytes:
     """Convenience function to decrypt payload.
 
     Args:

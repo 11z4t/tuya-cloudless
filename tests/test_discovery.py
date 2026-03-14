@@ -1,6 +1,5 @@
 """Tests for Tuya device discovery."""
 
-import asyncio
 import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -13,7 +12,6 @@ from lib.tuya_cloudless.discovery import (
     TuyaDiscoveryProtocol,
     discover_devices,
 )
-from lib.tuya_cloudless.exceptions import TuyaDiscoveryError
 
 
 class TestTuyaDevice:

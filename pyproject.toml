@@ -59,7 +59,6 @@ python_functions = ["test_*"]
 asyncio_mode = "auto"
 addopts = [
     "--cov=lib",
-    "--cov=custom_components",
     "--cov-report=html",
     "--cov-report=term-missing",
     "--cov-fail-under=80",
