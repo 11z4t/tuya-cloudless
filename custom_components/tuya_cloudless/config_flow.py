@@ -1,10 +1,16 @@
 """Config flow for Tuya Cloudless integration.
 
-Supports two setup paths:
-  1. Manual — user enters gwId, local key, IP, and version.
-  2. UDP discovery — automatically detects devices on the LAN, user adds local key.
+Four-step guided setup (happy path):
+  1. async_step_user       — Scan the local network for Tuya devices.
+  2. async_step_select     — Choose a discovered device.
+  3. async_step_local_key  — Enter the device local key.
+  4. async_step_confirm    — Review details, test connection, and save.
 
-Both paths share the same validation logic.
+Manual fallback:
+  async_step_manual        — Enter all device details by hand.
+
+HA-initiated discovery:
+  async_step_discovery     — Called when HA auto-detects a Tuya device.
 """
 
 from __future__ import annotations
@@ -17,6 +23,12 @@ import voluptuous as vol
 
 from homeassistant.config_entries import ConfigEntry, ConfigFlow, ConfigFlowResult, OptionsFlow
 from homeassistant.core import callback
+from homeassistant.helpers.selector import (
+    SelectOptionDict,
+    SelectSelector,
+    SelectSelectorConfig,
+    SelectSelectorMode,
+)
 
 from .const import (
     CONF_DEVICE_NAME,
@@ -36,41 +48,283 @@ from .const import (
 _LOGGER = logging.getLogger(__name__)
 
 _LOCAL_KEY_LENGTH = 16
+_DISCOVERY_LISTEN_SECS = 5.0
+_DISCOVERY_TIMEOUT = _DISCOVERY_LISTEN_SECS + 1.0
+_CONNECTION_TIMEOUT = 3.0
 
 
 class TuyaCloudlessConfigFlow(ConfigFlow, domain=DOMAIN):
-    """Handle the Tuya Cloudless config flow."""
+    """Handle a Tuya Cloudless config flow.
+
+    Provides guided setup with automatic device discovery and a manual
+    fallback for users who have device details available.
+    """
 
     VERSION = CONFIG_ENTRY_VERSION
 
     def __init__(self) -> None:
-        self._discovery_info: dict[str, Any] = {}
+        """Initialize the config flow."""
+        self._discovered: list[dict[str, Any]] = []
+        self._device: dict[str, Any] = {}
+
+    # ── Step 1: Search ─────────────────────────────────────────────────────────
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Handle manual device configuration step.
+        """Step 1: Present setup options and optionally scan the network.
+
+        Offers two paths: automatic network scan or manual device entry.
+        When *Search* is selected, the integration listens for device
+        announcements on the local network for a few seconds.
 
         Args:
-            user_input: Form data submitted by the user, or None on first render.
+            user_input: Submitted form data, or ``None`` on first render.
 
         Returns:
-            Config flow result.
+            Config flow result directing to the next step.
         """
         errors: dict[str, str] = {}
 
         if user_input is not None:
-            gw_id: str = user_input[CONF_GW_ID].strip()
-            local_key: str = user_input[CONF_LOCAL_KEY].strip()
-            ip_address: str = user_input[CONF_IP_ADDRESS].strip()
+            if user_input.get("setup_mode") == "manual":
+                return await self.async_step_manual()
 
-            errors = await self._validate_input(gw_id, local_key, ip_address)
+            # Run UDP discovery
+            try:
+                self._discovered = await asyncio.wait_for(
+                    self._run_discovery(),
+                    timeout=_DISCOVERY_TIMEOUT,
+                )
+            except asyncio.TimeoutError:
+                self._discovered = []
+            except OSError as exc:
+                _LOGGER.debug("Discovery socket error: %s", exc)
+                self._discovered = []
+
+            if self._discovered:
+                return await self.async_step_select()
+
+            errors["base"] = "no_devices_found"
+
+        schema = vol.Schema(
+            {
+                vol.Required("setup_mode", default="search"): vol.In(
+                    ["search", "manual"]
+                ),
+            }
+        )
+
+        return self.async_show_form(
+            step_id="user",
+            data_schema=schema,
+            errors=errors,
+        )
+
+    # ── Step 2: Select ─────────────────────────────────────────────────────────
+
+    async def async_step_select(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Step 2: Choose one of the discovered devices.
+
+        Shows a list of devices found on the local network, labelled with
+        their IP address and firmware version. A manual-entry option is
+        always available at the bottom of the list.
+
+        Args:
+            user_input: Submitted form data, or ``None`` on first render.
+
+        Returns:
+            Config flow result directing to the next step.
+        """
+        if not self._discovered:
+            return await self.async_step_manual()
+
+        if user_input is not None:
+            gw_id: str = user_input["device"]
+
+            if gw_id == "__manual__":
+                return await self.async_step_manual()
+
+            matches = [d for d in self._discovered if d[CONF_GW_ID] == gw_id]
+            if matches:
+                self._device = matches[0]
+                return await self.async_step_local_key()
+
+        device_options: list[SelectOptionDict] = [
+            SelectOptionDict(
+                value=d[CONF_GW_ID],
+                label=f"{d[CONF_IP_ADDRESS]}  — firmware {d[CONF_PROTOCOL_VERSION]}",
+            )
+            for d in self._discovered
+        ]
+        device_options.append(
+            SelectOptionDict(value="__manual__", label="Add a device manually…")
+        )
+
+        schema = vol.Schema(
+            {
+                vol.Required("device"): SelectSelector(
+                    SelectSelectorConfig(
+                        options=device_options,
+                        mode=SelectSelectorMode.LIST,
+                    )
+                ),
+            }
+        )
+
+        return self.async_show_form(
+            step_id="select",
+            data_schema=schema,
+            description_placeholders={"count": str(len(self._discovered))},
+        )
+
+    # ── Step 3: Local key ──────────────────────────────────────────────────────
+
+    async def async_step_local_key(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Step 3: Enter the security key for the selected device.
+
+        The local key is a 16-character string that is generated when the
+        device is paired with the Tuya Cloudless pairing tool. It stays
+        on your Home Assistant instance and is never sent to any cloud.
+
+        Args:
+            user_input: Submitted form data, or ``None`` on first render.
+
+        Returns:
+            Config flow result directing to the next step.
+        """
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            local_key = user_input[CONF_LOCAL_KEY].strip()
+            if len(local_key) != _LOCAL_KEY_LENGTH:
+                errors[CONF_LOCAL_KEY] = "invalid_local_key"
+            else:
+                name = (user_input.get(CONF_DEVICE_NAME) or "").strip()
+                self._device.update(
+                    {
+                        CONF_LOCAL_KEY: local_key,
+                        CONF_DEVICE_NAME: name
+                        or self._device.get(CONF_IP_ADDRESS, "Tuya device"),
+                        CONF_DEVICE_TYPE: user_input.get(CONF_DEVICE_TYPE, "generic"),
+                    }
+                )
+                return await self.async_step_confirm()
+
+        schema = vol.Schema(
+            {
+                vol.Required(CONF_LOCAL_KEY): str,
+                vol.Optional(CONF_DEVICE_NAME, default=""): str,
+                vol.Optional(CONF_DEVICE_TYPE, default="generic"): vol.In(
+                    DEVICE_TYPES
+                ),
+            }
+        )
+
+        return self.async_show_form(
+            step_id="local_key",
+            data_schema=schema,
+            errors=errors,
+            description_placeholders={
+                "ip_address": self._device.get(CONF_IP_ADDRESS, ""),
+                "firmware": self._device.get(CONF_PROTOCOL_VERSION, ""),
+            },
+        )
+
+    # ── Step 4: Confirm ────────────────────────────────────────────────────────
+
+    async def async_step_confirm(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Step 4: Review the device details and verify connectivity.
+
+        Performs a brief TCP check to confirm the device is reachable before
+        saving the config entry.
+
+        Args:
+            user_input: Empty dict when the user clicks Confirm, or ``None``
+                on first render.
+
+        Returns:
+            Config flow result — creates the entry if connectivity passes.
+        """
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            gw_id = self._device[CONF_GW_ID]
+            ip_address = self._device[CONF_IP_ADDRESS]
+
+            errors = await self._check_connection(ip_address)
 
             if not errors:
                 await self.async_set_unique_id(gw_id)
                 self._abort_if_unique_id_configured()
+                title = self._device.get(CONF_DEVICE_NAME) or ip_address
+                return self.async_create_entry(
+                    title=title,
+                    data={
+                        CONF_GW_ID: gw_id,
+                        CONF_LOCAL_KEY: self._device[CONF_LOCAL_KEY],
+                        CONF_IP_ADDRESS: ip_address,
+                        CONF_PROTOCOL_VERSION: self._device.get(
+                            CONF_PROTOCOL_VERSION, DEFAULT_PROTOCOL_VERSION
+                        ),
+                        CONF_DEVICE_TYPE: self._device.get(CONF_DEVICE_TYPE, "generic"),
+                        CONF_DEVICE_NAME: title,
+                    },
+                )
 
-                title = user_input.get(CONF_DEVICE_NAME, gw_id) or gw_id
+        return self.async_show_form(
+            step_id="confirm",
+            data_schema=vol.Schema({}),
+            errors=errors,
+            description_placeholders={
+                "device_name": self._device.get(CONF_DEVICE_NAME, ""),
+                "ip_address": self._device.get(CONF_IP_ADDRESS, ""),
+            },
+        )
+
+    # ── Manual fallback ────────────────────────────────────────────────────────
+
+    async def async_step_manual(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Manual device setup — all fields in a single form.
+
+        For users who have device details available and do not need the
+        automatic discovery flow.
+
+        Args:
+            user_input: Submitted form data, or ``None`` on first render.
+
+        Returns:
+            Config flow result — creates the entry on success.
+        """
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            gw_id = user_input[CONF_GW_ID].strip()
+            local_key = user_input[CONF_LOCAL_KEY].strip()
+            ip_address = user_input[CONF_IP_ADDRESS].strip()
+
+            if not gw_id:
+                errors[CONF_GW_ID] = "invalid_gw_id"
+            if len(local_key) != _LOCAL_KEY_LENGTH:
+                errors[CONF_LOCAL_KEY] = "invalid_local_key"
+            if not ip_address:
+                errors[CONF_IP_ADDRESS] = "cannot_connect"
+
+            if not errors:
+                errors = await self._check_connection(ip_address)
+
+            if not errors:
+                await self.async_set_unique_id(gw_id)
+                self._abort_if_unique_id_configured()
+                title = (user_input.get(CONF_DEVICE_NAME) or "").strip() or ip_address
                 return self.async_create_entry(
                     title=title,
                     data={
@@ -99,18 +353,25 @@ class TuyaCloudlessConfigFlow(ConfigFlow, domain=DOMAIN):
         )
 
         return self.async_show_form(
-            step_id="user",
+            step_id="manual",
             data_schema=schema,
             errors=errors,
         )
 
+    # ── HA-initiated discovery ─────────────────────────────────────────────────
+
     async def async_step_discovery(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Handle configuration after UDP discovery auto-detected a device.
+        """Handle setup after Home Assistant auto-detected a Tuya device.
+
+        Called by the HA discovery framework when a Tuya device is detected
+        via passive network monitoring. ``self._device`` must be populated
+        with at minimum :const:`CONF_GW_ID` and :const:`CONF_IP_ADDRESS`
+        before this step is called.
 
         Args:
-            user_input: Form data or None on first render.
+            user_input: Submitted form data, or ``None`` on first render.
 
         Returns:
             Config flow result.
@@ -119,31 +380,25 @@ class TuyaCloudlessConfigFlow(ConfigFlow, domain=DOMAIN):
 
         if user_input is not None:
             local_key = user_input[CONF_LOCAL_KEY].strip()
-            gw_id = self._discovery_info[CONF_GW_ID]
-            ip_address = self._discovery_info[CONF_IP_ADDRESS]
-
-            errors = await self._validate_input(gw_id, local_key, ip_address)
-
-            if not errors:
-                await self.async_set_unique_id(gw_id)
-                self._abort_if_unique_id_configured()
-
-                title = user_input.get(CONF_DEVICE_NAME, gw_id) or gw_id
-                return self.async_create_entry(
-                    title=title,
-                    data={
-                        **self._discovery_info,
+            if len(local_key) != _LOCAL_KEY_LENGTH:
+                errors[CONF_LOCAL_KEY] = "invalid_local_key"
+            else:
+                name = (user_input.get(CONF_DEVICE_NAME) or "").strip()
+                self._device.update(
+                    {
                         CONF_LOCAL_KEY: local_key,
+                        CONF_DEVICE_NAME: name
+                        or self._device.get(CONF_IP_ADDRESS, "Tuya device"),
                         CONF_DEVICE_TYPE: user_input.get(CONF_DEVICE_TYPE, "generic"),
-                        CONF_DEVICE_NAME: title,
-                    },
+                    }
                 )
+                return await self.async_step_confirm()
 
         schema = vol.Schema(
             {
                 vol.Required(CONF_LOCAL_KEY): str,
-                vol.Optional(CONF_DEVICE_TYPE, default="generic"): vol.In(DEVICE_TYPES),
                 vol.Optional(CONF_DEVICE_NAME, default=""): str,
+                vol.Optional(CONF_DEVICE_TYPE, default="generic"): vol.In(DEVICE_TYPES),
             }
         )
 
@@ -152,73 +407,101 @@ class TuyaCloudlessConfigFlow(ConfigFlow, domain=DOMAIN):
             data_schema=schema,
             errors=errors,
             description_placeholders={
-                "ip_address": self._discovery_info.get(CONF_IP_ADDRESS, ""),
-                "version": self._discovery_info.get(CONF_PROTOCOL_VERSION, ""),
+                "ip_address": self._device.get(CONF_IP_ADDRESS, ""),
+                "firmware": self._device.get(CONF_PROTOCOL_VERSION, ""),
             },
         )
 
+    # ── Options flow ───────────────────────────────────────────────────────────
+
     @staticmethod
     @callback
-    def async_get_options_flow(config_entry: ConfigEntry) -> TuyaCloudlessOptionsFlow:
+    def async_get_options_flow(
+        config_entry: ConfigEntry,
+    ) -> "TuyaCloudlessOptionsFlow":
         """Return the options flow handler."""
         return TuyaCloudlessOptionsFlow(config_entry)
 
-    # ── Validation ─────────────────────────────────────────────────────────────
+    # ── Private helpers ────────────────────────────────────────────────────────
 
-    async def _validate_input(
-        self,
-        gw_id: str,
-        local_key: str,
-        ip_address: str,
-    ) -> dict[str, str]:
-        """Validate user inputs; return error dict (empty = all valid).
-
-        Args:
-            gw_id: Device gateway ID string.
-            local_key: Local key string.
-            ip_address: IP address string.
+    async def _run_discovery(self) -> list[dict[str, Any]]:
+        """Run UDP device discovery and return a list of found device dicts.
 
         Returns:
-            Dict of field_name → error_key. Empty if all inputs are valid.
+            List of dicts with CONF_GW_ID, CONF_IP_ADDRESS,
+            CONF_PROTOCOL_VERSION, ``product_key``, and ``encrypt`` keys.
+        """
+        try:
+            from tuya_cloudless.discovery import DiscoveryListener
+        except ImportError:
+            _LOGGER.debug("Discovery module not available; skipping scan")
+            return []
+
+        listener = DiscoveryListener()
+        try:
+            await listener.start()
+            await asyncio.sleep(_DISCOVERY_LISTEN_SECS)
+            raw = listener.get_all()
+        except OSError:
+            raise
+        finally:
+            await listener.stop()
+
+        return [
+            {
+                CONF_GW_ID: dev.gw_id,
+                CONF_IP_ADDRESS: dev.ip,
+                CONF_PROTOCOL_VERSION: dev.version,
+                "product_key": dev.product_key,
+                "encrypt": dev.encrypt,
+            }
+            for dev in raw
+        ]
+
+    async def _check_connection(self, ip_address: str) -> dict[str, str]:
+        """Try a TCP connect to confirm the device is reachable.
+
+        Args:
+            ip_address: Device IP address.
+
+        Returns:
+            Error dict mapping field name to error key.
+            Empty if the connection succeeded.
         """
         errors: dict[str, str] = {}
-
-        if not gw_id:
-            errors[CONF_GW_ID] = "invalid_gw_id"
-        if len(local_key) != _LOCAL_KEY_LENGTH:
-            errors[CONF_LOCAL_KEY] = "invalid_local_key"
-        if not ip_address:
-            errors[CONF_IP_ADDRESS] = "cannot_connect"
-
-        if errors:
-            return errors
-
-        # Quick connectivity test — try TCP connect on port 6668
         try:
-            await asyncio.wait_for(
+            _reader, _writer = await asyncio.wait_for(
                 asyncio.open_connection(ip_address, DEFAULT_TCP_PORT),
-                timeout=3.0,
+                timeout=_CONNECTION_TIMEOUT,
             )
+            _writer.close()
+            try:
+                await _writer.wait_closed()
+            except OSError:
+                pass
         except (OSError, asyncio.TimeoutError) as exc:
             _LOGGER.debug("Connection test to %s failed: %s", ip_address, exc)
             errors[CONF_IP_ADDRESS] = "cannot_connect"
-
         return errors
 
 
+# ── Options flow ───────────────────────────────────────────────────────────────
+
+
 class TuyaCloudlessOptionsFlow(OptionsFlow):
-    """Handle Tuya Cloudless options (IP address update, protocol version)."""
+    """Handle Tuya Cloudless options (IP address, device generation)."""
 
     def __init__(self, config_entry: ConfigEntry) -> None:
+        """Initialise the options flow."""
         self._config_entry = config_entry
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Render the options form.
+        """Show the options form.
 
         Args:
-            user_input: Submitted form data or None.
+            user_input: Submitted form data, or ``None`` on first render.
 
         Returns:
             Config flow result.
