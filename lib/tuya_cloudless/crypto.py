@@ -9,15 +9,19 @@ from .exceptions import TuyaCryptoError
 # Block size for AES
 AES_BLOCK_SIZE = 16
 
+# UDP discovery key (MD5 hash of magic string)
+# Verified against tinytuya/core/udp_helper.py line 21 and localtuya/discovery.py line 17
+UDP_KEY = hashlib.md5(b"yGAdlopoPVldABfn").digest()
+
 
 class TuyaCrypto:
     """Handles encryption and decryption for Tuya devices."""
 
-    def __init__(self, local_key: str, protocol_version: str = "3.3") -> None:
+    def __init__(self, local_key: str | bytes, protocol_version: str = "3.3") -> None:
         """Initialize crypto handler.
 
         Args:
-            local_key: Device local key (16 characters)
+            local_key: Device local key (16 characters string or 16 bytes)
             protocol_version: Protocol version ("3.1", "3.2", "3.3", "3.4", "3.5")
 
         Raises:
@@ -29,7 +33,8 @@ class TuyaCrypto:
         if protocol_version not in ("3.1", "3.2", "3.3", "3.4", "3.5"):
             raise TuyaCryptoError(f"Unsupported protocol version: {protocol_version}")
 
-        self.local_key = local_key.encode("utf-8")
+        # Support both string and bytes (UDP_KEY is bytes)
+        self.local_key = local_key.encode("utf-8") if isinstance(local_key, str) else local_key
         self.protocol_version = protocol_version
 
     def encrypt(self, plaintext: bytes) -> bytes:
@@ -252,12 +257,12 @@ def generate_device_id_hash(device_id: str) -> str:
     return hashlib.md5(device_id.encode("utf-8")).hexdigest()
 
 
-def encrypt_payload(plaintext: bytes, local_key: str, protocol_version: str = "3.3") -> bytes:
+def encrypt_payload(plaintext: bytes, local_key: str | bytes, protocol_version: str = "3.3") -> bytes:
     """Convenience function to encrypt payload.
 
     Args:
         plaintext: Data to encrypt
-        local_key: Device local key
+        local_key: Device local key (string or bytes)
         protocol_version: Protocol version
 
     Returns:
@@ -267,12 +272,12 @@ def encrypt_payload(plaintext: bytes, local_key: str, protocol_version: str = "3
     return crypto.encrypt(plaintext)
 
 
-def decrypt_payload(ciphertext: bytes, local_key: str, protocol_version: str = "3.3") -> bytes:
+def decrypt_payload(ciphertext: bytes, local_key: str | bytes, protocol_version: str = "3.3") -> bytes:
     """Convenience function to decrypt payload.
 
     Args:
         ciphertext: Data to decrypt
-        local_key: Device local key
+        local_key: Device local key (string or bytes)
         protocol_version: Protocol version
 
     Returns:

@@ -6,19 +6,20 @@ import logging
 from dataclasses import dataclass
 from typing import Any
 
-from .crypto import decrypt_payload
+from .crypto import decrypt_payload, UDP_KEY
 from .exceptions import TuyaDiscoveryError
 
 _LOGGER = logging.getLogger(__name__)
 
 # Discovery constants
+# Verified against tinytuya/core/const.py and localtuya/discovery.py
 DISCOVERY_PORT_UNENCRYPTED = 6666  # v3.1-v3.3 unencrypted responses
 DISCOVERY_PORT_ENCRYPTED = 6667  # v3.4-v3.5 encrypted responses
 DISCOVERY_TIMEOUT = 3.0
+RETRY_INTERVAL_DEFAULT = 0.5  # Default retry interval in seconds
 # Tuya UDP discovery magic bytes (constant across all firmware versions)
+# Used as broadcast message payload (not same as UDP_KEY which is MD5 hash)
 BROADCAST_MESSAGE = b"yGAdlopoPVldABfn"
-# UDP_KEY for decrypting port 6667 responses (same as broadcast message)
-UDP_KEY = "yGAdlopoPVldABfn"
 
 
 @dataclass(frozen=True)
@@ -52,6 +53,7 @@ class TuyaDiscovery:
         broadcast_address: str = "255.255.255.255",
         timeout: float = DISCOVERY_TIMEOUT,
         retries: int = 2,
+        retry_interval: float = RETRY_INTERVAL_DEFAULT,
     ) -> None:
         """Initialize discovery.
 
@@ -59,10 +61,12 @@ class TuyaDiscovery:
             broadcast_address: Broadcast address for discovery
             timeout: Discovery timeout in seconds
             retries: Number of broadcast retries (default 2)
+            retry_interval: Delay between retries in seconds (default 0.5)
         """
         self.broadcast_address = broadcast_address
         self.timeout = timeout
         self.retries = retries
+        self.retry_interval = retry_interval
         self._discovered_devices: dict[str, TuyaDevice] = {}
         self._stop_event: asyncio.Event | None = None
 
@@ -124,7 +128,7 @@ class TuyaDiscovery:
                     )
 
                     if attempt < self.retries:
-                        await asyncio.sleep(0.5)
+                        await asyncio.sleep(self.retry_interval)
 
                 # Wait for responses with cancellation support
                 try:
@@ -268,6 +272,7 @@ async def discover_devices(
     timeout: float = DISCOVERY_TIMEOUT,
     local_key: str | None = None,
     retries: int = 2,
+    retry_interval: float = RETRY_INTERVAL_DEFAULT,
 ) -> list[TuyaDevice]:
     """Convenience function to discover Tuya devices.
 
@@ -276,11 +281,15 @@ async def discover_devices(
         timeout: Discovery timeout in seconds
         local_key: Optional local key for decrypting responses
         retries: Number of broadcast retries (default 2)
+        retry_interval: Delay between retries in seconds (default 0.5)
 
     Returns:
         List of discovered TuyaDevice objects
     """
     discovery = TuyaDiscovery(
-        broadcast_address=broadcast_address, timeout=timeout, retries=retries
+        broadcast_address=broadcast_address,
+        timeout=timeout,
+        retries=retries,
+        retry_interval=retry_interval,
     )
     return await discovery.discover(local_key)
