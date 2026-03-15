@@ -144,8 +144,8 @@ class TuyaCloudlessClimate(TuyaCloudlessEntity, ClimateEntity):
         if self._spec.dp_mode is not None:
             raw_mode = self.get_dp(self._spec.dp_mode.id)
             if raw_mode is not None:
-                return _TUYA_TO_HA_MODE.get(str(raw_mode), HVACMode.HEAT)
-        return HVACMode.HEAT
+                return _TUYA_TO_HA_MODE.get(str(raw_mode), HVACMode.AUTO)
+        return HVACMode.AUTO
 
     @property
     def current_temperature(self) -> float | None:

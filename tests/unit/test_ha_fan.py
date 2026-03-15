@@ -277,3 +277,45 @@ class TestFanExtraStateAttributes:
         assert "dp_mode_raw" not in attrs
         assert "dp_oscillate_raw" not in attrs
         assert "dp_direction_raw" not in attrs
+
+
+class TestFanInit:
+    """Test TuyaCloudlessFan.__init__ attribute assignments via real constructor."""
+
+    def _make(self, spec: EntitySpec | None = None, gw_id: str = "mydev") -> TuyaCloudlessFan:
+        from custom_components.tuya_cloudless.fan import TuyaCloudlessFan
+
+        coord = _make_coordinator(gw_id=gw_id)
+        return TuyaCloudlessFan(coord, spec or _make_full_fan_spec())
+
+    def test_unique_id_format(self) -> None:
+        entity = self._make(gw_id="mydev")
+        assert entity._attr_unique_id == "mydev_fan_main_fan"
+
+    def test_preset_modes_from_options(self) -> None:
+        entity = self._make()
+        assert entity.preset_modes == ["sleep", "auto", "natural"]
+
+    def test_preset_modes_none_when_no_dp_mode(self) -> None:
+        spec = _make_power_only_fan_spec()
+        entity = self._make(spec=spec)
+        assert entity.preset_modes is None
+
+    def test_supported_features_full_spec(self) -> None:
+        entity = self._make()
+        assert FanEntityFeature.SET_SPEED in entity.supported_features
+        assert FanEntityFeature.PRESET_MODE in entity.supported_features
+        assert FanEntityFeature.OSCILLATE in entity.supported_features
+        assert FanEntityFeature.DIRECTION in entity.supported_features
+        assert FanEntityFeature.TURN_ON in entity.supported_features
+
+    def test_supported_features_power_only(self) -> None:
+        spec = _make_power_only_fan_spec()
+        entity = self._make(spec=spec)
+        assert FanEntityFeature.SET_SPEED not in entity.supported_features
+        assert FanEntityFeature.PRESET_MODE not in entity.supported_features
+        assert FanEntityFeature.TURN_ON in entity.supported_features
+
+    def test_translation_key(self) -> None:
+        entity = self._make()
+        assert entity._attr_translation_key == "main_fan"

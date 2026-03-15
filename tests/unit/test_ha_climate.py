@@ -113,10 +113,10 @@ class TestTuyaCloudlessClimate:
         e = _make_climate({"1": True, "2": "auto"})
         assert e.hvac_mode == HVACMode.AUTO
 
-    def test_hvac_mode_defaults_heat_when_no_mode_dp(self) -> None:
+    def test_hvac_mode_defaults_auto_when_no_mode_dp(self) -> None:
         e = _make_climate({"1": True})
-        # With no mode DP value, fallback to HEAT when on
-        assert e.hvac_mode == HVACMode.HEAT
+        # With no mode DP value, fallback to AUTO (neutral) when on
+        assert e.hvac_mode == HVACMode.AUTO
 
     def test_hvac_mode_none_when_power_missing(self) -> None:
         e = _make_climate({})
@@ -249,3 +249,60 @@ class TestClimateExtraStateAttributes:
         assert "dp_mode_raw" not in attrs
         assert "dp_temp_set_raw" not in attrs
         assert "dp_temp_current_raw" not in attrs
+
+
+class TestClimateInit:
+    """Test TuyaCloudlessClimate.__init__ attribute assignments via real constructor."""
+
+    def _make(
+        self,
+        spec: EntitySpec | None = None,
+        gw_id: str = "mydev",
+        dps: dict[str, Any] | None = None,
+    ) -> TuyaCloudlessClimate:
+        from custom_components.tuya_cloudless.climate import TuyaCloudlessClimate
+
+        coord = _make_coordinator(dps or {}, gw_id)
+        return TuyaCloudlessClimate(coord, spec or _make_climate_spec())
+
+    def test_unique_id_format(self) -> None:
+        entity = self._make(gw_id="mydev")
+        assert entity._attr_unique_id == "mydev_climate_thermostat"
+
+    def test_hvac_modes_include_off(self) -> None:
+        spec = _make_climate_spec(options=("heat", "cool"))
+        entity = self._make(spec=spec)
+        assert HVACMode.OFF in entity.hvac_modes
+        assert HVACMode.HEAT in entity.hvac_modes
+        assert HVACMode.COOL in entity.hvac_modes
+
+    def test_min_max_from_target(self) -> None:
+        spec = _make_climate_spec(target_min=5.0, target_max=40.0)
+        entity = self._make(spec=spec)
+        assert entity.min_temp == pytest.approx(5.0)
+        assert entity.max_temp == pytest.approx(40.0)
+
+    def test_min_max_from_dp_when_no_target(self) -> None:
+        spec = EntitySpec(
+            platform="climate",
+            name="heater",
+            dp_power=DPSpec(id="1", type="bool"),
+            dp_temp_set=DPSpec(id="3", type="int", min_raw=50, max_raw=350, scale=0.1),
+        )
+        entity = self._make(spec=spec)
+        assert entity.min_temp == pytest.approx(5.0)  # 50 * 0.1
+        assert entity.max_temp == pytest.approx(35.0)  # 350 * 0.1
+
+    def test_supported_features_with_temp(self) -> None:
+        from homeassistant.components.climate import ClimateEntityFeature
+
+        entity = self._make()
+        assert ClimateEntityFeature.TARGET_TEMPERATURE in entity.supported_features
+        assert ClimateEntityFeature.TURN_ON in entity.supported_features
+
+    def test_supported_features_no_temp_set(self) -> None:
+        from homeassistant.components.climate import ClimateEntityFeature
+
+        spec = EntitySpec(platform="climate", name="heater", dp_power=DPSpec(id="1", type="bool"))
+        entity = self._make(spec=spec)
+        assert ClimateEntityFeature.TARGET_TEMPERATURE not in entity.supported_features
