@@ -3,12 +3,10 @@
 from __future__ import annotations
 
 import asyncio
-from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -19,9 +17,7 @@ def _make_hass() -> MagicMock:
     hass.config_entries.async_forward_entry_setups = AsyncMock()
     hass.config_entries.async_unload_platforms = AsyncMock(return_value=True)
     hass.config_entries.async_reload = AsyncMock()
-    hass.async_create_task = MagicMock(
-        side_effect=lambda coro, **kw: asyncio.ensure_future(coro)
-    )
+    hass.async_create_task = MagicMock(side_effect=lambda coro, **kw: asyncio.ensure_future(coro))
     return hass
 
 
@@ -56,74 +52,91 @@ class TestResolveProfile:
     def test_profile_from_entry_data(self) -> None:
         from custom_components.tuya_cloudless import _resolve_profile
 
-        entry = _make_entry(data={
-            "gw_id": "abc",
-            "local_key": "0123456789abcdef",
-            "ip_address": "1.2.3.4",
-            "profile": "Test Profile",
-        })
+        entry = _make_entry(
+            data={
+                "gw_id": "abc",
+                "local_key": "0123456789abcdef",
+                "ip_address": "1.2.3.4",
+                "profile": "Test Profile",
+            }
+        )
 
-        with patch("custom_components.tuya_cloudless._ensure_profiles"):
-            with patch("custom_components.tuya_cloudless.find_profile") as mock_find:
-                mock_profile = MagicMock()
-                mock_profile.name = "Test Profile"
-                mock_find.return_value = mock_profile
-                result = _resolve_profile(entry)
-                mock_find.assert_called_once_with("Test Profile")
-                assert result == mock_profile
+        mock_profile = MagicMock()
+        mock_profile.name = "Test Profile"
+        with (
+            patch("custom_components.tuya_cloudless._ensure_profiles"),
+            patch(
+                "custom_components.tuya_cloudless.find_profile", return_value=mock_profile
+            ) as mock_find,
+        ):
+            result = _resolve_profile(entry)
+        mock_find.assert_called_once_with("Test Profile")
+        assert result == mock_profile
 
     def test_legacy_device_type_mapping(self) -> None:
         from custom_components.tuya_cloudless import _resolve_profile
 
-        entry = _make_entry(data={
-            "gw_id": "abc",
-            "local_key": "0123456789abcdef",
-            "ip_address": "1.2.3.4",
-            "device_type": "plug",
-        })
+        entry = _make_entry(
+            data={
+                "gw_id": "abc",
+                "local_key": "0123456789abcdef",
+                "ip_address": "1.2.3.4",
+                "device_type": "plug",
+            }
+        )
 
-        with patch("custom_components.tuya_cloudless._ensure_profiles"):
-            with patch("custom_components.tuya_cloudless.find_profile") as mock_find:
-                mock_profile = MagicMock()
-                mock_profile.name = "Smart Plug"
-                mock_find.return_value = mock_profile
-                result = _resolve_profile(entry)
-                mock_find.assert_called_once_with("Smart Plug")
+        mock_profile = MagicMock()
+        mock_profile.name = "Smart Plug"
+        with (
+            patch("custom_components.tuya_cloudless._ensure_profiles"),
+            patch(
+                "custom_components.tuya_cloudless.find_profile", return_value=mock_profile
+            ) as mock_find,
+        ):
+            _resolve_profile(entry)
+        mock_find.assert_called_once_with("Smart Plug")
 
     def test_fallback_when_profile_not_found(self) -> None:
         from custom_components.tuya_cloudless import _resolve_profile
 
-        entry = _make_entry(data={
-            "gw_id": "abc",
-            "local_key": "0123456789abcdef",
-            "ip_address": "1.2.3.4",
-            "profile": "NonExistent",
-        })
+        entry = _make_entry(
+            data={
+                "gw_id": "abc",
+                "local_key": "0123456789abcdef",
+                "ip_address": "1.2.3.4",
+                "profile": "NonExistent",
+            }
+        )
 
-        with patch("custom_components.tuya_cloudless._ensure_profiles"):
-            with patch("custom_components.tuya_cloudless.find_profile", return_value=None):
-                with patch("custom_components.tuya_cloudless.list_profiles") as mock_list:
-                    fallback = MagicMock()
-                    fallback.name = "Fallback"
-                    mock_list.return_value = [fallback]
-                    result = _resolve_profile(entry)
-                    assert result == fallback
+        fallback = MagicMock()
+        fallback.name = "Fallback"
+        with (
+            patch("custom_components.tuya_cloudless._ensure_profiles"),
+            patch("custom_components.tuya_cloudless.find_profile", return_value=None),
+            patch("custom_components.tuya_cloudless.list_profiles", return_value=[fallback]),
+        ):
+            result = _resolve_profile(entry)
+        assert result == fallback
 
     def test_returns_none_when_no_profiles(self) -> None:
         from custom_components.tuya_cloudless import _resolve_profile
 
-        entry = _make_entry(data={
-            "gw_id": "abc",
-            "local_key": "0123456789abcdef",
-            "ip_address": "1.2.3.4",
-            "profile": "NonExistent",
-        })
+        entry = _make_entry(
+            data={
+                "gw_id": "abc",
+                "local_key": "0123456789abcdef",
+                "ip_address": "1.2.3.4",
+                "profile": "NonExistent",
+            }
+        )
 
-        with patch("custom_components.tuya_cloudless._ensure_profiles"):
-            with patch("custom_components.tuya_cloudless.find_profile", return_value=None):
-                with patch("custom_components.tuya_cloudless.list_profiles", return_value=[]):
-                    result = _resolve_profile(entry)
-                    assert result is None
+        with (
+            patch("custom_components.tuya_cloudless._ensure_profiles"),
+            patch("custom_components.tuya_cloudless.find_profile", return_value=None),
+            patch("custom_components.tuya_cloudless.list_profiles", return_value=[]),
+        ):
+            result = _resolve_profile(entry)
+        assert result is None
 
 
 # ── TuyaCloudlessRuntimeData ──────────────────────────────────────────────────
@@ -136,10 +149,10 @@ class TestRuntimeData:
         rt = TuyaCloudlessRuntimeData(
             coordinator=MagicMock(),
             device_info=MagicMock(),
-            entity_specs=[],
+            entity_specs=(),
             profile_name="Test",
         )
-        assert rt.entity_specs == []
+        assert rt.entity_specs == ()
         assert rt.profile_name == "Test"
 
     def test_default_entity_specs(self) -> None:
@@ -148,8 +161,10 @@ class TestRuntimeData:
         rt = TuyaCloudlessRuntimeData(
             coordinator=MagicMock(),
             device_info=MagicMock(),
+            entity_specs=(),
+            profile_name="",
         )
-        assert rt.entity_specs == []
+        assert rt.entity_specs == ()
         assert rt.profile_name == ""
 
 
@@ -171,15 +186,17 @@ class TestAsyncSetupEntry:
         mock_profile.name = "Generic Switch"
         mock_profile.entities = []
 
-        with patch(
-            "custom_components.tuya_cloudless.TuyaCloudlessCoordinator.from_config_entry",
-            return_value=mock_coord,
-        ):
-            with patch(
+        with (
+            patch(
+                "custom_components.tuya_cloudless.TuyaCloudlessCoordinator.from_config_entry",
+                return_value=mock_coord,
+            ),
+            patch(
                 "custom_components.tuya_cloudless._resolve_profile",
                 return_value=mock_profile,
-            ):
-                result = await async_setup_entry(hass, entry)
+            ),
+        ):
+            result = await async_setup_entry(hass, entry)
 
         assert result is True
         mock_coord.async_start.assert_awaited_once()
@@ -195,19 +212,21 @@ class TestAsyncSetupEntry:
         mock_coord = MagicMock()
         mock_coord.async_start = AsyncMock()
 
-        with patch(
-            "custom_components.tuya_cloudless.TuyaCloudlessCoordinator.from_config_entry",
-            return_value=mock_coord,
-        ):
-            with patch(
+        with (
+            patch(
+                "custom_components.tuya_cloudless.TuyaCloudlessCoordinator.from_config_entry",
+                return_value=mock_coord,
+            ),
+            patch(
                 "custom_components.tuya_cloudless._resolve_profile",
                 return_value=None,
-            ):
-                result = await async_setup_entry(hass, entry)
+            ),
+        ):
+            result = await async_setup_entry(hass, entry)
 
         assert result is True
         # Runtime data should have empty specs
-        assert entry.runtime_data.entity_specs == []
+        assert entry.runtime_data.entity_specs == ()
         assert entry.runtime_data.profile_name == ""
 
 
@@ -229,6 +248,8 @@ class TestAsyncUnloadEntry:
         entry.runtime_data = TuyaCloudlessRuntimeData(
             coordinator=mock_coord,
             device_info=MagicMock(),
+            entity_specs=(),
+            profile_name="",
         )
 
         result = await async_unload_entry(hass, entry)

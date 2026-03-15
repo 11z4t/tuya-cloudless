@@ -146,7 +146,7 @@ class TestDecodeValidation:
             decode_message(b"\x00" * 10, ProtocolVersion.V33)
 
     def test_bad_prefix(self) -> None:
-        bad = b"\xFF\xFF\xFF\xFF" + b"\x00" * 20
+        bad = b"\xff\xff\xff\xff" + b"\x00" * 20
         with pytest.raises(InvalidMessageError, match="Invalid prefix"):
             decode_message(bad, ProtocolVersion.V33)
 
@@ -232,7 +232,7 @@ class TestMessageBuffer:
 
     def test_garbage_before_prefix(self) -> None:
         buf = MessageBuffer(ProtocolVersion.V33)
-        garbage = b"\xFF\xFE\xFD"
+        garbage = b"\xff\xfe\xfd"
         buf.feed(garbage + self._make_encoded())
         msgs = buf.messages()
         assert len(msgs) == 1
@@ -256,7 +256,7 @@ class TestMessageBuffer:
 
     def test_no_prefix_found(self) -> None:
         buf = MessageBuffer(ProtocolVersion.V33)
-        buf.feed(b"\xFF" * 50)
+        buf.feed(b"\xff" * 50)
         msgs = buf.messages()
         assert msgs == []
 
@@ -297,6 +297,7 @@ class TestBuilders:
         msg = build_dp_query(sequence=4, dps_ids=[1, 2, 3])
         assert msg.command == CommandType.DP_QUERY
         import json
+
         data = json.loads(msg.payload)
         assert "1" in data["dps"]
         assert "2" in data["dps"]
@@ -306,6 +307,7 @@ class TestBuilders:
         msg = build_control(sequence=10, dps={"1": True, "2": 50})
         assert msg.command == CommandType.CONTROL
         import json
+
         data = json.loads(msg.payload)
         assert data["dps"]["1"] is True
         assert data["dps"]["2"] == 50

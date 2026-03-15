@@ -24,9 +24,7 @@ class TestRepairs:
         from custom_components.tuya_cloudless.repairs import async_create_fix_flow
 
         hass = MagicMock()
-        flow = await async_create_fix_flow(
-            hass, "auth_failed_test", {"device_name": "Test"}
-        )
+        flow = await async_create_fix_flow(hass, "auth_failed_test", {"device_name": "Test"})
         assert flow is not None
 
     def test_auth_repair_flow_is_confirm_flow(self) -> None:

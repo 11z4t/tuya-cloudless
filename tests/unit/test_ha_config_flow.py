@@ -8,9 +8,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from custom_components.tuya_cloudless.config_flow import (
+    _LOCAL_KEY_LENGTH,
     TuyaCloudlessConfigFlow,
     TuyaCloudlessOptionsFlow,
-    _LOCAL_KEY_LENGTH,
     _get_profile_options,
 )
 from custom_components.tuya_cloudless.const import (
@@ -24,9 +24,7 @@ from custom_components.tuya_cloudless.const import (
     CONF_PROFILE,
     CONF_PROTOCOL_VERSION,
     CONFIG_ENTRY_VERSION,
-    DEFAULT_PROTOCOL_VERSION,
 )
-
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -75,9 +73,11 @@ class TestGetProfileOptions:
             call_count += 1
             return []
 
-        with patch("tuya_cloudless.profiles.list_profiles", side_effect=mock_list):
-            with patch("tuya_cloudless.profiles.init_profiles"):
-                options = _get_profile_options()
+        with (
+            patch("tuya_cloudless.profiles.list_profiles", side_effect=mock_list),
+            patch("tuya_cloudless.profiles.init_profiles"),
+        ):
+            options = _get_profile_options()
         assert len(options) == 1
         assert options[0]["value"] == "Generic Switch"
 
@@ -89,7 +89,7 @@ class TestStepUser:
     @pytest.mark.asyncio
     async def test_show_form_first_render(self) -> None:
         flow = _make_flow()
-        result = await flow.async_step_user(None)
+        await flow.async_step_user(None)
         flow.async_show_form.assert_called_once()
         call_kwargs = flow.async_show_form.call_args[1]
         assert call_kwargs["step_id"] == "user"
@@ -226,11 +226,13 @@ class TestStepLocalKey:
         flow = _make_flow()
         flow._device = {CONF_IP_ADDRESS: "1.2.3.4", CONF_GW_ID: "dev1"}
         flow.async_step_confirm = AsyncMock(return_value={"type": "form"})
-        await flow.async_step_local_key({
-            CONF_LOCAL_KEY: "0123456789abcdef",
-            CONF_DEVICE_NAME: "My Light",
-            CONF_PROFILE: "Generic Light",
-        })
+        await flow.async_step_local_key(
+            {
+                CONF_LOCAL_KEY: "0123456789abcdef",
+                CONF_DEVICE_NAME: "My Light",
+                CONF_PROFILE: "Generic Light",
+            }
+        )
         flow.async_step_confirm.assert_awaited_once()
         assert flow._device[CONF_LOCAL_KEY] == "0123456789abcdef"
         assert flow._device[CONF_DEVICE_NAME] == "My Light"
@@ -241,10 +243,12 @@ class TestStepLocalKey:
         flow = _make_flow()
         flow._device = {CONF_IP_ADDRESS: "1.2.3.4", CONF_GW_ID: "dev1"}
         flow.async_step_confirm = AsyncMock(return_value={"type": "form"})
-        await flow.async_step_local_key({
-            CONF_LOCAL_KEY: "0123456789abcdef",
-            CONF_DEVICE_NAME: "",
-        })
+        await flow.async_step_local_key(
+            {
+                CONF_LOCAL_KEY: "0123456789abcdef",
+                CONF_DEVICE_NAME: "",
+            }
+        )
         assert flow._device[CONF_DEVICE_NAME] == "1.2.3.4"  # Fallback to IP
 
 
@@ -267,9 +271,7 @@ class TestStepConfirm:
             CONF_IP_ADDRESS: "1.2.3.4",
             CONF_LOCAL_KEY: "0123456789abcdef",
         }
-        flow._check_connection = AsyncMock(
-            return_value={CONF_IP_ADDRESS: "cannot_connect"}
-        )
+        flow._check_connection = AsyncMock(return_value={CONF_IP_ADDRESS: "cannot_connect"})
         await flow.async_step_confirm({})
         flow.async_show_form.assert_called()
 
@@ -308,47 +310,53 @@ class TestStepManual:
     @pytest.mark.asyncio
     async def test_empty_gw_id(self) -> None:
         flow = _make_flow()
-        await flow.async_step_manual({
-            CONF_GW_ID: "",
-            CONF_LOCAL_KEY: "0123456789abcdef",
-            CONF_IP_ADDRESS: "1.2.3.4",
-        })
+        await flow.async_step_manual(
+            {
+                CONF_GW_ID: "",
+                CONF_LOCAL_KEY: "0123456789abcdef",
+                CONF_IP_ADDRESS: "1.2.3.4",
+            }
+        )
         call_kwargs = flow.async_show_form.call_args[1]
         assert call_kwargs["errors"][CONF_GW_ID] == "invalid_gw_id"
 
     @pytest.mark.asyncio
     async def test_invalid_local_key(self) -> None:
         flow = _make_flow()
-        await flow.async_step_manual({
-            CONF_GW_ID: "dev1",
-            CONF_LOCAL_KEY: "short",
-            CONF_IP_ADDRESS: "1.2.3.4",
-        })
+        await flow.async_step_manual(
+            {
+                CONF_GW_ID: "dev1",
+                CONF_LOCAL_KEY: "short",
+                CONF_IP_ADDRESS: "1.2.3.4",
+            }
+        )
         call_kwargs = flow.async_show_form.call_args[1]
         assert call_kwargs["errors"][CONF_LOCAL_KEY] == "invalid_local_key"
 
     @pytest.mark.asyncio
     async def test_empty_ip(self) -> None:
         flow = _make_flow()
-        await flow.async_step_manual({
-            CONF_GW_ID: "dev1",
-            CONF_LOCAL_KEY: "0123456789abcdef",
-            CONF_IP_ADDRESS: "",
-        })
+        await flow.async_step_manual(
+            {
+                CONF_GW_ID: "dev1",
+                CONF_LOCAL_KEY: "0123456789abcdef",
+                CONF_IP_ADDRESS: "",
+            }
+        )
         call_kwargs = flow.async_show_form.call_args[1]
         assert call_kwargs["errors"][CONF_IP_ADDRESS] == "cannot_connect"
 
     @pytest.mark.asyncio
     async def test_connection_fail(self) -> None:
         flow = _make_flow()
-        flow._check_connection = AsyncMock(
-            return_value={CONF_IP_ADDRESS: "cannot_connect"}
+        flow._check_connection = AsyncMock(return_value={CONF_IP_ADDRESS: "cannot_connect"})
+        await flow.async_step_manual(
+            {
+                CONF_GW_ID: "dev1",
+                CONF_LOCAL_KEY: "0123456789abcdef",
+                CONF_IP_ADDRESS: "1.2.3.4",
+            }
         )
-        await flow.async_step_manual({
-            CONF_GW_ID: "dev1",
-            CONF_LOCAL_KEY: "0123456789abcdef",
-            CONF_IP_ADDRESS: "1.2.3.4",
-        })
         call_kwargs = flow.async_show_form.call_args[1]
         assert "cannot_connect" in str(call_kwargs["errors"])
 
@@ -356,14 +364,16 @@ class TestStepManual:
     async def test_success(self) -> None:
         flow = _make_flow()
         flow._check_connection = AsyncMock(return_value={})
-        await flow.async_step_manual({
-            CONF_GW_ID: "dev1",
-            CONF_LOCAL_KEY: "0123456789abcdef",
-            CONF_IP_ADDRESS: "1.2.3.4",
-            CONF_PROTOCOL_VERSION: "3.3",
-            CONF_PROFILE: "Generic Switch",
-            CONF_DEVICE_NAME: "My Switch",
-        })
+        await flow.async_step_manual(
+            {
+                CONF_GW_ID: "dev1",
+                CONF_LOCAL_KEY: "0123456789abcdef",
+                CONF_IP_ADDRESS: "1.2.3.4",
+                CONF_PROTOCOL_VERSION: "3.3",
+                CONF_PROFILE: "Generic Switch",
+                CONF_DEVICE_NAME: "My Switch",
+            }
+        )
         flow.async_create_entry.assert_called_once()
         call_data = flow.async_create_entry.call_args[1]["data"]
         assert call_data[CONF_PROFILE] == "Generic Switch"
@@ -372,11 +382,13 @@ class TestStepManual:
     async def test_success_no_name(self) -> None:
         flow = _make_flow()
         flow._check_connection = AsyncMock(return_value={})
-        await flow.async_step_manual({
-            CONF_GW_ID: "dev1",
-            CONF_LOCAL_KEY: "0123456789abcdef",
-            CONF_IP_ADDRESS: "1.2.3.4",
-        })
+        await flow.async_step_manual(
+            {
+                CONF_GW_ID: "dev1",
+                CONF_LOCAL_KEY: "0123456789abcdef",
+                CONF_IP_ADDRESS: "1.2.3.4",
+            }
+        )
         flow.async_create_entry.assert_called_once()
         call_kwargs = flow.async_create_entry.call_args[1]
         assert call_kwargs["title"] == "1.2.3.4"
@@ -410,11 +422,13 @@ class TestStepDiscovery:
         flow = _make_flow()
         flow._device = {CONF_GW_ID: "dev1", CONF_IP_ADDRESS: "1.2.3.4"}
         flow.async_step_confirm = AsyncMock(return_value={"type": "form"})
-        await flow.async_step_discovery({
-            CONF_LOCAL_KEY: "0123456789abcdef",
-            CONF_DEVICE_NAME: "My Discovered",
-            CONF_PROFILE: "Generic Light",
-        })
+        await flow.async_step_discovery(
+            {
+                CONF_LOCAL_KEY: "0123456789abcdef",
+                CONF_DEVICE_NAME: "My Discovered",
+                CONF_PROFILE: "Generic Light",
+            }
+        )
         flow.async_step_confirm.assert_awaited_once()
         assert flow._device[CONF_DEVICE_NAME] == "My Discovered"
         assert flow._device[CONF_PROFILE] == "Generic Light"
@@ -424,10 +438,12 @@ class TestStepDiscovery:
         flow = _make_flow()
         flow._device = {CONF_GW_ID: "dev1", CONF_IP_ADDRESS: "1.2.3.4"}
         flow.async_step_confirm = AsyncMock(return_value={"type": "form"})
-        await flow.async_step_discovery({
-            CONF_LOCAL_KEY: "0123456789abcdef",
-            CONF_DEVICE_NAME: "",
-        })
+        await flow.async_step_discovery(
+            {
+                CONF_LOCAL_KEY: "0123456789abcdef",
+                CONF_DEVICE_NAME: "",
+            }
+        )
         assert flow._device[CONF_DEVICE_NAME] == "1.2.3.4"
 
 
@@ -470,12 +486,12 @@ class TestStepReauth:
         reauth_entry.data = {CONF_IP_ADDRESS: "1.2.3.4"}
         reauth_entry.title = "Test"
         flow._get_reauth_entry = MagicMock(return_value=reauth_entry)
-        flow._check_connection = AsyncMock(
-            return_value={CONF_IP_ADDRESS: "cannot_connect"}
+        flow._check_connection = AsyncMock(return_value={CONF_IP_ADDRESS: "cannot_connect"})
+        await flow.async_step_reauth_confirm(
+            {
+                CONF_LOCAL_KEY: "0123456789abcdef",
+            }
         )
-        await flow.async_step_reauth_confirm({
-            CONF_LOCAL_KEY: "0123456789abcdef",
-        })
         flow.async_show_form.assert_called()
 
     @pytest.mark.asyncio
@@ -491,9 +507,11 @@ class TestStepReauth:
         flow._get_reauth_entry = MagicMock(return_value=reauth_entry)
         flow._check_connection = AsyncMock(return_value={})
         flow.async_update_reload_and_abort = MagicMock(return_value={"type": "abort"})
-        await flow.async_step_reauth_confirm({
-            CONF_LOCAL_KEY: "0123456789abcdef",
-        })
+        await flow.async_step_reauth_confirm(
+            {
+                CONF_LOCAL_KEY: "0123456789abcdef",
+            }
+        )
         flow.async_update_reload_and_abort.assert_called_once()
 
 
@@ -555,19 +573,21 @@ class TestOptionsFlow:
     @pytest.mark.asyncio
     async def test_show_form(self) -> None:
         flow = self._make_options_flow()
-        result = await flow.async_step_init(None)
+        await flow.async_step_init(None)
         flow.async_show_form.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_submit_options(self) -> None:
         flow = self._make_options_flow()
-        result = await flow.async_step_init({
-            CONF_IP_ADDRESS: "10.0.0.1",
-            CONF_PROTOCOL_VERSION: "3.3",
-            CONF_OPT_HEARTBEAT_INTERVAL: 30,
-            CONF_OPT_COMMAND_TIMEOUT: 10,
-            CONF_OPT_RECONNECT_MAX_DELAY: 120,
-        })
+        await flow.async_step_init(
+            {
+                CONF_IP_ADDRESS: "10.0.0.1",
+                CONF_PROTOCOL_VERSION: "3.3",
+                CONF_OPT_HEARTBEAT_INTERVAL: 30,
+                CONF_OPT_COMMAND_TIMEOUT: 10,
+                CONF_OPT_RECONNECT_MAX_DELAY: 120,
+            }
+        )
         flow.async_create_entry.assert_called_once()
         call_data = flow.async_create_entry.call_args[1]["data"]
         assert call_data[CONF_OPT_HEARTBEAT_INTERVAL] == 30

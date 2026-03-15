@@ -6,16 +6,13 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-
 from homeassistant.components.light import (
     ATTR_BRIGHTNESS,
     ATTR_COLOR_TEMP_KELVIN,
-    ATTR_EFFECT,
     ATTR_HS_COLOR,
     ColorMode,
     LightEntityFeature,
 )
-
 from tuya_cloudless.profiles import DPSpec, EntitySpec
 
 from custom_components.tuya_cloudless.coordinator import DeviceState
@@ -24,7 +21,6 @@ from custom_components.tuya_cloudless.light import (
     _ha_to_tuya_brightness,
     _tuya_to_ha_brightness,
 )
-
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -60,15 +56,11 @@ def _make_light_spec(
         dp_color_temp=DPSpec(id=dp_color_temp_id, type="int", min_raw=0, max_raw=1000)
         if dp_color_temp_id
         else None,
-        dp_hs_hue=DPSpec(id=dp_hs_hue_id, type="int", max_raw=360)
-        if dp_hs_hue_id
-        else None,
+        dp_hs_hue=DPSpec(id=dp_hs_hue_id, type="int", max_raw=360) if dp_hs_hue_id else None,
         dp_hs_saturation=DPSpec(id=dp_hs_sat_id, type="int", max_raw=1000)
         if dp_hs_sat_id
         else None,
-        dp_color_mode=DPSpec(id=dp_color_mode_id, type="enum")
-        if dp_color_mode_id
-        else None,
+        dp_color_mode=DPSpec(id=dp_color_mode_id, type="enum") if dp_color_mode_id else None,
         effects=effects,
     )
 
@@ -178,9 +170,7 @@ class TestColorModes:
         assert ColorMode.COLOR_TEMP in modes
 
     def test_onoff_mode_only(self) -> None:
-        spec = _make_light_spec(
-            dp_brightness_id=None, dp_color_temp_id=None
-        )
+        spec = _make_light_spec(dp_brightness_id=None, dp_color_temp_id=None)
         e = _make_light(spec=spec)
         assert ColorMode.ONOFF in e._attr_supported_color_modes
 
@@ -285,9 +275,7 @@ class TestColorTemp:
 
 
 class TestHSColor:
-    def _make_hs_light(
-        self, dps: dict[str, Any] | None = None
-    ) -> TuyaCloudlessLight:
+    def _make_hs_light(self, dps: dict[str, Any] | None = None) -> TuyaCloudlessLight:
         spec = _make_light_spec(
             dp_hs_hue_id="4",
             dp_hs_sat_id="5",
@@ -388,9 +376,7 @@ class TestLightSetupEntry:
         from custom_components.tuya_cloudless.light import async_setup_entry
 
         coord = _make_coordinator()
-        switch_spec = EntitySpec(
-            platform="switch", name="sw", dp_power=DPSpec(id="1", type="bool")
-        )
+        switch_spec = EntitySpec(platform="switch", name="sw", dp_power=DPSpec(id="1", type="bool"))
         runtime = TuyaCloudlessRuntimeData(
             coordinator=coord,
             device_info=MagicMock(),

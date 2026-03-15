@@ -9,15 +9,13 @@ from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
-from tuya_cloudless.const import CMD_UDP, FRAME_HEADER_SIZE, FRAME_PREFIX, UDP_PORT
+from tuya_cloudless.const import CMD_UDP, FRAME_PREFIX
 from tuya_cloudless.discovery import (
     DiscoveredDevice,
     DiscoveryListener,
     _DiscoveryProtocol,
 )
 from tuya_cloudless.exceptions import DiscoveryError, MalformedPacketError
-
 
 # ── DiscoveredDevice ────────────────────────────────────────────────────────
 
@@ -113,7 +111,9 @@ class TestDiscoveryListener:
     @pytest.mark.asyncio
     async def test_start_stop(self) -> None:
         listener = DiscoveryListener()
-        with patch.object(asyncio.get_event_loop(), "create_datagram_endpoint", new_callable=AsyncMock) as mock_dgram:
+        with patch.object(
+            asyncio.get_event_loop(), "create_datagram_endpoint", new_callable=AsyncMock
+        ) as mock_dgram:
             mock_transport = MagicMock()
             mock_dgram.return_value = (mock_transport, MagicMock())
             await listener.start()
@@ -130,9 +130,15 @@ class TestDiscoveryListener:
     @pytest.mark.asyncio
     async def test_start_socket_error(self) -> None:
         listener = DiscoveryListener()
-        with patch.object(asyncio.get_event_loop(), "create_datagram_endpoint", side_effect=OSError("bind fail")):
-            with pytest.raises(DiscoveryError, match="bind"):
-                await listener.start()
+        with (
+            patch.object(
+                asyncio.get_event_loop(),
+                "create_datagram_endpoint",
+                side_effect=OSError("bind fail"),
+            ),
+            pytest.raises(DiscoveryError, match="bind"),
+        ):
+            await listener.start()
 
     @pytest.mark.asyncio
     async def test_stop_no_task(self) -> None:
@@ -149,7 +155,7 @@ def _build_discovery_packet(payload_dict: dict) -> bytes:
     length = len(payload) + 8  # CRC(4) + suffix(4)
     header = struct.pack(">4sIII", FRAME_PREFIX, 0, CMD_UDP, length)
     crc = struct.pack(">I", 0)
-    suffix = b"\x00\x00\xAA\x55"
+    suffix = b"\x00\x00\xaa\x55"
     return header + payload + crc + suffix
 
 
@@ -161,7 +167,7 @@ class TestParseDatagram:
 
     def test_bad_prefix(self) -> None:
         listener = DiscoveryListener()
-        result = listener._parse_datagram(b"\xFF" * 20, "1.2.3.4")
+        result = listener._parse_datagram(b"\xff" * 20, "1.2.3.4")
         assert result is None
 
     def test_non_discovery_cmd(self) -> None:
@@ -172,15 +178,17 @@ class TestParseDatagram:
 
     def test_valid_plaintext_packet(self) -> None:
         listener = DiscoveryListener()
-        packet = _build_discovery_packet({
-            "gwId": "abc123",
-            "ip": "192.168.1.42",
-            "version": "3.3",
-            "productKey": "pk123",
-            "encrypt": True,
-            "active": 2,
-            "ability": 0,
-        })
+        packet = _build_discovery_packet(
+            {
+                "gwId": "abc123",
+                "ip": "192.168.1.42",
+                "version": "3.3",
+                "productKey": "pk123",
+                "encrypt": True,
+                "active": 2,
+                "ability": 0,
+            }
+        )
         result = listener._parse_datagram(packet, "1.2.3.4")
         assert result is not None
         assert result.gw_id == "abc123"
@@ -190,19 +198,23 @@ class TestParseDatagram:
 
     def test_missing_gw_id(self) -> None:
         listener = DiscoveryListener()
-        packet = _build_discovery_packet({
-            "ip": "192.168.1.42",
-            "version": "3.3",
-        })
+        packet = _build_discovery_packet(
+            {
+                "ip": "192.168.1.42",
+                "version": "3.3",
+            }
+        )
         result = listener._parse_datagram(packet, "1.2.3.4")
         assert result is None
 
     def test_uses_source_ip_fallback(self) -> None:
         listener = DiscoveryListener()
-        packet = _build_discovery_packet({
-            "gwId": "abc123",
-            "version": "3.3",
-        })
+        packet = _build_discovery_packet(
+            {
+                "gwId": "abc123",
+                "version": "3.3",
+            }
+        )
         result = listener._parse_datagram(packet, "10.0.0.1")
         assert result is not None
         assert result.ip == "10.0.0.1"
@@ -242,10 +254,17 @@ class TestProcessLoop:
     async def test_process_loop_new_device(self) -> None:
         listener = DiscoveryListener()
         listener._running = True
-        packet = _build_discovery_packet({
-            "gwId": "test1", "ip": "1.2.3.4", "version": "3.3",
-            "productKey": "pk", "encrypt": True, "active": 2, "ability": 0,
-        })
+        packet = _build_discovery_packet(
+            {
+                "gwId": "test1",
+                "ip": "1.2.3.4",
+                "version": "3.3",
+                "productKey": "pk",
+                "encrypt": True,
+                "active": 2,
+                "ability": 0,
+            }
+        )
         await listener._queue.put((packet, ("1.2.3.4", 6666)))
 
         async def stop_after_one() -> None:
@@ -263,13 +282,25 @@ class TestProcessLoop:
         listener._running = True
         # Pre-populate
         listener._discovered["test1"] = DiscoveredDevice(
-            gw_id="test1", ip="old", version="3.3", product_key="pk",
-            encrypt=True, active=2, ability=0,
+            gw_id="test1",
+            ip="old",
+            version="3.3",
+            product_key="pk",
+            encrypt=True,
+            active=2,
+            ability=0,
         )
-        packet = _build_discovery_packet({
-            "gwId": "test1", "ip": "1.2.3.5", "version": "3.3",
-            "productKey": "pk", "encrypt": True, "active": 2, "ability": 0,
-        })
+        packet = _build_discovery_packet(
+            {
+                "gwId": "test1",
+                "ip": "1.2.3.5",
+                "version": "3.3",
+                "productKey": "pk",
+                "encrypt": True,
+                "active": 2,
+                "ability": 0,
+            }
+        )
         await listener._queue.put((packet, ("1.2.3.5", 6666)))
 
         async def stop_after() -> None:
@@ -331,8 +362,13 @@ class TestWaitForDevice:
     async def test_wait_already_discovered(self) -> None:
         listener = DiscoveryListener()
         dev = DiscoveredDevice(
-            gw_id="abc", ip="1.2.3.4", version="3.3", product_key="pk",
-            encrypt=True, active=2, ability=0,
+            gw_id="abc",
+            ip="1.2.3.4",
+            version="3.3",
+            product_key="pk",
+            encrypt=True,
+            active=2,
+            ability=0,
         )
         listener._discovered["abc"] = dev
         result = await listener.wait_for_device("abc", timeout=1.0)
@@ -348,8 +384,13 @@ class TestWaitForDevice:
     async def test_wait_discovered_during_wait(self) -> None:
         listener = DiscoveryListener()
         dev = DiscoveredDevice(
-            gw_id="abc", ip="1.2.3.4", version="3.3", product_key="pk",
-            encrypt=True, active=2, ability=0,
+            gw_id="abc",
+            ip="1.2.3.4",
+            version="3.3",
+            product_key="pk",
+            encrypt=True,
+            active=2,
+            ability=0,
         )
 
         async def add_device_later() -> None:
@@ -385,8 +426,13 @@ class TestDevicesIterator:
         listener = DiscoveryListener()
         listener._running = True
         dev = DiscoveredDevice(
-            gw_id="abc", ip="1.2.3.4", version="3.3", product_key="pk",
-            encrypt=True, active=2, ability=0,
+            gw_id="abc",
+            ip="1.2.3.4",
+            version="3.3",
+            product_key="pk",
+            encrypt=True,
+            active=2,
+            ability=0,
         )
         listener._discovered["abc"] = dev
 
@@ -414,7 +460,7 @@ class TestTryDecodePayload:
 
     def test_not_json_no_keys(self) -> None:
         listener = DiscoveryListener()
-        result = listener._try_decode_payload(b"\x00\xFF\xFE")
+        result = listener._try_decode_payload(b"\x00\xff\xfe")
         assert result is None
 
     def test_decrypt_with_known_key(self) -> None:

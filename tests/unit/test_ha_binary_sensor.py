@@ -6,12 +6,10 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-
 from tuya_cloudless.profiles import DPSpec, EntitySpec
 
 from custom_components.tuya_cloudless.binary_sensor import TuyaCloudlessBinarySensor
 from custom_components.tuya_cloudless.coordinator import DeviceState
-
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -110,9 +108,7 @@ class TestBinarySensorSetup:
         from custom_components.tuya_cloudless.binary_sensor import async_setup_entry
 
         coord = _make_coordinator()
-        switch_spec = EntitySpec(
-            platform="switch", name="sw", dp_power=DPSpec(id="1", type="bool")
-        )
+        switch_spec = EntitySpec(platform="switch", name="sw", dp_power=DPSpec(id="1", type="bool"))
         runtime = TuyaCloudlessRuntimeData(
             coordinator=coord,
             device_info=MagicMock(),

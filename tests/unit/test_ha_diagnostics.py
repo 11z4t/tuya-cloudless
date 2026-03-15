@@ -3,12 +3,11 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
 import pytest
 
 from custom_components.tuya_cloudless.coordinator import DeviceState
-
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 

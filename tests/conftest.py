@@ -7,9 +7,7 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-
 from tuya_cloudless.profiles import DPSpec, EntitySpec
-
 
 # ── Fake HomeAssistant objects ───────────────────────────────────────────────
 
@@ -118,22 +116,16 @@ def make_light_spec(
         dp_color_temp=DPSpec(id=dp_color_temp_id, type="int", min_raw=0, max_raw=1000)
         if dp_color_temp_id
         else None,
-        dp_hs_hue=DPSpec(id=dp_hs_hue_id, type="int", max_raw=360)
-        if dp_hs_hue_id
-        else None,
+        dp_hs_hue=DPSpec(id=dp_hs_hue_id, type="int", max_raw=360) if dp_hs_hue_id else None,
         dp_hs_saturation=DPSpec(id=dp_hs_sat_id, type="int", max_raw=1000)
         if dp_hs_sat_id
         else None,
-        dp_color_mode=DPSpec(id=dp_color_mode_id, type="enum")
-        if dp_color_mode_id
-        else None,
+        dp_color_mode=DPSpec(id=dp_color_mode_id, type="enum") if dp_color_mode_id else None,
         effects=effects,
     )
 
 
-def make_binary_sensor_spec(
-    dp_id: str = "26", name: str = "overload"
-) -> EntitySpec:
+def make_binary_sensor_spec(dp_id: str = "26", name: str = "overload") -> EntitySpec:
     """Return a binary_sensor EntitySpec."""
     return EntitySpec(
         platform="binary_sensor",

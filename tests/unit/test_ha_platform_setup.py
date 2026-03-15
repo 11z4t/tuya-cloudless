@@ -6,12 +6,10 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-
 from tuya_cloudless.profiles import DPSpec, EntitySpec
 
 from custom_components.tuya_cloudless import TuyaCloudlessRuntimeData
 from custom_components.tuya_cloudless.coordinator import DeviceState
-
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -48,9 +46,7 @@ class TestSwitchSetup:
     async def test_creates_switch_entities(self) -> None:
         from custom_components.tuya_cloudless.switch import async_setup_entry
 
-        spec = EntitySpec(
-            platform="switch", name="sw", dp_power=DPSpec(id="1", type="bool")
-        )
+        spec = EntitySpec(platform="switch", name="sw", dp_power=DPSpec(id="1", type="bool"))
         runtime = _make_runtime([spec])
         entry = _make_entry(runtime)
         added: list = []
@@ -93,9 +89,7 @@ class TestLightSetup:
     async def test_skips_non_light_specs(self) -> None:
         from custom_components.tuya_cloudless.light import async_setup_entry
 
-        spec = EntitySpec(
-            platform="switch", name="sw", dp_power=DPSpec(id="1", type="bool")
-        )
+        spec = EntitySpec(platform="switch", name="sw", dp_power=DPSpec(id="1", type="bool"))
         runtime = _make_runtime([spec])
         entry = _make_entry(runtime)
         added: list = []
@@ -161,9 +155,7 @@ class TestBinarySensorSetup:
     async def test_skips_non_binary_sensor_specs(self) -> None:
         from custom_components.tuya_cloudless.binary_sensor import async_setup_entry
 
-        spec = EntitySpec(
-            platform="switch", name="sw", dp_power=DPSpec(id="1", type="bool")
-        )
+        spec = EntitySpec(platform="switch", name="sw", dp_power=DPSpec(id="1", type="bool"))
         runtime = _make_runtime([spec])
         entry = _make_entry(runtime)
         added: list = []
@@ -196,9 +188,7 @@ class TestCoverSetup:
     async def test_skips_non_cover_specs(self) -> None:
         from custom_components.tuya_cloudless.cover import async_setup_entry
 
-        spec = EntitySpec(
-            platform="switch", name="sw", dp_power=DPSpec(id="1", type="bool")
-        )
+        spec = EntitySpec(platform="switch", name="sw", dp_power=DPSpec(id="1", type="bool"))
         runtime = _make_runtime([spec])
         entry = _make_entry(runtime)
         added: list = []
@@ -220,9 +210,7 @@ class TestMultiPlatformSetup:
             async_setup_entry as switch_setup,
         )
 
-        switch_spec = EntitySpec(
-            platform="switch", name="sw", dp_power=DPSpec(id="1", type="bool")
-        )
+        switch_spec = EntitySpec(platform="switch", name="sw", dp_power=DPSpec(id="1", type="bool"))
         light_spec = EntitySpec(
             platform="light",
             name="light",

@@ -21,7 +21,7 @@ import hashlib
 import hmac
 import os
 import struct
-from enum import Enum
+from enum import StrEnum
 from typing import NamedTuple
 
 from cryptography.exceptions import InvalidTag
@@ -50,7 +50,7 @@ _MD5_KEY_BYTES = 16  # Only the first 16 bytes of the MD5 digest are used
 # ── Protocol version enum ────────────────────────────────────────────────────
 
 
-class ProtocolVersion(str, Enum):
+class ProtocolVersion(StrEnum):
     """Tuya LAN protocol version identifiers."""
 
     V31 = "3.1"
