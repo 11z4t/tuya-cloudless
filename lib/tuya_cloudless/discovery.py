@@ -6,7 +6,7 @@ import logging
 from dataclasses import dataclass
 from typing import Any
 
-from .crypto import decrypt_payload, UDP_KEY
+from .crypto import UDP_KEY, decrypt_payload
 from .exceptions import TuyaDiscoveryError
 
 _LOGGER = logging.getLogger(__name__)
@@ -136,7 +136,7 @@ class TuyaDiscovery:
                         self._stop_event.wait(),
                         timeout=self.timeout,
                     )
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     pass  # Normal timeout
 
             finally:
