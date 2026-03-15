@@ -64,7 +64,7 @@ class TuyaCloudlessSwitch(TuyaCloudlessEntity, SwitchEntity):
         dp_id = spec.dp_power.id if spec.dp_power else "1"
         super().__init__(coordinator, dp_id=dp_id)
         self._spec = spec
-        self._attr_unique_id = f"{coordinator._gw_id}_{spec.platform}_{spec.name}"
+        self._attr_unique_id = f"{coordinator.gw_id}_{spec.platform}_{spec.name}"
         self._attr_translation_key = spec.name
 
     @property

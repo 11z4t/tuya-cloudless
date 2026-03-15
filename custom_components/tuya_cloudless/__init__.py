@@ -11,6 +11,8 @@ Compatible with Tuya LAN protocol versions 3.1-3.5.
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import logging
 import sys
 from dataclasses import dataclass
@@ -19,11 +21,14 @@ from typing import TypeAlias
 
 # Ensure bundled lib/tuya_cloudless is importable both in production (lib/ symlinked
 # inside custom_components) and in development (lib/ at repo root).
+# Track the inserted path so we can clean it up when the last entry unloads.
+_INSERTED_LIB_PATH: str | None = None
 _BUNDLED_LIB = str(Path(__file__).resolve().parent / "lib")
 _DEV_LIB = str(Path(__file__).resolve().parent.parent.parent / "lib")
 for _lib_dir in (_BUNDLED_LIB, _DEV_LIB):
     if Path(_lib_dir).is_dir() and _lib_dir not in sys.path:
         sys.path.insert(0, _lib_dir)
+        _INSERTED_LIB_PATH = _lib_dir
         break
 
 from homeassistant.config_entries import ConfigEntry
@@ -52,19 +57,34 @@ from .coordinator import TuyaCloudlessCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
-# Whether profile registry has been initialised for this HA instance
-_PROFILES_LOADED = False
+# Per-hass domain data keys
+_KEY_PROFILES_LOADED = "profiles_loaded"
+_KEY_PROFILES_LOCK = "profiles_lock"
 
 
-def _ensure_profiles() -> None:
-    """Load device profiles from disk if not already loaded."""
-    global _PROFILES_LOADED
-    if not _PROFILES_LOADED:
-        init_profiles(PROFILES_DIR)
-        _PROFILES_LOADED = True
+async def _ensure_profiles(hass: HomeAssistant) -> None:
+    """Load device profiles from disk if not already loaded for this HA instance.
+
+    Uses a per-hass asyncio.Lock to prevent duplicate loading when multiple
+    config entries set up concurrently. Disk I/O runs in the executor thread pool.
+    """
+    domain_data: dict[str, object] = hass.data.setdefault(DOMAIN, {})
+
+    # Fast path: already loaded
+    if domain_data.get(_KEY_PROFILES_LOADED):
+        return
+
+    # Ensure lock exists (only one coroutine reaches this per HA instance)
+    if _KEY_PROFILES_LOCK not in domain_data:
+        domain_data[_KEY_PROFILES_LOCK] = asyncio.Lock()
+
+    async with domain_data[_KEY_PROFILES_LOCK]:  # type: ignore[union-attr]
+        if not domain_data.get(_KEY_PROFILES_LOADED):
+            await hass.async_add_executor_job(init_profiles, PROFILES_DIR)
+            domain_data[_KEY_PROFILES_LOADED] = True
 
 
-def _resolve_profile(entry: ConfigEntry) -> DeviceProfile | None:
+async def _resolve_profile(hass: HomeAssistant, entry: ConfigEntry) -> DeviceProfile | None:
     """Resolve the device profile for a config entry.
 
     Tries in order:
@@ -80,7 +100,7 @@ def _resolve_profile(entry: ConfigEntry) -> DeviceProfile | None:
         Resolved :class:`~tuya_cloudless.profiles.DeviceProfile`, or ``None``
         if no profiles are loaded at all.
     """
-    _ensure_profiles()
+    await _ensure_profiles(hass)
 
     # New entries: profile name stored directly
     profile_name: str | None = entry.data.get(CONF_PROFILE)
@@ -146,7 +166,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         model=f"Tuya Cloudless ({entry.data.get('protocol_version', '3.3')})",
     )
 
-    profile = _resolve_profile(entry)
+    profile = await _resolve_profile(hass, entry)
     entity_specs = profile.entities if profile else []
     profile_name = profile.name if profile else ""
 
@@ -162,6 +182,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             "[%s] No profile found — no entities will be created",
             entry.data[CONF_GW_ID],
         )
+
+    coordinator.device_name = entry.title
+    coordinator.profile_name = profile_name
 
     entry.runtime_data = TuyaCloudlessRuntimeData(
         coordinator=coordinator,
@@ -245,6 +268,17 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await runtime.coordinator.async_stop()
 
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+
+    # Clean up sys.path when the last entry for this domain is unloaded.
+    # The inserted path was only needed for the initial import; it is safe to
+    # remove once no more entries are active.
+    global _INSERTED_LIB_PATH
+    remaining = hass.config_entries.async_entries(DOMAIN)
+    if len(remaining) <= 1 and _INSERTED_LIB_PATH is not None:
+        with contextlib.suppress(ValueError):
+            sys.path.remove(_INSERTED_LIB_PATH)
+        _INSERTED_LIB_PATH = None
+
     _LOGGER.info("Tuya Cloudless entry unloaded: %s (ok=%s)", entry.title, unload_ok)
     return unload_ok
 

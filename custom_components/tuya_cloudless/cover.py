@@ -81,13 +81,15 @@ class TuyaCloudlessCover(TuyaCloudlessEntity, CoverEntity):
         dp_id = spec.dp_open.id if spec.dp_open else None
         super().__init__(coordinator, dp_id=dp_id)
         self._spec = spec
-        self._attr_unique_id = f"{coordinator._gw_id}_{spec.platform}_{spec.name}"
+        self._attr_unique_id = f"{coordinator.gw_id}_{spec.platform}_{spec.name}"
         self._attr_translation_key = spec.name
 
         # Build supported features based on available DPs in spec
         features = CoverEntityFeature(0)
         if spec.dp_open is not None:
             features |= CoverEntityFeature.OPEN | CoverEntityFeature.CLOSE
+        if spec.dp_stop is not None:
+            features |= CoverEntityFeature.STOP
         if spec.dp_position is not None:
             features |= CoverEntityFeature.SET_POSITION
         if spec.dp_tilt is not None:
@@ -148,6 +150,11 @@ class TuyaCloudlessCover(TuyaCloudlessEntity, CoverEntity):
         """Close the cover."""
         if self._spec.dp_open is not None:
             await self.async_send_dp(self._spec.dp_open.id, False)
+
+    async def async_stop_cover(self, **kwargs: Any) -> None:
+        """Stop the cover motor mid-movement."""
+        if self._spec.dp_stop is not None:
+            await self.async_send_dp(self._spec.dp_stop.id, True)
 
     async def async_set_cover_position(self, **kwargs: Any) -> None:
         """Move the cover to a specific position (0-100).

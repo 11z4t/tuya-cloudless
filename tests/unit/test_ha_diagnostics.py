@@ -22,7 +22,11 @@ def _make_coordinator(
 ) -> MagicMock:
     coord = MagicMock()
     coord._gw_id = "gw001"
+    coord.gw_id = "gw001"
+    coord.device_name = "gw001"
+    coord.profile_name = ""
     coord._version = "3.3"
+    coord.version = "3.3"
     coord._writer = MagicMock() if available else None
     coord._sequence = 42
     coord._session_key = session_key

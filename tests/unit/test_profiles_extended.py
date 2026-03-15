@@ -65,7 +65,7 @@ def test_thermostat_loads() -> None:
     entity = profile.entities[0]
     assert entity.platform == "climate"
     assert entity.dp_temp_set is not None
-    assert entity.dp_temp_set.scale == pytest.approx(10.0)
+    assert entity.dp_temp_set.scale == pytest.approx(0.1)
     assert entity.dp_options == ("heat", "cool", "auto")
     assert entity.target_min == pytest.approx(10.0)
     assert entity.target_max == pytest.approx(30.0)
@@ -182,7 +182,7 @@ def test_heat_pump_profile() -> None:
     entity = profile.entities[0]
     assert entity.platform == "climate"
     assert entity.dp_temp_set is not None
-    assert entity.dp_temp_set.scale == pytest.approx(10.0)
+    assert entity.dp_temp_set.scale == pytest.approx(0.1)
 
 
 # ── EntitySpec new field parsing ───────────────────────────────────────────────

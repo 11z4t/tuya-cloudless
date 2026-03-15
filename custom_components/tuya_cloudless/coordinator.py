@@ -114,6 +114,10 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._command_timeout = command_timeout
         self._reconnect_max_delay = reconnect_max_delay
 
+        # User-visible device name and profile (set by async_setup_entry after init)
+        self.device_name: str = gw_id
+        self.profile_name: str = ""
+
         self.state = DeviceState()
         self._sequence: int = 0
         self._session_key: bytes | None = None
@@ -531,6 +535,18 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         _LOGGER.debug("[%s] Session key negotiated (key length=%d)", self._gw_id, len(session_key))
         return session_key
+
+    # ── Public accessors ──────────────────────────────────────────────────────
+
+    @property
+    def gw_id(self) -> str:
+        """Device gateway ID (public accessor)."""
+        return self._gw_id
+
+    @property
+    def version(self) -> str:
+        """Protocol version string, e.g. '3.3' (public accessor)."""
+        return self._version
 
     # ── Utility ───────────────────────────────────────────────────────────────
 

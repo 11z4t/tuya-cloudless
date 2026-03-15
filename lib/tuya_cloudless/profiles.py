@@ -80,6 +80,7 @@ class EntitySpec:
         dp_hs_hue:        Hue DP (light; 0-360 raw typical).
         dp_hs_saturation: Saturation DP (light; 0-1000 raw typical).
         dp_color_mode:    Color mode DP (light; enum "white"/"colour").
+        dp_stop:          Stop-movement DP (cover; sends True to halt motor).
         effects:          Supported effect names for the light.
         device_class:     HA device class string (e.g. "power", "current").
         state_class:      HA state class string (e.g. "measurement").
@@ -95,6 +96,7 @@ class EntitySpec:
     dp_open: DPSpec | None = None
     dp_position: DPSpec | None = None
     dp_tilt: DPSpec | None = None
+    dp_stop: DPSpec | None = None
     dp_direction: DPSpec | None = None
     dp_hs_hue: DPSpec | None = None
     dp_hs_saturation: DPSpec | None = None
@@ -183,6 +185,7 @@ def _parse_entity_spec(data: dict[str, Any]) -> EntitySpec:
         dp_open=_parse_dp_spec(data.get("dp_open")),
         dp_position=_parse_dp_spec(data.get("dp_position")),
         dp_tilt=_parse_dp_spec(data.get("dp_tilt")),
+        dp_stop=_parse_dp_spec(data.get("dp_stop")),
         dp_direction=_parse_dp_spec(data.get("dp_direction")),
         dp_hs_hue=_parse_dp_spec(data.get("dp_hs_hue")),
         dp_hs_saturation=_parse_dp_spec(data.get("dp_hs_saturation")),

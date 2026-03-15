@@ -18,11 +18,19 @@ def _make_coordinator(
     available: bool = True,
     gw_id: str = "abc123",
     version: str = "3.3",
+    device_name: str = "",
+    profile_name: str = "",
 ) -> MagicMock:
     """Create a mock coordinator."""
     coord = MagicMock(spec=TuyaCloudlessCoordinator)
     coord._gw_id = gw_id
+    coord.gw_id = gw_id
     coord._version = version
+    coord.version = version
+    coord.gw_id = gw_id
+    coord.version = version
+    coord.device_name = device_name or gw_id
+    coord.profile_name = profile_name
     coord.state = DeviceState(
         available=available,
         dps=dps or {},
@@ -43,12 +51,12 @@ class TestTuyaCloudlessEntity:
         assert entity.available is False
 
     def test_device_info(self) -> None:
-        coord = _make_coordinator(gw_id="mydevice")
+        coord = _make_coordinator(gw_id="mydevice", profile_name="Smart Thermostat")
         entity = TuyaCloudlessEntity(coord)
         info = entity.device_info
         assert (DOMAIN, "mydevice") in info["identifiers"]
         assert info["manufacturer"] == "Tuya"
-        assert info["model"] == "Tuya Cloudless"
+        assert info["model"] == "Smart Thermostat"
         assert info["sw_version"] == "3.3"
 
     def test_get_dp_with_id(self) -> None:
@@ -99,7 +107,13 @@ class TestTuyaCloudlessEntity:
         assert attrs["raw_value"] is None
 
     def test_device_info_name(self) -> None:
-        coord = _make_coordinator(gw_id="gw_test")
+        coord = _make_coordinator(gw_id="gw_test", device_name="My Thermostat")
         entity = TuyaCloudlessEntity(coord)
         info = entity.device_info
-        assert info["name"] == "gw_test"
+        assert info["name"] == "My Thermostat"
+
+    def test_device_info_model_falls_back_to_tuya_cloudless(self) -> None:
+        coord = _make_coordinator(gw_id="gw_test", profile_name="")
+        entity = TuyaCloudlessEntity(coord)
+        info = entity.device_info
+        assert info["model"] == "Tuya Cloudless"

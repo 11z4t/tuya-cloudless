@@ -22,14 +22,18 @@ def _make_coordinator(
 ) -> MagicMock:
     coord = MagicMock()
     coord._gw_id = gw_id
+    coord.gw_id = gw_id
+    coord.device_name = gw_id
+    coord.profile_name = ""
     coord._version = "3.3"
+    coord.version = "3.3"
     coord.state = DeviceState(available=True, dps=dps or {})
     coord.async_send_dps = AsyncMock()
     return coord
 
 
 def _make_climate_spec(
-    scale: float = 10.0,
+    scale: float = 0.1,
     options: tuple[str, ...] = ("heat", "cool", "auto"),
     target_min: float = 10.0,
     target_max: float = 30.0,
@@ -119,11 +123,11 @@ class TestTuyaCloudlessClimate:
         assert e.hvac_mode is None
 
     def test_current_temperature(self) -> None:
-        e = _make_climate({"4": 220}, scale=10.0)
+        e = _make_climate({"4": 220}, scale=0.1)
         assert e.current_temperature == pytest.approx(22.0)
 
     def test_target_temperature(self) -> None:
-        e = _make_climate({"3": 225}, scale=10.0)
+        e = _make_climate({"3": 225}, scale=0.1)
         assert e.target_temperature == pytest.approx(22.5)
 
     def test_target_temperature_none_when_missing(self) -> None:
@@ -131,8 +135,8 @@ class TestTuyaCloudlessClimate:
         assert e.target_temperature is None
 
     @pytest.mark.asyncio
-    async def test_set_temperature_scale_10(self) -> None:
-        e = _make_climate({"1": True}, scale=10.0)
+    async def test_set_temperature_scale_point1(self) -> None:
+        e = _make_climate({"1": True}, scale=0.1)
         await e.async_set_temperature(**{ATTR_TEMPERATURE: 22.0})
         e.coordinator.async_send_dps.assert_awaited_once_with({"3": 220})
 
@@ -214,3 +218,34 @@ class TestClimateSetupEntry:
         added: list[Any] = []
         await async_setup_entry(MagicMock(), entry, lambda entities: added.extend(entities))
         assert len(added) == 0
+
+
+class TestClimateExtraStateAttributes:
+    def test_all_dps_present(self) -> None:
+        climate = _make_climate(dps={"1": True, "2": "heat", "3": 220, "4": 195})
+        attrs = climate.extra_state_attributes
+        assert attrs["dp_power_raw"] is True
+        assert attrs["dp_mode_raw"] == "heat"
+        assert attrs["dp_temp_set_raw"] == 220
+        assert attrs["dp_temp_current_raw"] == 195
+
+    def test_missing_dps_return_none(self) -> None:
+        climate = _make_climate(dps={})
+        attrs = climate.extra_state_attributes
+        assert attrs["dp_power_raw"] is None
+        assert attrs["dp_temp_set_raw"] is None
+
+    def test_no_mode_dp_omits_key(self) -> None:
+        coord = _make_coordinator(dps={"1": True})
+        spec = EntitySpec(
+            platform="climate",
+            name="heater",
+            dp_power=DPSpec(id="1", type="bool"),
+        )
+        from custom_components.tuya_cloudless.climate import TuyaCloudlessClimate
+
+        climate = TuyaCloudlessClimate(coord, spec)
+        attrs = climate.extra_state_attributes
+        assert "dp_mode_raw" not in attrs
+        assert "dp_temp_set_raw" not in attrs
+        assert "dp_temp_current_raw" not in attrs

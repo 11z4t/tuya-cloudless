@@ -251,14 +251,15 @@ class DiscoveryListener:
             :class:`DiscoveredDevice` once discovered.
 
         Raises:
-            asyncio.TimeoutError: If device not found within ``timeout``.
+            TimeoutError: If device not found within ``timeout``.
         """
-        deadline = asyncio.get_event_loop().time() + timeout
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + timeout
         while True:
             device = self._discovered.get(gw_id)
             if device is not None:
                 return device
-            remaining = deadline - asyncio.get_event_loop().time()
+            remaining = deadline - loop.time()
             if remaining <= 0:
                 raise TimeoutError(f"Device {gw_id!r} not discovered within {timeout}s")
             self._device_event.clear()
@@ -268,21 +269,30 @@ class DiscoveryListener:
     async def devices(self) -> AsyncIterator[DiscoveredDevice]:
         """Async iterator that yields devices as they are discovered or updated.
 
-        Yields new or updated :class:`DiscoveredDevice` objects indefinitely
-        until the listener is stopped.
+        Each device is yielded once on initial discovery and again only when
+        it is updated (e.g. IP change). Devices already yielded are not
+        re-emitted on unrelated discovery events.
 
         Yields:
-            :class:`DiscoveredDevice` for each discovery event.
+            :class:`DiscoveredDevice` for each new or updated device.
         """
+        # Track the seen_at timestamp when each device was last yielded
+        last_yielded: dict[str, object] = {}
+
         while self._running:
+            # Yield any device not yet seen or whose seen_at has advanced
+            for dev in list(self._discovered.values()):
+                if last_yielded.get(dev.gw_id) is not dev.seen_at:
+                    last_yielded[dev.gw_id] = dev.seen_at
+                    yield dev
+
+            # Wait for the next discovery event (with timeout to check _running)
             self._device_event.clear()
-            yield_batch = list(self._discovered.values())
-            for dev in yield_batch:
-                yield dev
-            if not yield_batch:
-                await asyncio.sleep(DISCOVERY_POLLING_INTERVAL)
-                continue
-            await self._device_event.wait()
+            with contextlib.suppress(TimeoutError):
+                await asyncio.wait_for(
+                    self._device_event.wait(),
+                    timeout=DISCOVERY_POLLING_INTERVAL * 10,
+                )
 
     # ── Internal processing ───────────────────────────────────────────────────
 

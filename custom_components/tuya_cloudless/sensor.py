@@ -84,7 +84,7 @@ class TuyaCloudlessSensor(TuyaCloudlessEntity, SensorEntity):
         dp_id = spec.dp_value.id if spec.dp_value else None
         super().__init__(coordinator, dp_id=dp_id)
         self._spec = spec
-        self._attr_unique_id = f"{coordinator._gw_id}_{spec.platform}_{spec.name}"
+        self._attr_unique_id = f"{coordinator.gw_id}_{spec.platform}_{spec.name}"
         self._attr_translation_key = spec.name
 
         if spec.unit:
@@ -96,7 +96,7 @@ class TuyaCloudlessSensor(TuyaCloudlessEntity, SensorEntity):
             except ValueError:
                 _LOGGER.warning(
                     "[%s] Unknown device_class '%s' for sensor '%s' — ignored",
-                    coordinator._gw_id,
+                    coordinator.gw_id,
                     spec.device_class,
                     spec.name,
                 )
@@ -107,7 +107,7 @@ class TuyaCloudlessSensor(TuyaCloudlessEntity, SensorEntity):
             except ValueError:
                 _LOGGER.warning(
                     "[%s] Unknown state_class '%s' for sensor '%s' — ignored",
-                    coordinator._gw_id,
+                    coordinator.gw_id,
                     spec.state_class,
                     spec.name,
                 )
@@ -140,7 +140,7 @@ class TuyaLastSeenSensor(TuyaCloudlessEntity, SensorEntity):
     def __init__(self, coordinator: TuyaCloudlessCoordinator) -> None:
         """Initialise the last-seen sensor."""
         super().__init__(coordinator)
-        self._attr_unique_id = f"{coordinator._gw_id}_last_seen"
+        self._attr_unique_id = f"{coordinator.gw_id}_last_seen"
 
     @property
     def native_value(self) -> str | None:
@@ -163,7 +163,7 @@ class TuyaReconnectSensor(TuyaCloudlessEntity, SensorEntity):
     def __init__(self, coordinator: TuyaCloudlessCoordinator) -> None:
         """Initialise the reconnect-count sensor."""
         super().__init__(coordinator)
-        self._attr_unique_id = f"{coordinator._gw_id}_reconnects"
+        self._attr_unique_id = f"{coordinator.gw_id}_reconnects"
 
     @property
     def native_value(self) -> int:

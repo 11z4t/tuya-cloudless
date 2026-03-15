@@ -47,6 +47,8 @@ VERSIONS_GCM: frozenset[str] = frozenset({PROTOCOL_34, PROTOCOL_35})
 VERSIONS_WITH_PAYLOAD_HEADER: frozenset[str] = frozenset({PROTOCOL_33, PROTOCOL_34, PROTOCOL_35})
 
 # ── Command codes ─────────────────────────────────────────────────────────────
+# Note: 0x03-0x05 are session-key negotiation commands for v3.4/3.5.
+# These overlap with legacy bind/unbind codes — use CMD_SESS_KEY_* exclusively.
 
 #: UDP discovery broadcast (device → controller)
 CMD_UDP: int = 0x00
@@ -54,12 +56,12 @@ CMD_UDP: int = 0x00
 CMD_AP_CONFIG: int = 0x01
 #: Activate device (fake-cloud mock uses this)
 CMD_ACTIVE: int = 0x02
-#: Bind device to session
-CMD_BIND_DEVICE: int = 0x03
-#: Set rename-device command
-CMD_RENAME_DEVICE: int = 0x04
-#: Unbind / remove device
-CMD_UNBIND_DEVICE: int = 0x05
+#: Session key negotiation start (v3.4/3.5): controller → device, carries X25519 public key
+CMD_SESS_KEY_NEG_START: int = 0x03
+#: Session key negotiation response (v3.4/3.5): device → controller, carries device public key
+CMD_SESS_KEY_NEG_RESPONSE: int = 0x04
+#: Session key negotiation finish (v3.4/3.5): controller → device, carries HMAC confirmation
+CMD_SESS_KEY_NEG_FINISH: int = 0x05
 #: Control command (set DPS values)
 CMD_CONTROL: int = 0x07
 #: Status query — request current DPS snapshot
@@ -72,10 +74,6 @@ CMD_DP_QUERY: int = 0x0A
 CMD_CONTROL_NEW: int = 0x0D
 #: DP report from device to controller
 CMD_DP_REPORT: int = 0x12
-#: Session key exchange (v3.4+)
-CMD_SESS_KEY_NEG_START: int = 0x03
-CMD_SESS_KEY_NEG_RESPONSE: int = 0x04
-CMD_SESS_KEY_NEG_FINISH: int = 0x05
 
 # ── Network ports ─────────────────────────────────────────────────────────────
 
@@ -118,8 +116,6 @@ RECONNECT_MAX_DELAY: float = 60.0
 
 #: UDP discovery socket read timeout (seconds)
 UDP_READ_TIMEOUT: float = 5.0
-
-# ── Timeouts and buffers ──────────────────────────────────────────────────────
 
 #: TCP connect timeout (seconds)
 TCP_CONNECT_TIMEOUT: float = 10.0

@@ -26,7 +26,11 @@ def _make_runtime(entity_specs: list[EntitySpec]) -> MagicMock:
 
     coord = MagicMock()
     coord._gw_id = "gw001"
+    coord.gw_id = "gw001"
+    coord.device_name = "gw001"
+    coord.profile_name = ""
     coord._version = "3.3"
+    coord.version = "3.3"
     coord.state = MagicMock()
     coord.state.available = True
     coord.state.dps = {}

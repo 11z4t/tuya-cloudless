@@ -6,6 +6,7 @@ Typical use cases: overload detection, leak detection, door/window sensors.
 
 from __future__ import annotations
 
+import contextlib
 import logging
 
 from homeassistant.components.binary_sensor import BinarySensorEntity
@@ -67,13 +68,13 @@ class TuyaCloudlessBinarySensor(TuyaCloudlessEntity, BinarySensorEntity):
         dp_id = spec.dp_power.id if spec.dp_power else None
         super().__init__(coordinator, dp_id=dp_id)
         self._spec = spec
-        self._attr_unique_id = f"{coordinator._gw_id}_{spec.platform}_{spec.name}"
+        self._attr_unique_id = f"{coordinator.gw_id}_{spec.platform}_{spec.name}"
         self._attr_translation_key = spec.name
 
         if spec.device_class:
             from homeassistant.components.binary_sensor import BinarySensorDeviceClass
 
-            with __import__("contextlib").suppress(ValueError):
+            with contextlib.suppress(ValueError):
                 self._attr_device_class = BinarySensorDeviceClass(spec.device_class)
 
     @property

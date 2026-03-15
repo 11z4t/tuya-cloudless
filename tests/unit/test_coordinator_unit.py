@@ -22,6 +22,8 @@ def _make_coord() -> object:
     coord._hass = hass
     coord._entry_id = "test"
     coord._gw_id = "gw001"
+    coord.device_name = "gw001"
+    coord.profile_name = ""
     coord._ip_address = "127.0.0.1"
     coord._local_key = b"0123456789abcdef"
     coord._version = "3.3"
@@ -345,3 +347,68 @@ class TestCoordinatorFromConfigEntry:
         coord = TuyaCloudlessCoordinator.from_config_entry(hass, entry)
         assert coord._heartbeat_interval == 30
         assert coord._gw_id == "gw001"
+
+
+class TestCoordinatorInit:
+    """Test TuyaCloudlessCoordinator.__init__ via the real constructor."""
+
+    def _make_coord_direct(self, **kwargs: object) -> object:
+        from custom_components.tuya_cloudless.coordinator import TuyaCloudlessCoordinator
+
+        hass = MagicMock()
+        hass.loop = asyncio.get_event_loop()
+        defaults = {
+            "hass": hass,
+            "entry_id": "entry1",
+            "gw_id": "gw_test",
+            "ip_address": "10.0.0.1",
+            "local_key": "0123456789abcdef",
+            "version": "3.3",
+        }
+        defaults.update(kwargs)
+        return TuyaCloudlessCoordinator(**defaults)  # type: ignore[arg-type]
+
+    def test_gw_id_property(self) -> None:
+        coord = self._make_coord_direct()
+        assert coord.gw_id == "gw_test"  # type: ignore[union-attr]
+
+    def test_version_property(self) -> None:
+        coord = self._make_coord_direct()
+        assert coord.version == "3.3"  # type: ignore[union-attr]
+
+    def test_device_name_defaults_to_gw_id(self) -> None:
+        coord = self._make_coord_direct()
+        assert coord.device_name == "gw_test"  # type: ignore[union-attr]
+
+    def test_profile_name_defaults_to_empty(self) -> None:
+        coord = self._make_coord_direct()
+        assert coord.profile_name == ""  # type: ignore[union-attr]
+
+    def test_initial_state_unavailable(self) -> None:
+        from custom_components.tuya_cloudless.coordinator import DeviceState
+
+        coord = self._make_coord_direct()
+        assert isinstance(coord.state, DeviceState)  # type: ignore[union-attr]
+        assert coord.state.available is False  # type: ignore[union-attr]
+
+    def test_local_key_encoded_from_str(self) -> None:
+        coord = self._make_coord_direct(local_key="0123456789abcdef")
+        assert isinstance(coord._local_key, bytes)  # type: ignore[union-attr]
+
+    def test_heartbeat_interval_override(self) -> None:
+        coord = self._make_coord_direct(heartbeat_interval=60)
+        assert coord._heartbeat_interval == 60  # type: ignore[union-attr]
+
+    def test_port_defaults(self) -> None:
+        from custom_components.tuya_cloudless.const import DEFAULT_TCP_PORT
+
+        coord = self._make_coord_direct()
+        assert coord._port == DEFAULT_TCP_PORT  # type: ignore[union-attr]
+
+    def test_writer_initially_none(self) -> None:
+        coord = self._make_coord_direct()
+        assert coord._writer is None  # type: ignore[union-attr]
+
+    def test_session_key_initially_none(self) -> None:
+        coord = self._make_coord_direct()
+        assert coord._session_key is None  # type: ignore[union-attr]

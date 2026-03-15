@@ -31,7 +31,11 @@ def _make_coordinator(
 ) -> MagicMock:
     coord = MagicMock()
     coord._gw_id = gw_id
+    coord.gw_id = gw_id
+    coord.device_name = gw_id
+    coord.profile_name = ""
     coord._version = "3.3"
+    coord.version = "3.3"
     coord.state = DeviceState(available=True, dps=dps or {})
     coord.async_send_dps = AsyncMock()
     return coord

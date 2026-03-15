@@ -64,7 +64,7 @@ class TuyaCloudlessFan(TuyaCloudlessEntity, FanEntity):
         dp_id = spec.dp_power.id if spec.dp_power else "1"
         super().__init__(coordinator, dp_id=dp_id)
         self._spec = spec
-        self._attr_unique_id = f"{coordinator._gw_id}_{spec.platform}_{spec.name}"
+        self._attr_unique_id = f"{coordinator.gw_id}_{spec.platform}_{spec.name}"
         self._attr_translation_key = spec.name
 
         # Preset modes from dp_options (only if dp_mode is also defined)
@@ -95,15 +95,36 @@ class TuyaCloudlessFan(TuyaCloudlessEntity, FanEntity):
             return None
         return bool(value)
 
+    def _raw_to_percentage(self, raw: int) -> int:
+        """Map a raw DP speed value to 0-100% using dp_value min/max range."""
+        dp = self._spec.dp_value
+        if dp is None:
+            return 0
+        min_raw = dp.min_raw if dp.min_raw is not None else 0
+        max_raw = dp.max_raw if dp.max_raw is not None else 100
+        span = max_raw - min_raw
+        if span == 0:
+            return 100
+        return round((raw - min_raw) / span * 100)
+
+    def _percentage_to_raw(self, percentage: int) -> int:
+        """Map a 0-100% value to a raw DP speed value using dp_value min/max range."""
+        dp = self._spec.dp_value
+        if dp is None:
+            return percentage
+        min_raw = dp.min_raw if dp.min_raw is not None else 0
+        max_raw = dp.max_raw if dp.max_raw is not None else 100
+        return min_raw + round((max_raw - min_raw) * percentage / 100)
+
     @property
     def percentage(self) -> int | None:
-        """Return the current speed as a percentage (raw DP value), or None."""
+        """Return the current speed as a 0-100% value, or None if unavailable."""
         if self._spec.dp_value is None:
             return None
         value = self.get_dp(self._spec.dp_value.id)
         if value is None:
             return None
-        return int(value)
+        return self._raw_to_percentage(int(value))
 
     @property
     def preset_mode(self) -> str | None:
@@ -152,7 +173,7 @@ class TuyaCloudlessFan(TuyaCloudlessEntity, FanEntity):
             return
         dps: dict[str, Any] = {self._spec.dp_power.id: True}
         if percentage is not None and self._spec.dp_value is not None:
-            dps[self._spec.dp_value.id] = percentage
+            dps[self._spec.dp_value.id] = self._percentage_to_raw(percentage)
         if preset_mode is not None and self._spec.dp_mode is not None:
             dps[self._spec.dp_mode.id] = preset_mode
         await self.coordinator.async_send_dps(dps)
@@ -164,14 +185,15 @@ class TuyaCloudlessFan(TuyaCloudlessEntity, FanEntity):
         await self.coordinator.async_send_dps({self._spec.dp_power.id: False})
 
     async def async_set_percentage(self, percentage: int) -> None:
-        """Set the fan speed percentage.
+        """Set the fan speed percentage (0-100), mapped to the raw DP range.
 
         Args:
-            percentage: Speed value to send to the device DP.
+            percentage: Speed as 0-100% — mapped to dp_value min/max raw range.
         """
         if self._spec.dp_value is None:
             return
-        await self.coordinator.async_send_dps({self._spec.dp_value.id: percentage})
+        raw = self._percentage_to_raw(percentage)
+        await self.coordinator.async_send_dps({self._spec.dp_value.id: raw})
 
     async def async_set_preset_mode(self, preset_mode: str) -> None:
         """Set the fan preset mode.
@@ -202,3 +224,19 @@ class TuyaCloudlessFan(TuyaCloudlessEntity, FanEntity):
         if self._spec.dp_direction is None:
             return
         await self.coordinator.async_send_dps({self._spec.dp_direction.id: direction})
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return raw DP values for all fan data points (for diagnostics)."""
+        attrs: dict[str, Any] = {}
+        if self._spec.dp_power is not None:
+            attrs["dp_power_raw"] = self.get_dp(self._spec.dp_power.id)
+        if self._spec.dp_value is not None:
+            attrs["dp_speed_raw"] = self.get_dp(self._spec.dp_value.id)
+        if self._spec.dp_mode is not None:
+            attrs["dp_mode_raw"] = self.get_dp(self._spec.dp_mode.id)
+        if self._spec.dp_oscillate is not None:
+            attrs["dp_oscillate_raw"] = self.get_dp(self._spec.dp_oscillate.id)
+        if self._spec.dp_direction is not None:
+            attrs["dp_direction_raw"] = self.get_dp(self._spec.dp_direction.id)
+        return attrs

@@ -52,13 +52,12 @@ class TuyaCloudlessEntity(CoordinatorEntity[TuyaCloudlessCoordinator]):
     @property
     def device_info(self) -> DeviceInfo:
         """Return device registry info linking all entities for this device."""
-        gw_id: str = self.coordinator._gw_id
         return DeviceInfo(
-            identifiers={(DOMAIN, gw_id)},
-            name=gw_id,
+            identifiers={(DOMAIN, self.coordinator.gw_id)},
+            name=self.coordinator.device_name,
             manufacturer="Tuya",
-            model="Tuya Cloudless",
-            sw_version=self.coordinator._version,
+            model=self.coordinator.profile_name or "Tuya Cloudless",
+            sw_version=self.coordinator.version,
         )
 
     def get_dp(self, dp_id: str | None = None) -> Any:

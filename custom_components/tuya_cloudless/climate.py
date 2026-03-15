@@ -75,7 +75,8 @@ class TuyaCloudlessClimate(TuyaCloudlessEntity, ClimateEntity):
 
     Maps power, mode, and temperature DPs to the HA climate interface.
     The temperature scale factor is stored in ``dp_temp_set.scale``:
-    raw = temperature * scale, temperature = raw / scale.
+    temperature = raw * scale, raw = round(temperature / scale).
+    This is the same convention used by sensor and number entities.
     """
 
     _attr_temperature_unit = UnitOfTemperature.CELSIUS
@@ -94,7 +95,7 @@ class TuyaCloudlessClimate(TuyaCloudlessEntity, ClimateEntity):
         dp_id = spec.dp_power.id if spec.dp_power else "1"
         super().__init__(coordinator, dp_id=dp_id)
         self._spec = spec
-        self._attr_unique_id = f"{coordinator._gw_id}_{spec.platform}_{spec.name}"
+        self._attr_unique_id = f"{coordinator.gw_id}_{spec.platform}_{spec.name}"
         self._attr_translation_key = spec.name
 
         # Build HVAC modes list — always start with OFF
@@ -106,19 +107,19 @@ class TuyaCloudlessClimate(TuyaCloudlessEntity, ClimateEntity):
         self._attr_hvac_modes = ha_modes
         self._tuya_options = list(spec.dp_options)
 
-        # Temperature range
+        # Temperature range (display = raw * scale)
         dp_temp = spec.dp_temp_set
         if spec.target_min is not None:
             self._attr_min_temp = spec.target_min
         elif dp_temp is not None and dp_temp.min_raw is not None:
-            self._attr_min_temp = float(dp_temp.min_raw) / dp_temp.scale
+            self._attr_min_temp = float(dp_temp.min_raw) * dp_temp.scale
         else:
             self._attr_min_temp = 7.0
 
         if spec.target_max is not None:
             self._attr_max_temp = spec.target_max
         elif dp_temp is not None and dp_temp.max_raw is not None:
-            self._attr_max_temp = float(dp_temp.max_raw) / dp_temp.scale
+            self._attr_max_temp = float(dp_temp.max_raw) * dp_temp.scale
         else:
             self._attr_max_temp = 35.0
 
@@ -154,7 +155,7 @@ class TuyaCloudlessClimate(TuyaCloudlessEntity, ClimateEntity):
         raw = self.get_dp(self._spec.dp_temp_current.id)
         if raw is None:
             return None
-        return round(float(raw) / self._spec.dp_temp_current.scale, 1)
+        return round(float(raw) * self._spec.dp_temp_current.scale, 1)
 
     @property
     def target_temperature(self) -> float | None:
@@ -164,7 +165,7 @@ class TuyaCloudlessClimate(TuyaCloudlessEntity, ClimateEntity):
         raw = self.get_dp(self._spec.dp_temp_set.id)
         if raw is None:
             return None
-        return round(float(raw) / self._spec.dp_temp_set.scale, 1)
+        return round(float(raw) * self._spec.dp_temp_set.scale, 1)
 
     async def async_set_temperature(self, **kwargs: Any) -> None:
         """Set the target temperature.
@@ -176,7 +177,7 @@ class TuyaCloudlessClimate(TuyaCloudlessEntity, ClimateEntity):
             return
         temperature = float(kwargs.get(ATTR_TEMPERATURE, 20.0))
         scale = self._spec.dp_temp_set.scale
-        raw_value = round(temperature * scale)
+        raw_value = round(temperature / scale)
         await self.coordinator.async_send_dps({self._spec.dp_temp_set.id: raw_value})
 
     async def async_set_hvac_mode(self, hvac_mode: HVACMode) -> None:
@@ -222,3 +223,17 @@ class TuyaCloudlessClimate(TuyaCloudlessEntity, ClimateEntity):
         """Turn the climate device off."""
         if self._spec.dp_power is not None:
             await self.coordinator.async_send_dps({self._spec.dp_power.id: False})
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return raw DP values for all climate data points (for diagnostics)."""
+        attrs: dict[str, Any] = {}
+        if self._spec.dp_power is not None:
+            attrs["dp_power_raw"] = self.get_dp(self._spec.dp_power.id)
+        if self._spec.dp_mode is not None:
+            attrs["dp_mode_raw"] = self.get_dp(self._spec.dp_mode.id)
+        if self._spec.dp_temp_set is not None:
+            attrs["dp_temp_set_raw"] = self.get_dp(self._spec.dp_temp_set.id)
+        if self._spec.dp_temp_current is not None:
+            attrs["dp_temp_current_raw"] = self.get_dp(self._spec.dp_temp_current.id)
+        return attrs

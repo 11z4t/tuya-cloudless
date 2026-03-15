@@ -17,7 +17,11 @@ from custom_components.tuya_cloudless.coordinator import DeviceState
 def _make_coordinator(dps: dict[str, Any] | None = None) -> MagicMock:
     coord = MagicMock()
     coord._gw_id = "gw001"
+    coord.gw_id = "gw001"
+    coord.device_name = "gw001"
+    coord.profile_name = ""
     coord._version = "3.3"
+    coord.version = "3.3"
     coord.state = DeviceState(available=True, dps=dps or {})
     coord.async_send_dps = AsyncMock()
     return coord

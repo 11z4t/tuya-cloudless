@@ -26,7 +26,11 @@ from tuya_cloudless.profiles import DPSpec, EntitySpec  # noqa: E402
 def _make_coordinator(dps: dict[str, Any] | None = None, gw_id: str = "gw001") -> MagicMock:
     coord = MagicMock()
     coord._gw_id = gw_id
+    coord.gw_id = gw_id
+    coord.device_name = gw_id
+    coord.profile_name = ""
     coord._version = "3.3"
+    coord.version = "3.3"
     coord.state = MagicMock()
     coord.state.available = True
     coord.state.dps = dps or {}

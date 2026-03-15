@@ -21,7 +21,11 @@ def _make_coordinator(
 ) -> MagicMock:
     coord = MagicMock()
     coord._gw_id = gw_id
+    coord.gw_id = gw_id
+    coord.device_name = gw_id
+    coord.profile_name = ""
     coord._version = "3.3"
+    coord.version = "3.3"
     coord.state = DeviceState(available=True, dps=dps or {})
     coord.async_send_dps = AsyncMock()
     return coord
@@ -102,8 +106,19 @@ class TestTuyaCloudlessFan:
         assert e.is_on is None
 
     def test_percentage_when_present(self) -> None:
+        # dp_value: min_raw=1, max_raw=6 → raw=4 maps to (4-1)/(6-1)*100 = 60%
         e = _make_fan({"3": 4})
-        assert e.percentage == 4
+        assert e.percentage == 60
+
+    def test_percentage_min_raw_maps_to_zero(self) -> None:
+        # raw=1 (min_raw) → 0%
+        e = _make_fan({"3": 1})
+        assert e.percentage == 0
+
+    def test_percentage_max_raw_maps_to_100(self) -> None:
+        # raw=6 (max_raw) → 100%
+        e = _make_fan({"3": 6})
+        assert e.percentage == 100
 
     def test_percentage_none_when_missing(self) -> None:
         e = _make_fan({})
@@ -166,9 +181,11 @@ class TestTuyaCloudlessFan:
 
     @pytest.mark.asyncio
     async def test_set_percentage(self) -> None:
+        # 50% of min_raw=1, max_raw=6 → 1 + round(5*50/100) = 1 + 3 (round(2.5)=2 in Python) = 3
         e = _make_fan({"1": True})
-        await e.async_set_percentage(50)
-        e.coordinator.async_send_dps.assert_awaited_once_with({"3": 50})
+        await e.async_set_percentage(60)
+        # 60% → 1 + round(5 * 60 / 100) = 1 + round(3.0) = 4
+        e.coordinator.async_send_dps.assert_awaited_once_with({"3": 4})
 
     @pytest.mark.asyncio
     async def test_oscillate_true(self) -> None:
@@ -230,3 +247,33 @@ class TestFanSetupEntry:
         added: list[Any] = []
         await async_setup_entry(MagicMock(), entry, lambda entities: added.extend(entities))
         assert len(added) == 0
+
+
+class TestFanExtraStateAttributes:
+    def test_all_dps_present(self) -> None:
+        fan = _make_fan(dps={"1": True, "2": "sleep", "3": 4, "4": "forward", "8": False})
+        attrs = fan.extra_state_attributes
+        assert attrs["dp_power_raw"] is True
+        assert attrs["dp_speed_raw"] == 4
+        assert attrs["dp_mode_raw"] == "sleep"
+        assert attrs["dp_direction_raw"] == "forward"
+        assert attrs["dp_oscillate_raw"] is False
+
+    def test_missing_dps_return_none(self) -> None:
+        fan = _make_fan(dps={})
+        attrs = fan.extra_state_attributes
+        assert attrs["dp_power_raw"] is None
+        assert attrs["dp_speed_raw"] is None
+
+    def test_power_only_fan_omits_optional_keys(self) -> None:
+        coord = _make_coordinator(dps={"1": True})
+        spec = _make_power_only_fan_spec()
+        from custom_components.tuya_cloudless.fan import TuyaCloudlessFan
+
+        fan = TuyaCloudlessFan(coord, spec)
+        attrs = fan.extra_state_attributes
+        assert "dp_power_raw" in attrs
+        assert "dp_speed_raw" not in attrs
+        assert "dp_mode_raw" not in attrs
+        assert "dp_oscillate_raw" not in attrs
+        assert "dp_direction_raw" not in attrs

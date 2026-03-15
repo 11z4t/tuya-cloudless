@@ -27,7 +27,11 @@ def _make_coordinator(dps: dict[str, Any] | None = None, gw_id: str = "gw001") -
     """Return a minimal coordinator mock with pre-set DPS state."""
     coord = MagicMock()
     coord._gw_id = gw_id
+    coord.gw_id = gw_id
+    coord.device_name = gw_id
+    coord.profile_name = ""
     coord._version = "3.3"
+    coord.version = "3.3"
     coord.state = MagicMock()
     coord.state.available = True
     coord.state.dps = dps or {}

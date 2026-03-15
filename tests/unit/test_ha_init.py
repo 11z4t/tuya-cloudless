@@ -49,9 +49,16 @@ def _make_entry(
 
 
 class TestResolveProfile:
-    def test_profile_from_entry_data(self) -> None:
+    def _make_hass_with_data(self) -> MagicMock:
+        hass = _make_hass()
+        hass.data = {}
+        hass.async_add_executor_job = AsyncMock()
+        return hass
+
+    async def test_profile_from_entry_data(self) -> None:
         from custom_components.tuya_cloudless import _resolve_profile
 
+        hass = self._make_hass_with_data()
         entry = _make_entry(
             data={
                 "gw_id": "abc",
@@ -64,18 +71,19 @@ class TestResolveProfile:
         mock_profile = MagicMock()
         mock_profile.name = "Test Profile"
         with (
-            patch("custom_components.tuya_cloudless._ensure_profiles"),
+            patch("custom_components.tuya_cloudless._ensure_profiles", new=AsyncMock()),
             patch(
                 "custom_components.tuya_cloudless.find_profile", return_value=mock_profile
             ) as mock_find,
         ):
-            result = _resolve_profile(entry)
+            result = await _resolve_profile(hass, entry)
         mock_find.assert_called_once_with("Test Profile")
         assert result == mock_profile
 
-    def test_legacy_device_type_mapping(self) -> None:
+    async def test_legacy_device_type_mapping(self) -> None:
         from custom_components.tuya_cloudless import _resolve_profile
 
+        hass = self._make_hass_with_data()
         entry = _make_entry(
             data={
                 "gw_id": "abc",
@@ -88,17 +96,18 @@ class TestResolveProfile:
         mock_profile = MagicMock()
         mock_profile.name = "Smart Plug"
         with (
-            patch("custom_components.tuya_cloudless._ensure_profiles"),
+            patch("custom_components.tuya_cloudless._ensure_profiles", new=AsyncMock()),
             patch(
                 "custom_components.tuya_cloudless.find_profile", return_value=mock_profile
             ) as mock_find,
         ):
-            _resolve_profile(entry)
+            await _resolve_profile(hass, entry)
         mock_find.assert_called_once_with("Smart Plug")
 
-    def test_fallback_when_profile_not_found(self) -> None:
+    async def test_fallback_when_profile_not_found(self) -> None:
         from custom_components.tuya_cloudless import _resolve_profile
 
+        hass = self._make_hass_with_data()
         entry = _make_entry(
             data={
                 "gw_id": "abc",
@@ -111,16 +120,17 @@ class TestResolveProfile:
         fallback = MagicMock()
         fallback.name = "Fallback"
         with (
-            patch("custom_components.tuya_cloudless._ensure_profiles"),
+            patch("custom_components.tuya_cloudless._ensure_profiles", new=AsyncMock()),
             patch("custom_components.tuya_cloudless.find_profile", return_value=None),
             patch("custom_components.tuya_cloudless.list_profiles", return_value=[fallback]),
         ):
-            result = _resolve_profile(entry)
+            result = await _resolve_profile(hass, entry)
         assert result == fallback
 
-    def test_returns_none_when_no_profiles(self) -> None:
+    async def test_returns_none_when_no_profiles(self) -> None:
         from custom_components.tuya_cloudless import _resolve_profile
 
+        hass = self._make_hass_with_data()
         entry = _make_entry(
             data={
                 "gw_id": "abc",
@@ -131,11 +141,11 @@ class TestResolveProfile:
         )
 
         with (
-            patch("custom_components.tuya_cloudless._ensure_profiles"),
+            patch("custom_components.tuya_cloudless._ensure_profiles", new=AsyncMock()),
             patch("custom_components.tuya_cloudless.find_profile", return_value=None),
             patch("custom_components.tuya_cloudless.list_profiles", return_value=[]),
         ):
-            result = _resolve_profile(entry)
+            result = await _resolve_profile(hass, entry)
         assert result is None
 
 
@@ -297,24 +307,29 @@ class TestAsyncMigrateEntry:
 
 
 class TestEnsureProfiles:
-    def test_loads_only_once(self) -> None:
-        import custom_components.tuya_cloudless as mod
+    async def test_loads_only_once(self) -> None:
+        from custom_components.tuya_cloudless import _ensure_profiles
 
-        mod._PROFILES_LOADED = False
-        with patch.object(mod, "init_profiles") as mock_init:
-            mod._ensure_profiles()
-            mod._ensure_profiles()
-            mock_init.assert_called_once()
-        mod._PROFILES_LOADED = False  # Reset for other tests
+        hass = MagicMock()
+        hass.data = {}
+        hass.async_add_executor_job = AsyncMock()
 
-    def test_skips_when_already_loaded(self) -> None:
-        import custom_components.tuya_cloudless as mod
+        await _ensure_profiles(hass)
+        await _ensure_profiles(hass)  # second call should be skipped
 
-        mod._PROFILES_LOADED = True
-        with patch.object(mod, "init_profiles") as mock_init:
-            mod._ensure_profiles()
-            mock_init.assert_not_called()
-        mod._PROFILES_LOADED = False
+        # init_profiles is passed to executor job — only once
+        hass.async_add_executor_job.assert_called_once()
+
+    async def test_skips_when_already_loaded(self) -> None:
+        from custom_components.tuya_cloudless import _KEY_PROFILES_LOADED, _ensure_profiles
+        from custom_components.tuya_cloudless.const import DOMAIN
+
+        hass = MagicMock()
+        hass.data = {DOMAIN: {_KEY_PROFILES_LOADED: True}}
+        hass.async_add_executor_job = AsyncMock()
+
+        await _ensure_profiles(hass)
+        hass.async_add_executor_job.assert_not_called()
 
 
 # ── _async_update_listener ────────────────────────────────────────────────────
