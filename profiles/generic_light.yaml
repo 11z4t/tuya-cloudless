@@ -6,3 +6,7 @@ entities:
     dp_power: {id: "1", type: bool}
     dp_brightness: {id: "3", type: int, min_raw: 10, max_raw: 1000}
     dp_color_temp: {id: "4", type: int, min_raw: 0, max_raw: 1000}
+    # Uncomment for RGB/colour lights:
+    # dp_color_mode: {id: "2", type: enum}   # "white" or "colour"
+    # dp_hs_hue: {id: "5", type: int, min_raw: 0, max_raw: 360}
+    # dp_hs_saturation: {id: "5", type: int, min_raw: 0, max_raw: 1000}

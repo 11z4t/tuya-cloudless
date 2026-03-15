@@ -102,11 +102,31 @@
         "title": "Device settings",
         "data": {
           "ip_address": "IP address",
-          "protocol_version": "Device model"
+          "protocol_version": "Device model",
+          "heartbeat_interval": "Heartbeat interval (seconds)",
+          "command_timeout": "Command timeout (seconds)",
+          "reconnect_max_delay": "Max reconnect delay (seconds)"
         },
         "data_description": {
           "ip_address": "Update if the device IP address changed",
-          "protocol_version": "Change only if the device stopped responding after a firmware update"
+          "protocol_version": "Change only if the device stopped responding after a firmware update",
+          "heartbeat_interval": "How often a heartbeat is sent to keep the connection alive (5–300 s, default 20)",
+          "command_timeout": "How long to wait for a command response before giving up (1–30 s, default 5)",
+          "reconnect_max_delay": "Maximum wait between reconnection attempts (10–3600 s, default 300)"
+        }
+      }
+    }
+  },
+  "issues": {
+    "auth_failed": {
+      "title": "Authentication failed for {device_name}",
+      "description": "The device **{device_name}** is rejecting the connection. The security key is likely wrong — this happens when the device is factory reset or paired again using the Tuya app.\n\nClick **Fix** to enter a new security key.",
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "Update the security key",
+            "description": "Go to **Settings → Integrations → Tuya Cloudless → {device_name}** and select **Re-authenticate**."
+          }
         }
       }
     }

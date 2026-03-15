@@ -60,12 +60,16 @@ class EntitySpec:
         dp_value:      Numeric or enum state DP (sensor).
         dp_brightness: Brightness DP (light only, 0-1000 raw).
         dp_color_temp: Colour temperature DP (light only, 0=warm, 1000=cool).
-        dp_open:       Open/close DP (cover only; True = open).
-        dp_position:   Position DP (cover; 0-100).
-        dp_direction:  Direction DP (cover; enum string).
-        device_class:  HA device class string (e.g. "power", "current").
-        state_class:   HA state class string (e.g. "measurement").
-        unit:          Unit of measurement (e.g. "W", "A", "%").
+        dp_open:          Open/close DP (cover only; True = open).
+        dp_position:      Position DP (cover; 0-100).
+        dp_direction:     Direction DP (cover; enum string).
+        dp_hs_hue:        Hue DP (light; 0-360 raw typical).
+        dp_hs_saturation: Saturation DP (light; 0-1000 raw typical).
+        dp_color_mode:    Color mode DP (light; enum "white"/"colour").
+        effects:          Supported effect names for the light.
+        device_class:     HA device class string (e.g. "power", "current").
+        state_class:      HA state class string (e.g. "measurement").
+        unit:             Unit of measurement (e.g. "W", "A", "%").
     """
 
     platform: str
@@ -77,6 +81,10 @@ class EntitySpec:
     dp_open: DPSpec | None = None
     dp_position: DPSpec | None = None
     dp_direction: DPSpec | None = None
+    dp_hs_hue: DPSpec | None = None
+    dp_hs_saturation: DPSpec | None = None
+    dp_color_mode: DPSpec | None = None
+    effects: tuple[str, ...] = ()
     device_class: str | None = None
     state_class: str | None = None
     unit: str | None = None
@@ -151,6 +159,10 @@ def _parse_entity_spec(data: dict[str, Any]) -> EntitySpec:
         dp_open=_parse_dp_spec(data.get("dp_open")),
         dp_position=_parse_dp_spec(data.get("dp_position")),
         dp_direction=_parse_dp_spec(data.get("dp_direction")),
+        dp_hs_hue=_parse_dp_spec(data.get("dp_hs_hue")),
+        dp_hs_saturation=_parse_dp_spec(data.get("dp_hs_saturation")),
+        dp_color_mode=_parse_dp_spec(data.get("dp_color_mode")),
+        effects=tuple(data.get("effects", [])),
         device_class=str(data["device_class"]) if "device_class" in data else None,
         state_class=str(data["state_class"]) if "state_class" in data else None,
         unit=str(data["unit"]) if "unit" in data else None,
