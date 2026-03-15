@@ -1,9 +1,11 @@
 """Cryptographic functions for Tuya protocol encryption/decryption."""
 
 import hashlib
+import os
 
-from Crypto.Cipher import AES
 from cryptography.exceptions import InvalidTag
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 from .exceptions import TuyaCryptoError
 
@@ -106,11 +108,10 @@ class TuyaCrypto:
             # Apply PKCS7 padding
             padded = self._pkcs7_pad(plaintext)
 
-            # Create cipher
-            cipher = AES.new(self.local_key, AES.MODE_ECB)
-
-            # Encrypt
-            ciphertext = cipher.encrypt(padded)
+            # Create cipher and encrypt
+            cipher = Cipher(algorithms.AES(self.local_key), modes.ECB())
+            encryptor = cipher.encryptor()
+            ciphertext = encryptor.update(padded) + encryptor.finalize()
 
             return ciphertext
 
@@ -130,11 +131,10 @@ class TuyaCrypto:
             TuyaCryptoError: If decryption fails
         """
         try:
-            # Create cipher
-            cipher = AES.new(self.local_key, AES.MODE_ECB)
-
-            # Decrypt
-            padded = cipher.decrypt(ciphertext)
+            # Create cipher and decrypt
+            cipher = Cipher(algorithms.AES(self.local_key), modes.ECB())
+            decryptor = cipher.decryptor()
+            padded = decryptor.update(ciphertext) + decryptor.finalize()
 
             # Remove PKCS7 padding
             plaintext = self._pkcs7_unpad(padded)
@@ -158,17 +158,15 @@ class TuyaCrypto:
         """
         try:
             # Generate nonce (12 bytes for GCM)
-            import os
-
             nonce = os.urandom(12)
 
-            # Create cipher
-            cipher = AES.new(self.local_key, AES.MODE_GCM, nonce=nonce)
+            # Encrypt: AESGCM.encrypt returns ciphertext + tag (tag is last 16 bytes)
+            aesgcm = AESGCM(self.local_key)
+            ct_with_tag = aesgcm.encrypt(nonce, plaintext, None)
 
-            # Encrypt and generate authentication tag
-            ciphertext, tag = cipher.encrypt_and_digest(plaintext)
-
-            # Return nonce + tag + ciphertext
+            # Separate ciphertext and tag, return nonce + tag + ciphertext
+            ciphertext = ct_with_tag[:-16]
+            tag = ct_with_tag[-16:]
             return nonce + tag + ciphertext
 
         except (ValueError, TypeError) as e:
@@ -190,16 +188,14 @@ class TuyaCrypto:
             raise TuyaCryptoError(f"GCM ciphertext too short: {len(ciphertext)} bytes")
 
         try:
-            # Extract components
+            # Extract components: nonce(12) + tag(16) + ciphertext
             nonce = ciphertext[:12]
             tag = ciphertext[12:28]
             encrypted_data = ciphertext[28:]
 
-            # Create cipher
-            cipher = AES.new(self.local_key, AES.MODE_GCM, nonce=nonce)
-
-            # Decrypt and verify authentication tag
-            plaintext = cipher.decrypt_and_verify(encrypted_data, tag)
+            # AESGCM.decrypt expects ciphertext + tag appended at end
+            aesgcm = AESGCM(self.local_key)
+            plaintext = aesgcm.decrypt(nonce, encrypted_data + tag, None)
 
             return plaintext
 

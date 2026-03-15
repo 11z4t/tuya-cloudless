@@ -25,7 +25,6 @@ classifiers = [
 dependencies = [
     "homeassistant>=2024.1.0",
     "cryptography>=41.0.0",
-    "pycryptodome>=3.19.0",
 ]
 
 [project.optional-dependencies]
