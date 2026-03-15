@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import logging
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 # Ensure bundled lib/tuya_cloudless is importable both in production (lib/ symlinked
@@ -29,10 +29,80 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo
 
-from .const import CONF_GW_ID, DOMAIN, PLATFORMS
+from tuya_cloudless.profiles import (
+    DeviceProfile,
+    EntitySpec,
+    find_profile,
+    init_profiles,
+    list_profiles,
+)
+
+from .const import (
+    CONF_DEVICE_TYPE,
+    CONF_GW_ID,
+    CONF_PROFILE,
+    DEVICE_TYPE_TO_PROFILE,
+    DOMAIN,
+    PLATFORMS,
+    PROFILES_DIR,
+)
 from .coordinator import TuyaCloudlessCoordinator
 
 _LOGGER = logging.getLogger(__name__)
+
+# Whether profile registry has been initialised for this HA instance
+_PROFILES_LOADED = False
+
+
+def _ensure_profiles() -> None:
+    """Load device profiles from disk if not already loaded."""
+    global _PROFILES_LOADED
+    if not _PROFILES_LOADED:
+        init_profiles(PROFILES_DIR)
+        _PROFILES_LOADED = True
+
+
+def _resolve_profile(entry: ConfigEntry) -> DeviceProfile | None:
+    """Resolve the device profile for a config entry.
+
+    Tries in order:
+    1. ``entry.data["profile"]`` — name saved by the new config flow.
+    2. ``entry.data["device_type"]`` — name from the legacy config flow, mapped
+       via ``DEVICE_TYPE_TO_PROFILE``.
+    3. First available generic profile as fallback.
+
+    Args:
+        entry: Config entry to resolve a profile for.
+
+    Returns:
+        Resolved :class:`~tuya_cloudless.profiles.DeviceProfile`, or ``None``
+        if no profiles are loaded at all.
+    """
+    _ensure_profiles()
+
+    # New entries: profile name stored directly
+    profile_name: str | None = entry.data.get(CONF_PROFILE)
+
+    # Legacy entries: device_type → profile name
+    if not profile_name:
+        device_type = entry.data.get(CONF_DEVICE_TYPE, "generic")
+        profile_name = DEVICE_TYPE_TO_PROFILE.get(device_type, "Generic Switch")
+
+    profile = find_profile(profile_name) if profile_name else None
+
+    if profile is None:
+        # Last resort: use the first loaded profile
+        all_profiles = list_profiles()
+        profile = all_profiles[0] if all_profiles else None
+        if profile:
+            _LOGGER.warning(
+                "[%s] Profile '%s' not found — falling back to '%s'",
+                entry.data.get(CONF_GW_ID, entry.entry_id),
+                profile_name,
+                profile.name,
+            )
+
+    return profile
 
 
 @dataclass
@@ -41,6 +111,8 @@ class TuyaCloudlessRuntimeData:
 
     coordinator: TuyaCloudlessCoordinator
     device_info: DeviceInfo
+    entity_specs: list[EntitySpec] = field(default_factory=list)
+    profile_name: str = ""
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -64,9 +136,28 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         model=f"Tuya Cloudless ({entry.data.get('protocol_version', '3.3')})",
     )
 
+    profile = _resolve_profile(entry)
+    entity_specs = profile.entities if profile else []
+    profile_name = profile.name if profile else ""
+
+    if profile:
+        _LOGGER.info(
+            "[%s] Using profile '%s' — %d entities",
+            entry.data[CONF_GW_ID],
+            profile.name,
+            len(entity_specs),
+        )
+    else:
+        _LOGGER.warning(
+            "[%s] No profile found — no entities will be created",
+            entry.data[CONF_GW_ID],
+        )
+
     entry.runtime_data = TuyaCloudlessRuntimeData(
         coordinator=coordinator,
         device_info=device_info,
+        entity_specs=entity_specs,
+        profile_name=profile_name,
     )
 
     await coordinator.async_start()

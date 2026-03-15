@@ -13,7 +13,7 @@ Discovery packet wire format (same as TCP frame):
 The payload is a JSON object with at minimum:
   {
     "ip":    "192.168.1.42",
-    "gwId":  "abc123def456",
+    "gwId":  "abc123def456",  # pragma: allowlist secret
     "active": 2,
     "ability": 0,
     "mode": 0,
@@ -86,7 +86,7 @@ class DiscoveredDevice:
     active: int
     ability: int
     seen_at: datetime = field(default_factory=lambda: datetime.now(UTC))
-    raw_data: dict = field(default_factory=dict, repr=False)
+    raw_data: dict[str, object] = field(default_factory=dict, repr=False)
 
     def is_stale(self, max_age_seconds: float = DISCOVERY_DEVICE_STALE_AGE) -> bool:
         """Return True if this device has not been seen within ``max_age_seconds``."""
@@ -155,9 +155,7 @@ class DiscoveryListener:
         self._known_devices: dict[str, bytes] = {}
         if known_devices:
             for gw_id, key in known_devices.items():
-                self._known_devices[gw_id] = (
-                    key.encode() if isinstance(key, str) else key
-                )
+                self._known_devices[gw_id] = key.encode() if isinstance(key, str) else key
 
         self._interface = interface
         self._queue: asyncio.Queue[tuple[bytes, tuple[str, int]]] = asyncio.Queue(
@@ -167,7 +165,7 @@ class DiscoveryListener:
         self._device_event: asyncio.Event = asyncio.Event()
         self._transports: list[asyncio.BaseTransport] = []
         self._running = False
-        self._task: asyncio.Task | None = None
+        self._task: asyncio.Task[None] | None = None
 
     # ── Lifecycle ─────────────────────────────────────────────────────────────
 
@@ -185,7 +183,7 @@ class DiscoveryListener:
             try:
                 bind_addr = self._interface or "0.0.0.0"
                 transport, _ = await loop.create_datagram_endpoint(
-                    lambda p=port: _DiscoveryProtocol(self._queue, f"udp:{p}"),
+                    lambda p=port: _DiscoveryProtocol(self._queue, f"udp:{p}"),  # type: ignore[misc]
                     local_addr=(bind_addr, port),
                     allow_broadcast=True,
                     reuse_port=True,
@@ -257,9 +255,7 @@ class DiscoveryListener:
                 return device
             remaining = deadline - asyncio.get_event_loop().time()
             if remaining <= 0:
-                raise TimeoutError(
-                    f"Device {gw_id!r} not discovered within {timeout}s"
-                )
+                raise TimeoutError(f"Device {gw_id!r} not discovered within {timeout}s")
             self._device_event.clear()
             with contextlib.suppress(TimeoutError):
                 await asyncio.wait_for(self._device_event.wait(), timeout=remaining)
@@ -345,6 +341,7 @@ class DiscoveryListener:
             return None
 
         import struct
+
         _, _, cmd, length = struct.unpack_from(">4sIII", data, 0)
 
         if cmd not in (CMD_UDP, 0x12):  # 0x12 = encrypted discovery

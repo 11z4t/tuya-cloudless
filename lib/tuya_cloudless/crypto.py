@@ -138,9 +138,7 @@ def decrypt_ecb(key: bytes, ciphertext: bytes) -> bytes:
     if len(key) != _AES_BLOCK:
         raise CryptoError(f"AES key must be {_AES_BLOCK} bytes, got {len(key)}")
     if len(ciphertext) % _AES_BLOCK != 0:
-        raise CryptoError(
-            f"Ciphertext length {len(ciphertext)} is not a multiple of {_AES_BLOCK}"
-        )
+        raise CryptoError(f"Ciphertext length {len(ciphertext)} is not a multiple of {_AES_BLOCK}")
     iv = b"\x00" * _AES_BLOCK
     cipher = Cipher(algorithms.AES(key), modes.CBC(iv))
     decryptor = cipher.decryptor()
@@ -173,7 +171,7 @@ def strip_v33_header(data: bytes) -> bytes:
         Payload bytes with header removed if present.
     """
     if data[:3] in (b"3.3", b"3.4", b"3.5"):
-        return data[_AES_BLOCK - 4:]  # 12-byte header
+        return data[_AES_BLOCK - 4 :]  # 12-byte header
     return data
 
 
@@ -204,9 +202,7 @@ def encrypt_gcm(key: bytes, plaintext: bytes, *, extra_nonce: bytes = b"") -> by
     iv = os.urandom(GCM_IV_SIZE)
     if extra_nonce:
         if len(extra_nonce) != GCM_IV_SIZE:
-            raise CryptoError(
-                f"extra_nonce must be {GCM_IV_SIZE} bytes, got {len(extra_nonce)}"
-            )
+            raise CryptoError(f"extra_nonce must be {GCM_IV_SIZE} bytes, got {len(extra_nonce)}")
         iv = bytes(a ^ b for a, b in zip(iv, extra_nonce, strict=True))
     aesgcm = AESGCM(key)
     # AESGCM.encrypt returns ciphertext + 16-byte tag (standard GCM 128-bit tag)
@@ -238,9 +234,7 @@ def decrypt_gcm(key: bytes, data: bytes) -> bytes:
         raise CryptoError(f"AES-GCM key must be {_AES_BLOCK} bytes, got {len(key)}")
     min_len = GCM_IV_SIZE + GCM_TAG_SIZE  # 12 + 16 = 28 bytes minimum
     if len(data) < min_len:
-        raise CryptoError(
-            f"GCM data too short: {len(data)} bytes (minimum {min_len})"
-        )
+        raise CryptoError(f"GCM data too short: {len(data)} bytes (minimum {min_len})")
     iv = data[:GCM_IV_SIZE]
     # Remaining bytes = ciphertext + 16-byte tag (AESGCM.decrypt splits them internally)
     ct_plus_tag = data[GCM_IV_SIZE:]
@@ -297,13 +291,9 @@ def derive_session_key(
         KeyDerivationError: If inputs have wrong lengths or ECDH fails.
     """
     if len(peer_public_bytes) != 32:
-        raise KeyDerivationError(
-            f"Peer public key must be 32 bytes, got {len(peer_public_bytes)}"
-        )
+        raise KeyDerivationError(f"Peer public key must be 32 bytes, got {len(peer_public_bytes)}")
     if len(local_key) != _AES_BLOCK:
-        raise KeyDerivationError(
-            f"local_key must be {_AES_BLOCK} bytes, got {len(local_key)}"
-        )
+        raise KeyDerivationError(f"local_key must be {_AES_BLOCK} bytes, got {len(local_key)}")
     try:
         peer_public = X25519PublicKey.from_public_bytes(peer_public_bytes)
         shared_secret = private_key.exchange(peer_public)
@@ -329,6 +319,7 @@ def compute_crc32(data: bytes) -> int:
         Unsigned 32-bit CRC value.
     """
     import binascii
+
     return binascii.crc32(data) & 0xFFFFFFFF
 
 

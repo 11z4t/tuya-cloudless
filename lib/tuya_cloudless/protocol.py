@@ -31,6 +31,8 @@ from tuya_cloudless.const import (
     CMD_CONTROL,
     CMD_DP_QUERY,
     CMD_HEARTBEAT,
+    CMD_SESS_KEY_NEG_FINISH,
+    CMD_SESS_KEY_NEG_START,
     CMD_STATUS,
     FRAME_PREFIX,
     FRAME_SUFFIX,
@@ -53,7 +55,7 @@ from tuya_cloudless.exceptions import (
 
 # ── Internal constants ────────────────────────────────────────────────────────
 
-_STRUCT_HEADER = struct.Struct(">4sIII")   # prefix(4) + seq(4) + cmd(4) + length(4)
+_STRUCT_HEADER = struct.Struct(">4sIII")  # prefix(4) + seq(4) + cmd(4) + length(4)
 _STRUCT_SUFFIX = struct.Struct(">4s")
 _MIN_FRAME_SIZE = _STRUCT_HEADER.size + 4 + 4  # header + CRC + suffix
 
@@ -274,7 +276,7 @@ def decode_frame(
             f"Frame length field ({length}) exceeds available data ({len(data)} bytes)"
         )
 
-    suffix = data[suffix_offset: suffix_offset + 4]
+    suffix = data[suffix_offset : suffix_offset + 4]
     if suffix != FRAME_SUFFIX:
         raise MalformedPacketError(
             f"Bad frame suffix: {suffix.hex()} (expected {FRAME_SUFFIX.hex()})"
@@ -287,7 +289,7 @@ def decode_frame(
         raise MalformedPacketError("Frame has no space for payload between header and CRC")
 
     raw_payload = data[payload_start:payload_end]
-    crc_bytes = data[payload_end: payload_end + 4]
+    crc_bytes = data[payload_end : payload_end + 4]
     crc_received = struct.unpack(">I", crc_bytes)[0]
 
     if len(raw_payload) > MAX_PAYLOAD_SIZE:
@@ -350,7 +352,7 @@ def split_frames(buffer: bytes) -> tuple[list[bytes], bytes]:
 
         # Verify suffix at the expected position
         expected_suffix_offset = frame_end - 4
-        if buffer[expected_suffix_offset: frame_end] != FRAME_SUFFIX:
+        if buffer[expected_suffix_offset:frame_end] != FRAME_SUFFIX:
             # Misaligned — skip this prefix byte and search again
             offset = idx + 1
             continue
@@ -359,6 +361,111 @@ def split_frames(buffer: bytes) -> tuple[list[bytes], bytes]:
         offset = frame_end
 
     return frames, buffer[offset:]
+
+
+# ── Session key negotiation frames (v3.4/3.5) ─────────────────────────────────
+
+
+def encode_session_key_start(
+    public_key_bytes: bytes,
+    *,
+    sequence: int,
+    local_key: bytes,
+) -> bytes:
+    """Encode the SESS_KEY_NEG_START frame for v3.4/3.5 key exchange.
+
+    The START frame carries our X25519 public key, encrypted with the
+    device local key (AES-ECB) since the session key is not yet established.
+
+    Args:
+        public_key_bytes: 32-byte X25519 public key from our ephemeral key pair.
+        sequence: Frame sequence number.
+        local_key: 16-byte device local key.
+
+    Returns:
+        Wire-format START frame bytes.
+
+    Raises:
+        CryptoError: If the local key length is wrong.
+    """
+    from tuya_cloudless.crypto import derive_ecb_key, encrypt_ecb
+
+    ecb_key = derive_ecb_key(local_key)
+    encrypted = encrypt_ecb(ecb_key, public_key_bytes)
+    length = len(encrypted) + 8  # +4 CRC +4 suffix
+    header = _STRUCT_HEADER.pack(FRAME_PREFIX, sequence, CMD_SESS_KEY_NEG_START, length)
+    body = header + encrypted
+    crc = compute_crc32(body)
+    return body + struct.pack(">I", crc) + FRAME_SUFFIX
+
+
+def encode_session_key_finish(
+    confirmation_bytes: bytes,
+    *,
+    sequence: int,
+    local_key: bytes,
+    session_key: bytes,
+) -> bytes:
+    """Encode the SESS_KEY_NEG_FINISH frame for v3.4/3.5 key exchange.
+
+    The FINISH frame carries the HMAC confirmation payload, encrypted with
+    the newly derived session key (AES-GCM).
+
+    Args:
+        confirmation_bytes: HMAC-SHA256 confirmation (typically 32 bytes).
+        sequence: Frame sequence number.
+        local_key: 16-byte device local key (unused here, kept for symmetry).
+        session_key: 16-byte AES session key from ECDH derivation.
+
+    Returns:
+        Wire-format FINISH frame bytes.
+
+    Raises:
+        CryptoError: If key lengths are wrong.
+    """
+    from tuya_cloudless.crypto import encrypt_gcm
+
+    encrypted = encrypt_gcm(session_key, confirmation_bytes)
+    length = len(encrypted) + 8
+    header = _STRUCT_HEADER.pack(FRAME_PREFIX, sequence, CMD_SESS_KEY_NEG_FINISH, length)
+    body = header + encrypted
+    # v3.4/3.5 uses sequence counter in place of CRC for GCM frames
+    seq_bytes = struct.pack(">I", sequence & 0xFFFFFFFF)
+    return body + seq_bytes + FRAME_SUFFIX
+
+
+def encode_status_response(
+    dps: dict[str, Any],
+    *,
+    sequence: int,
+    version: str,
+    local_key: bytes,
+    session_key: bytes | None = None,
+) -> bytes:
+    """Encode a DPS status response (device → controller direction).
+
+    Used by the fake Tuya device in integration tests to push DPS updates
+    to a connected coordinator.
+
+    Args:
+        dps: DPS dict to include in the response payload.
+        sequence: Frame sequence number.
+        version: Protocol version string.
+        local_key: 16-byte device local key.
+        session_key: ECDH session key (required for v3.4/3.5).
+
+    Returns:
+        Wire-format status response frame bytes.
+    """
+    payload = json.dumps({"dps": dps}, separators=(",", ":")).encode()
+    return encode_frame(
+        CMD_STATUS,
+        payload,
+        sequence=sequence,
+        version=version,
+        local_key=local_key,
+        session_key=session_key,
+    )
 
 
 # ── Internal helpers ──────────────────────────────────────────────────────────

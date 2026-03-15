@@ -32,21 +32,15 @@ _VERSION = "3.3"
 
 class TestEncodeFrame:
     def test_starts_with_prefix(self) -> None:
-        raw = encode_frame(
-            CMD_HEARTBEAT, b"", sequence=1, version=_VERSION, local_key=_LOCAL_KEY
-        )
+        raw = encode_frame(CMD_HEARTBEAT, b"", sequence=1, version=_VERSION, local_key=_LOCAL_KEY)
         assert raw[:4] == FRAME_PREFIX
 
     def test_ends_with_suffix(self) -> None:
-        raw = encode_frame(
-            CMD_HEARTBEAT, b"", sequence=1, version=_VERSION, local_key=_LOCAL_KEY
-        )
+        raw = encode_frame(CMD_HEARTBEAT, b"", sequence=1, version=_VERSION, local_key=_LOCAL_KEY)
         assert raw[-4:] == FRAME_SUFFIX
 
     def test_sequence_in_header(self) -> None:
-        raw = encode_frame(
-            CMD_HEARTBEAT, b"", sequence=42, version=_VERSION, local_key=_LOCAL_KEY
-        )
+        raw = encode_frame(CMD_HEARTBEAT, b"", sequence=42, version=_VERSION, local_key=_LOCAL_KEY)
         _, seq, _, _ = struct.unpack_from(">4sIII", raw, 0)
         assert seq == 42
 
@@ -61,9 +55,7 @@ class TestEncodeFrame:
 
 class TestEncodeControl:
     def test_returns_bytes(self) -> None:
-        raw = encode_control(
-            {"1": True}, sequence=1, version=_VERSION, local_key=_LOCAL_KEY
-        )
+        raw = encode_control({"1": True}, sequence=1, version=_VERSION, local_key=_LOCAL_KEY)
         assert isinstance(raw, bytes)
         assert len(raw) > 20
 
@@ -103,7 +95,7 @@ class TestDecodeFrame:
         assert frame.payload == b""
 
     def test_bad_prefix_raises(self) -> None:
-        raw = b"\xDE\xAD\xBE\xEF" + b"\x00" * 20
+        raw = b"\xde\xad\xbe\xef" + b"\x00" * 20
         with pytest.raises(MalformedPacketError):
             decode_frame(raw, version="3.1", local_key=_LOCAL_KEY)
 
@@ -125,15 +117,13 @@ class TestDecodeFrame:
 
     def test_v33_roundtrip(self) -> None:
         payload = b'{"dps":{"1":true}}'
-        raw = encode_frame(
-            CMD_CONTROL, payload, sequence=7, version="3.3", local_key=_LOCAL_KEY
-        )
+        raw = encode_frame(CMD_CONTROL, payload, sequence=7, version="3.3", local_key=_LOCAL_KEY)
         frame = decode_frame(raw, version="3.3", local_key=_LOCAL_KEY)
         assert frame.sequence == 7
         assert frame.dps == {"dps": {"1": True}}
 
     def test_v34_roundtrip(self) -> None:
-        session_key = b"\xAB" * 16
+        session_key = b"\xab" * 16
         payload = b'{"dps":{"1":false}}'
         raw = encode_frame(
             CMD_CONTROL,
@@ -214,7 +204,7 @@ class TestSplitFrames:
     def test_frame_with_leading_garbage(self) -> None:
         frame = self._simple_frame()
         # Prepend some garbage (no valid prefix)
-        data = b"\xDE\xAD" + frame
+        data = b"\xde\xad" + frame
         frames, _leftover = split_frames(data)
         # Should find the valid frame after skipping garbage
         assert len(frames) == 1

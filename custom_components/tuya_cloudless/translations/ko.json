@@ -1,0 +1,76 @@
+{
+  "config": {
+    "flow_title": "{name}",
+    "step": {
+      "user": {
+        "title": "Tuya 기기 추가",
+        "description": "기기를 추가하는 방법을 선택하세요. **검색**은 네트워크를 자동으로 스캔합니다 — 기기가 켜져 있고 Home Assistant와 같은 Wi-Fi에 연결되어 있는지 확인하세요.",
+        "data": { "setup_mode": "설정 방법" },
+        "data_description": { "setup_mode": "검색은 기기를 자동으로 찾습니다. 기기를 찾지 못하면 수동을 선택하세요." }
+      },
+      "select": {
+        "title": "{count}개 기기 발견",
+        "description": "추가할 기기를 선택하세요.",
+        "data": { "device": "기기" }
+      },
+      "local_key": {
+        "title": "보안 키 입력",
+        "description": "**{ip_address}**의 기기(펌웨어 {firmware})는 로컬 통신을 위해 보안 키가 필요합니다.\n\n키는 Tuya Cloudless로 기기를 페어링할 때 표시됩니다. Home Assistant에만 저장됩니다.",
+        "data": { "local_key": "보안 키", "device_name": "기기 이름", "profile": "기기 유형" },
+        "data_description": { "local_key": "페어링에서 얻은 16자 키", "device_name": "Home Assistant에서 표시할 이름(비워두면 IP 주소 사용)", "profile": "기기에 가장 적합한 유형 선택" }
+      },
+      "confirm": {
+        "title": "연결 준비 완료",
+        "description": "`{ip_address}`의 **{device_name}**이(가) Home Assistant에 추가됩니다.\n\n**연결**을 클릭하여 연결을 테스트하세요.",
+        "data": {}
+      },
+      "manual": {
+        "title": "기기 수동 추가",
+        "description": "Tuya 기기의 세부 정보를 입력하세요. 기기 ID와 보안 키는 Tuya Cloudless 도구에서 표시됩니다.",
+        "data": { "gw_id": "기기 ID", "local_key": "보안 키", "ip_address": "IP 주소", "protocol_version": "기기 모델", "profile": "기기 유형", "device_name": "기기 이름" },
+        "data_description": { "gw_id": "고유 기기 식별자(예: abc123def456)", "local_key": "16자 보안 키", "ip_address": "기기 IP 주소", "protocol_version": "모델 3.3은 2020년 이후 대부분의 기기에 사용 가능", "profile": "가장 적합한 유형 선택" }
+      },
+      "discovery": {
+        "title": "Tuya 기기 발견",
+        "description": "**{ip_address}**(펌웨어 {firmware})에서 기기가 감지되었습니다.\n\n설정을 완료하려면 보안 키를 입력하세요.",
+        "data": { "local_key": "보안 키", "profile": "기기 유형", "device_name": "기기 이름" },
+        "data_description": { "local_key": "Tuya Cloudless 도구의 16자 키" }
+      },
+      "reauth_confirm": {
+        "title": "보안 키 업데이트",
+        "description": "**{device_name}**의 보안 키가 더 이상 작동하지 않습니다. 새 키를 입력하여 다시 연결하세요.",
+        "data": { "local_key": "새 보안 키", "ip_address": "IP 주소(변경된 경우)" },
+        "data_description": { "local_key": "마지막 페어링의 16자 키", "ip_address": "주소가 변경되지 않았으면 비워두세요" }
+      }
+    },
+    "error": {
+      "cannot_connect": "기기에 연결할 수 없습니다 — IP 주소를 확인하고 같은 네트워크에 있는지 확인하세요",
+      "invalid_local_key": "잘못된 보안 키 — 정확히 16자여야 합니다",
+      "invalid_gw_id": "잘못된 기기 ID — 비워둘 수 없습니다",
+      "auth_failed": "연결이 거부되었습니다 — 키가 잘못되었거나 기기가 다시 페어링되었을 수 있습니다",
+      "no_devices_found": "네트워크에서 Tuya 기기를 찾을 수 없습니다. 기기가 켜져 있고 같은 Wi-Fi에 있는지 확인하세요. 위의 **수동**을 사용하세요.",
+      "unknown": "예상치 못한 오류 — Home Assistant 로그를 확인하세요"
+    },
+    "abort": {
+      "already_configured": "이 기기는 이미 설정되어 있습니다",
+      "not_tuya_device": "기기가 예상대로 응답하지 않았습니다",
+      "reauth_successful": "보안 키가 업데이트되었습니다 — 기기가 다시 연결되었습니다"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "기기 설정",
+        "data": { "ip_address": "IP 주소", "protocol_version": "기기 모델" },
+        "data_description": { "ip_address": "IP 주소가 변경된 경우 업데이트", "protocol_version": "펌웨어 업데이트 후 기기가 응답하지 않으면 변경" }
+      }
+    }
+  },
+  "entity": {
+    "switch": { "main_switch": { "name": "스위치" } },
+    "light": { "main_light": { "name": "조명" } },
+    "sensor": { "rssi": { "name": "재연결 횟수" }, "last_seen": { "name": "마지막 온라인" }, "power_consumption": { "name": "전력" }, "current": { "name": "전류" } },
+    "binary_sensor": { "overload": { "name": "과부하 보호" } },
+    "cover": { "cover": { "name": "블라인드" } }
+  }
+}

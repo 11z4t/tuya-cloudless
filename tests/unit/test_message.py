@@ -68,7 +68,7 @@ class TestEncodeStatusQuery:
         assert len(raw) > 16
 
     def test_returns_bytes_v34(self) -> None:
-        session_key = b"\xAB" * 16
+        session_key = b"\xab" * 16
         raw = encode_status_query(
             sequence=1, version=PROTOCOL_34, local_key=_LOCAL_KEY, session_key=session_key
         )

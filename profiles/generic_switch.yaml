@@ -1,0 +1,6 @@
+name: "Generic Switch"
+model: "*"
+entities:
+  - platform: switch
+    name: main_switch
+    dp_power: {id: "1", type: bool}

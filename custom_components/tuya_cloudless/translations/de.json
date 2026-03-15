@@ -1,0 +1,76 @@
+{
+  "config": {
+    "flow_title": "{name}",
+    "step": {
+      "user": {
+        "title": "Tuya-Gerät hinzufügen",
+        "description": "Wähle, wie du dein Gerät hinzufügen möchtest. **Suchen** durchsucht dein Netzwerk automatisch — stelle sicher, dass das Gerät eingeschaltet und mit demselben WLAN wie Home Assistant verbunden ist.",
+        "data": { "setup_mode": "Einrichtungsmethode" },
+        "data_description": { "setup_mode": "Suchen findet Geräte automatisch. Wähle Manuell, wenn dein Gerät nicht gefunden wird." }
+      },
+      "select": {
+        "title": "{count} Gerät(e) gefunden",
+        "description": "Wähle das Gerät aus, das du hinzufügen möchtest.",
+        "data": { "device": "Gerät" }
+      },
+      "local_key": {
+        "title": "Sicherheitsschlüssel eingeben",
+        "description": "Dein Gerät unter **{ip_address}** (Firmware {firmware}) benötigt einen Sicherheitsschlüssel.\n\nDer Schlüssel wird beim Einrichten des Geräts mit Tuya Cloudless angezeigt. Er wird nur in Home Assistant gespeichert.",
+        "data": { "local_key": "Sicherheitsschlüssel", "device_name": "Gerätename", "profile": "Gerätetyp" },
+        "data_description": { "local_key": "16-stelliger Schlüssel aus der Einrichtung", "device_name": "Ein eigener Name in Home Assistant (leer lassen für die IP-Adresse)", "profile": "Wähle den Typ, der am besten zu deinem Gerät passt" }
+      },
+      "confirm": {
+        "title": "Bereit zum Verbinden",
+        "description": "**{device_name}** unter `{ip_address}` wird zu Home Assistant hinzugefügt.\n\nKlicke auf **Verbinden** um die Verbindung zu testen.",
+        "data": {}
+      },
+      "manual": {
+        "title": "Gerät manuell hinzufügen",
+        "description": "Gib die Daten deines Tuya-Geräts ein. Geräte-ID und Sicherheitsschlüssel werden im Tuya Cloudless-Tool angezeigt.",
+        "data": { "gw_id": "Geräte-ID", "local_key": "Sicherheitsschlüssel", "ip_address": "IP-Adresse", "protocol_version": "Gerätemodell", "profile": "Gerätetyp", "device_name": "Gerätename" },
+        "data_description": { "gw_id": "Eindeutige Geräte-ID (z.B. abc123def456)", "local_key": "16-stelliger Schlüssel aus der Einrichtung", "ip_address": "IP-Adresse des Geräts", "protocol_version": "Modell 3.3 funktioniert für die meisten Geräte ab 2020", "profile": "Wähle den Typ, der am besten zu deinem Gerät passt" }
+      },
+      "discovery": {
+        "title": "Tuya-Gerät gefunden",
+        "description": "Ein Gerät wurde unter **{ip_address}** (Firmware {firmware}) erkannt.\n\nGib den Sicherheitsschlüssel ein, um die Einrichtung abzuschließen.",
+        "data": { "local_key": "Sicherheitsschlüssel", "profile": "Gerätetyp", "device_name": "Gerätename" },
+        "data_description": { "local_key": "16-stelliger Schlüssel aus dem Tuya Cloudless-Tool" }
+      },
+      "reauth_confirm": {
+        "title": "Sicherheitsschlüssel aktualisieren",
+        "description": "Der Sicherheitsschlüssel für **{device_name}** funktioniert nicht mehr. Gib den neuen Schlüssel ein, um die Verbindung wiederherzustellen.",
+        "data": { "local_key": "Neuer Sicherheitsschlüssel", "ip_address": "IP-Adresse (falls geändert)" },
+        "data_description": { "local_key": "16-stelliger Schlüssel aus der letzten Einrichtung", "ip_address": "Leer lassen, wenn sich die Adresse nicht geändert hat" }
+      }
+    },
+    "error": {
+      "cannot_connect": "Das Gerät ist nicht erreichbar — prüfe die IP-Adresse und ob das Gerät im selben Netzwerk ist",
+      "invalid_local_key": "Ungültiger Sicherheitsschlüssel — muss genau 16 Zeichen haben",
+      "invalid_gw_id": "Ungültige Geräte-ID — darf nicht leer sein",
+      "auth_failed": "Verbindung abgelehnt — der Schlüssel ist möglicherweise falsch oder das Gerät wurde neu eingerichtet",
+      "no_devices_found": "Keine Tuya-Geräte gefunden. Stelle sicher, dass das Gerät eingeschaltet und im selben WLAN ist. Nutze **Manuell** oben.",
+      "unknown": "Unerwarteter Fehler — prüfe das Home Assistant-Protokoll"
+    },
+    "abort": {
+      "already_configured": "Dieses Gerät ist bereits eingerichtet",
+      "not_tuya_device": "Das Gerät hat nicht wie erwartet geantwortet",
+      "reauth_successful": "Sicherheitsschlüssel aktualisiert — das Gerät ist wieder verbunden"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Geräteeinstellungen",
+        "data": { "ip_address": "IP-Adresse", "protocol_version": "Gerätemodell" },
+        "data_description": { "ip_address": "Aktualisieren, wenn sich die IP-Adresse geändert hat", "protocol_version": "Nur ändern, wenn das Gerät nach einem Firmware-Update nicht mehr antwortet" }
+      }
+    }
+  },
+  "entity": {
+    "switch": { "main_switch": { "name": "Schalter" } },
+    "light": { "main_light": { "name": "Licht" } },
+    "sensor": { "rssi": { "name": "Verbindungsversuche" }, "last_seen": { "name": "Zuletzt gesehen" }, "power_consumption": { "name": "Leistung" }, "current": { "name": "Strom" } },
+    "binary_sensor": { "overload": { "name": "Überlastschutz" } },
+    "cover": { "cover": { "name": "Rollladen" } }
+  }
+}
