@@ -54,5 +54,15 @@ DEFAULT_TCP_PORT = 6668
 DEFAULT_COMMAND_TIMEOUT = 5.0
 HEARTBEAT_INTERVAL = 20.0
 
+# Options keys (stored in entry.options, override defaults above)
+CONF_OPT_HEARTBEAT_INTERVAL = "heartbeat_interval"
+CONF_OPT_COMMAND_TIMEOUT = "command_timeout"
+CONF_OPT_RECONNECT_MAX_DELAY = "reconnect_max_delay"
+
+# Options defaults
+DEFAULT_OPT_HEARTBEAT_INTERVAL = 20
+DEFAULT_OPT_COMMAND_TIMEOUT = 5
+DEFAULT_OPT_RECONNECT_MAX_DELAY = 300
+
 # Config entry version
 CONFIG_ENTRY_VERSION = 1

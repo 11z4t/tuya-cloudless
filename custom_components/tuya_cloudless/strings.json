@@ -102,11 +102,31 @@
         "title": "Enhetsinställningar",
         "data": {
           "ip_address": "IP-adress",
-          "protocol_version": "Enhetsmodell"
+          "protocol_version": "Enhetsmodell",
+          "heartbeat_interval": "Hjärtslag-intervall (sekunder)",
+          "command_timeout": "Kommando-timeout (sekunder)",
+          "reconnect_max_delay": "Max väntetid vid återanslutning (sekunder)"
         },
         "data_description": {
           "ip_address": "Uppdatera om enhetens IP-adress har ändrats",
-          "protocol_version": "Ändra bara om enheten slutade svara efter en firmware-uppdatering"
+          "protocol_version": "Ändra bara om enheten slutade svara efter en firmware-uppdatering",
+          "heartbeat_interval": "Hur ofta ett hjärtslag skickas för att kontrollera anslutningen (5–300 s, standard 20)",
+          "command_timeout": "Hur länge integreringen väntar på svar vid ett kommando (1–30 s, standard 5)",
+          "reconnect_max_delay": "Longest wait between reconnection attempts (10–3600 s, standard 300)"
+        }
+      }
+    }
+  },
+  "issues": {
+    "auth_failed": {
+      "title": "Autentisering misslyckades för {device_name}",
+      "description": "Enheten **{device_name}** nekar anslutningen. Säkerhetsnyckeln är troligtvis felaktig — det händer om enheten har återställts till fabriksinställningar eller kopplats ihop på nytt i Tuya-appen.\n\nKlicka på **Åtgärda** för att ange en ny säkerhetsnyckel.",
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "Uppdatera säkerhetsnyckeln",
+            "description": "Gå till **Inställningar → Integrationer → Tuya Cloudless → {device_name}** och välj **Autentisera igen**."
+          }
         }
       }
     }

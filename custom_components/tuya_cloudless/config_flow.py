@@ -39,9 +39,15 @@ from .const import (
     CONF_GW_ID,
     CONF_IP_ADDRESS,
     CONF_LOCAL_KEY,
+    CONF_OPT_COMMAND_TIMEOUT,
+    CONF_OPT_HEARTBEAT_INTERVAL,
+    CONF_OPT_RECONNECT_MAX_DELAY,
     CONF_PROFILE,
     CONF_PROTOCOL_VERSION,
     CONFIG_ENTRY_VERSION,
+    DEFAULT_OPT_COMMAND_TIMEOUT,
+    DEFAULT_OPT_HEARTBEAT_INTERVAL,
+    DEFAULT_OPT_RECONNECT_MAX_DELAY,
     DEFAULT_PROTOCOL_VERSION,
     DEFAULT_TCP_PORT,
     DOMAIN,
@@ -615,6 +621,8 @@ class TuyaCloudlessOptionsFlow(OptionsFlow):
         if user_input is not None:
             return self.async_create_entry(data=user_input)
 
+        opts = self._config_entry.options or {}
+
         schema = vol.Schema(
             {
                 vol.Optional(
@@ -627,6 +635,24 @@ class TuyaCloudlessOptionsFlow(OptionsFlow):
                         CONF_PROTOCOL_VERSION, DEFAULT_PROTOCOL_VERSION
                     ),
                 ): vol.In(PROTOCOL_VERSIONS),
+                vol.Optional(
+                    CONF_OPT_HEARTBEAT_INTERVAL,
+                    default=int(
+                        opts.get(CONF_OPT_HEARTBEAT_INTERVAL, DEFAULT_OPT_HEARTBEAT_INTERVAL)
+                    ),
+                ): vol.All(vol.Coerce(int), vol.Range(min=5, max=300)),
+                vol.Optional(
+                    CONF_OPT_COMMAND_TIMEOUT,
+                    default=int(
+                        opts.get(CONF_OPT_COMMAND_TIMEOUT, DEFAULT_OPT_COMMAND_TIMEOUT)
+                    ),
+                ): vol.All(vol.Coerce(int), vol.Range(min=1, max=30)),
+                vol.Optional(
+                    CONF_OPT_RECONNECT_MAX_DELAY,
+                    default=int(
+                        opts.get(CONF_OPT_RECONNECT_MAX_DELAY, DEFAULT_OPT_RECONNECT_MAX_DELAY)
+                    ),
+                ): vol.All(vol.Coerce(int), vol.Range(min=10, max=3600)),
             }
         )
 

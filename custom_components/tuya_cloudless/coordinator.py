@@ -30,11 +30,15 @@ from .const import (
     CONF_GW_ID,
     CONF_IP_ADDRESS,
     CONF_LOCAL_KEY,
+    CONF_OPT_COMMAND_TIMEOUT,
+    CONF_OPT_HEARTBEAT_INTERVAL,
+    CONF_OPT_RECONNECT_MAX_DELAY,
     CONF_PROTOCOL_VERSION,
-    DEFAULT_COMMAND_TIMEOUT,
+    DEFAULT_OPT_COMMAND_TIMEOUT,
+    DEFAULT_OPT_HEARTBEAT_INTERVAL,
+    DEFAULT_OPT_RECONNECT_MAX_DELAY,
     DEFAULT_TCP_PORT,
     DOMAIN,
-    HEARTBEAT_INTERVAL,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -88,6 +92,9 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         local_key: str,
         version: str,
         port: int = DEFAULT_TCP_PORT,
+        heartbeat_interval: float = DEFAULT_OPT_HEARTBEAT_INTERVAL,
+        command_timeout: float = DEFAULT_OPT_COMMAND_TIMEOUT,
+        reconnect_max_delay: float = DEFAULT_OPT_RECONNECT_MAX_DELAY,
     ) -> None:
         super().__init__(
             hass,
@@ -100,6 +107,9 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._local_key = local_key.encode() if isinstance(local_key, str) else local_key
         self._version = version
         self._port = port
+        self._heartbeat_interval = heartbeat_interval
+        self._command_timeout = command_timeout
+        self._reconnect_max_delay = reconnect_max_delay
 
         self.state = DeviceState()
         self._sequence: int = 0
@@ -150,11 +160,11 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         try:
             await asyncio.wait_for(
                 self._do_send_dps(dps),
-                timeout=DEFAULT_COMMAND_TIMEOUT,
+                timeout=self._command_timeout,
             )
         except TimeoutError as exc:
             raise HomeAssistantError(
-                f"Device {self._gw_id} did not respond within {DEFAULT_COMMAND_TIMEOUT}s"
+                f"Device {self._gw_id} did not respond within {self._command_timeout}s"
             ) from exc
 
     async def _do_send_dps(self, dps: dict[str, Any]) -> None:
@@ -177,7 +187,7 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     async def _connection_loop(self) -> None:
         """Reconnect loop with exponential back-off."""
-        from tuya_cloudless.const import RECONNECT_INITIAL_DELAY, RECONNECT_MAX_DELAY
+        from tuya_cloudless.const import RECONNECT_INITIAL_DELAY
 
         delay = RECONNECT_INITIAL_DELAY
         _first_attempt = True
@@ -203,7 +213,7 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 )
                 self.async_update_listeners()
                 await asyncio.sleep(delay)
-                delay = min(delay * 2, RECONNECT_MAX_DELAY)
+                delay = min(delay * 2, self._reconnect_max_delay)
 
     async def _connect(self) -> None:
         """Establish TCP connection and run receive loop until disconnected."""
@@ -267,11 +277,11 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.state.available = False
 
     async def _heartbeat_loop(self) -> None:
-        """Send heartbeat frames at HEARTBEAT_INTERVAL seconds."""
+        """Send heartbeat frames at the configured interval."""
         from tuya_cloudless.protocol import encode_heartbeat
 
         while True:
-            await asyncio.sleep(HEARTBEAT_INTERVAL)
+            await asyncio.sleep(self._heartbeat_interval)
             if self._writer is None:
                 break
             try:
@@ -316,7 +326,9 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                         local_key=self._local_key,
                         session_key=self._session_key,
                     )
-                    self._consecutive_decode_errors = 0
+                    if self._consecutive_decode_errors > 0:
+                        self._consecutive_decode_errors = 0
+                        self._clear_auth_repair_issue()
                     self._on_frame(frame)
                 except (TuyaCloudlessError, ValueError) as exc:
                     self._consecutive_decode_errors += 1
@@ -332,10 +344,31 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                             self._gw_id,
                             self._consecutive_decode_errors,
                         )
+                        self._raise_auth_repair_issue()
                         # Close TCP stream to trigger reconnect loop
                         if self._writer is not None:
                             self._writer.close()
                         return
+
+    def _raise_auth_repair_issue(self) -> None:
+        """Create an HA repair issue directing the user to re-authenticate."""
+        from homeassistant.helpers.issue_registry import IssueSeverity, async_create_issue
+
+        async_create_issue(
+            self.hass,
+            DOMAIN,
+            f"auth_failed_{self._entry_id}",
+            is_fixable=True,
+            severity=IssueSeverity.ERROR,
+            translation_key="auth_failed",
+            translation_placeholders={"device_name": self._gw_id},
+        )
+
+    def _clear_auth_repair_issue(self) -> None:
+        """Remove the auth failure repair issue once communication is healthy."""
+        from homeassistant.helpers.issue_registry import async_delete_issue
+
+        async_delete_issue(self.hass, DOMAIN, f"auth_failed_{self._entry_id}")
 
     @callback
     def _on_frame(self, frame: Any) -> None:
@@ -467,6 +500,7 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         Returns:
             New :class:`TuyaCloudlessCoordinator`.
         """
+        opts = entry.options or {}
         return cls(
             hass=hass,
             entry_id=entry.entry_id,
@@ -474,4 +508,13 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             ip_address=entry.data[CONF_IP_ADDRESS],
             local_key=entry.data[CONF_LOCAL_KEY],
             version=entry.data.get(CONF_PROTOCOL_VERSION, "3.3"),
+            heartbeat_interval=float(
+                opts.get(CONF_OPT_HEARTBEAT_INTERVAL, DEFAULT_OPT_HEARTBEAT_INTERVAL)
+            ),
+            command_timeout=float(
+                opts.get(CONF_OPT_COMMAND_TIMEOUT, DEFAULT_OPT_COMMAND_TIMEOUT)
+            ),
+            reconnect_max_delay=float(
+                opts.get(CONF_OPT_RECONNECT_MAX_DELAY, DEFAULT_OPT_RECONNECT_MAX_DELAY)
+            ),
         )
