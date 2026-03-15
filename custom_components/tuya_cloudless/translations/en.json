@@ -21,7 +21,7 @@
       },
       "local_key": {
         "title": "Enter the security key",
-        "description": "Your device at **{ip_address}** (firmware {firmware}) needs a security key to communicate locally.\n\nThe key is shown when you pair the device using the Tuya Cloudless tool. It is stored only in Home Assistant — nothing is sent to the cloud.",
+        "description": "Your device at **{ip_address}** (firmware {firmware}) needs a security key to communicate locally.\n\nThe key is shown when you pair the device using the [Tuya Cloudless pairing tool]({pairing_tool_url}). It is stored only in Home Assistant — nothing is sent to the cloud.",
         "data": {
           "local_key": "Security key",
           "device_name": "Device name",
@@ -40,7 +40,7 @@
       },
       "manual": {
         "title": "Add device manually",
-        "description": "Enter the details for your Tuya device. The device ID and security key are shown in the Tuya Cloudless pairing tool.",
+        "description": "Enter the details for your Tuya device. The device ID and security key are shown in the [Tuya Cloudless pairing tool]({pairing_tool_url}).",
         "data": {
           "gw_id": "Device ID",
           "local_key": "Security key",
@@ -59,7 +59,7 @@
       },
       "discovery": {
         "title": "Tuya device found",
-        "description": "A device was detected at **{ip_address}** (firmware {firmware}).\n\nEnter the security key to finish setup.",
+        "description": "A device was detected at **{ip_address}** (firmware {firmware}).\n\nEnter the security key from the [Tuya Cloudless pairing tool]({pairing_tool_url}) to finish setup.",
         "data": {
           "local_key": "Security key",
           "profile": "Device type",
@@ -71,7 +71,7 @@
       },
       "reauth_confirm": {
         "title": "Update security key",
-        "description": "The security key for **{device_name}** stopped working. This happens if the device was factory reset or paired again.\n\nEnter the new security key to reconnect.",
+        "description": "The security key for **{device_name}** stopped working. This happens if the device was factory reset or paired again.\n\nGet the new key from the [Tuya Cloudless pairing tool]({pairing_tool_url}) and enter it below to reconnect.",
         "data": {
           "local_key": "New security key",
           "ip_address": "IP address (if it changed)"

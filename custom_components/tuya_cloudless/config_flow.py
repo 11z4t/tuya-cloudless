@@ -23,6 +23,7 @@ import asyncio
 import contextlib
 import logging
 from typing import Any
+from urllib.parse import urlparse
 
 import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry, ConfigFlow, ConfigFlowResult, OptionsFlow
@@ -260,6 +261,7 @@ class TuyaCloudlessConfigFlow(ConfigFlow, domain=DOMAIN):
             description_placeholders={
                 "ip_address": self._device.get(CONF_IP_ADDRESS, ""),
                 "firmware": self._device.get(CONF_PROTOCOL_VERSION, ""),
+                "pairing_tool_url": self._pairing_tool_url(),
             },
         )
 
@@ -390,6 +392,9 @@ class TuyaCloudlessConfigFlow(ConfigFlow, domain=DOMAIN):
             step_id="manual",
             data_schema=schema,
             errors=errors,
+            description_placeholders={
+                "pairing_tool_url": self._pairing_tool_url(),
+            },
         )
 
     # ── HA-initiated discovery ─────────────────────────────────────────────────
@@ -450,6 +455,7 @@ class TuyaCloudlessConfigFlow(ConfigFlow, domain=DOMAIN):
             description_placeholders={
                 "ip_address": self._device.get(CONF_IP_ADDRESS, ""),
                 "firmware": self._device.get(CONF_PROTOCOL_VERSION, ""),
+                "pairing_tool_url": self._pairing_tool_url(),
             },
         )
 
@@ -525,6 +531,7 @@ class TuyaCloudlessConfigFlow(ConfigFlow, domain=DOMAIN):
             errors=errors,
             description_placeholders={
                 "device_name": reauth_entry.title,
+                "pairing_tool_url": self._pairing_tool_url(),
             },
         )
 
@@ -599,6 +606,26 @@ class TuyaCloudlessConfigFlow(ConfigFlow, domain=DOMAIN):
     ) -> TuyaCloudlessOptionsFlow:
         """Return the options flow handler."""
         return TuyaCloudlessOptionsFlow()
+
+    def _pairing_tool_url(self) -> str:
+        """Return the URL to the Tuya Cloudless pairing tool running on this HA host.
+
+        Extracts the hostname from HA's internal URL and appends port 8099.
+        Falls back to ``http://homeassistant.local:8099`` when the internal URL
+        is not configured.
+
+        Returns:
+            Absolute HTTP URL string for the pairing tool.
+        """
+        try:
+            internal = getattr(self.hass.config, "internal_url", None)
+        except AttributeError:
+            internal = None
+        if isinstance(internal, str) and internal:
+            parsed = urlparse(internal)
+            host = parsed.hostname or "homeassistant.local"
+            return f"http://{host}:8099"
+        return "http://homeassistant.local:8099"
 
     # ── Private helpers ────────────────────────────────────────────────────────
 

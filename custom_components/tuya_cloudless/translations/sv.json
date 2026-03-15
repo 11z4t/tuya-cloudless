@@ -21,7 +21,7 @@
       },
       "local_key": {
         "title": "Ange säkerhetsnyckeln",
-        "description": "Din enhet på **{ip_address}** (firmware {firmware}) behöver en säkerhetsnyckel för att kommunicera lokalt.\n\nNyckeln visas när du kopplar ihop enheten med Tuya Cloudless. Den lagras bara i Home Assistant — inget skickas till molnet.",
+        "description": "Din enhet på **{ip_address}** (firmware {firmware}) behöver en säkerhetsnyckel för att kommunicera lokalt.\n\nNyckeln visas när du kopplar ihop enheten med [Tuya Cloudless-verktyget]({pairing_tool_url}). Den lagras bara i Home Assistant — inget skickas till molnet.",
         "data": {
           "local_key": "Säkerhetsnyckel",
           "device_name": "Enhetsnamn",
@@ -40,7 +40,7 @@
       },
       "manual": {
         "title": "Lägg till enhet manuellt",
-        "description": "Ange uppgifterna för din Tuya-enhet. Enhets-ID och säkerhetsnyckel visas i Tuya Cloudless-verktyget.",
+        "description": "Ange uppgifterna för din Tuya-enhet. Enhets-ID och säkerhetsnyckel visas i [Tuya Cloudless-verktyget]({pairing_tool_url}).",
         "data": {
           "gw_id": "Enhets-ID",
           "local_key": "Säkerhetsnyckel",
@@ -59,7 +59,7 @@
       },
       "discovery": {
         "title": "Tuya-enhet hittad",
-        "description": "En enhet hittades på **{ip_address}** (firmware {firmware}).\n\nAnge säkerhetsnyckeln för att slutföra inställningen.",
+        "description": "En enhet hittades på **{ip_address}** (firmware {firmware}).\n\nAnge säkerhetsnyckeln från [Tuya Cloudless-verktyget]({pairing_tool_url}) för att slutföra inställningen.",
         "data": {
           "local_key": "Säkerhetsnyckel",
           "profile": "Enhetstyp",
@@ -71,7 +71,7 @@
       },
       "reauth_confirm": {
         "title": "Uppdatera säkerhetsnyckeln",
-        "description": "Säkerhetsnyckeln för **{device_name}** har slutat fungera. Det händer om enheten har återställts till fabriksinställningar eller kopplats ihop på nytt.\n\nAnge den nya säkerhetsnyckeln för att återansluta.",
+        "description": "Säkerhetsnyckeln för **{device_name}** har slutat fungera. Det händer om enheten har återställts till fabriksinställningar eller kopplats ihop på nytt.\n\nHämta den nya nyckeln från [Tuya Cloudless-verktyget]({pairing_tool_url}) och ange den nedan för att återansluta.",
         "data": {
           "local_key": "Ny säkerhetsnyckel",
           "ip_address": "IP-adress (om den har ändrats)"
