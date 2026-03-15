@@ -53,6 +53,19 @@ from tuya_cloudless.exceptions import (
     UnsupportedVersionError,
 )
 
+__all__ = [
+    "TuyaFrame",
+    "decode_frame",
+    "encode_control",
+    "encode_frame",
+    "encode_heartbeat",
+    "encode_session_key_finish",
+    "encode_session_key_start",
+    "encode_status_query",
+    "encode_status_response",
+    "split_frames",
+]
+
 # ── Internal constants ────────────────────────────────────────────────────────
 
 _STRUCT_HEADER = struct.Struct(">4sIII")  # prefix(4) + seq(4) + cmd(4) + length(4)

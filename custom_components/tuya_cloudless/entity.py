@@ -6,6 +6,8 @@ All platform entities (switch, light, sensor) inherit from
 
 from __future__ import annotations
 
+__all__ = ["TuyaCloudlessEntity"]
+
 from typing import Any
 
 from homeassistant.helpers.device_registry import DeviceInfo

@@ -59,6 +59,11 @@ from tuya_cloudless.exceptions import CryptoError, DiscoveryError, MalformedPack
 
 _LOGGER = logging.getLogger(__name__)
 
+__all__ = [
+    "DiscoveredDevice",
+    "DiscoveryListener",
+]
+
 # ── Device info dataclass ─────────────────────────────────────────────────────
 
 

@@ -41,6 +41,26 @@ from tuya_cloudless.const import (
 )
 from tuya_cloudless.exceptions import AuthenticationError, CryptoError, KeyDerivationError
 
+__all__ = [
+    "ECDHKeyPair",
+    "ProtocolVersion",
+    "add_v33_header",
+    "compute_crc32",
+    "crc32_bytes",
+    "decrypt_ecb",
+    "decrypt_gcm",
+    "decrypt_payload",
+    "derive_ecb_key",
+    "derive_session_key",
+    "encrypt_ecb",
+    "encrypt_gcm",
+    "encrypt_payload",
+    "generate_ecdh_keypair",
+    "hmac_sha256",
+    "strip_v33_header",
+    "verify_crc32",
+]
+
 # ── Internal constants ────────────────────────────────────────────────────────
 
 _AES_BLOCK = 16
