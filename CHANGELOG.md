@@ -3,6 +3,14 @@
 All notable changes to Tuya Cloudless are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [0.2.3] — 2026-03-15
+
+### Fixed
+- Device profiles not loading on HACS installations: `PROFILES_DIR` now resolves
+  to `custom_components/tuya_cloudless/profiles/` (bundled) rather than the repo
+  root `profiles/` (which does not exist in installed environments). Release zip
+  now bundles all 18 YAML profiles inside the integration directory.
+
 ## [0.2.2] — 2026-03-15
 
 ### Fixed

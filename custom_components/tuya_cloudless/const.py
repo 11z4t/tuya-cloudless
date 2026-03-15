@@ -77,7 +77,11 @@ PROTOCOL_VERSIONS: list[str] = ["3.1", "3.2", "3.3", "3.4", "3.5"]
 DEFAULT_PROTOCOL_VERSION = "3.3"
 
 # Device profile directory (YAML files defining entity specs per device type)
-PROFILES_DIR: Path = Path(__file__).parent.parent.parent / "profiles"
+# Bundled path: custom_components/tuya_cloudless/profiles/ (HACS install)
+# Dev fallback: repo-root/profiles/ (local development)
+_BUNDLED_PROFILES: Path = Path(__file__).parent / "profiles"
+_DEV_PROFILES: Path = Path(__file__).parent.parent.parent / "profiles"
+PROFILES_DIR: Path = _BUNDLED_PROFILES if _BUNDLED_PROFILES.is_dir() else _DEV_PROFILES
 
 # Connection
 DEFAULT_TCP_PORT = 6668

@@ -48,17 +48,23 @@ jobs:
             "https://api.github.com/repos/${{ github.repository }}/releases/tags/${TAG}")
           echo "exists=$([ "$STATUS" = "200" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
 
-      - name: Bundle lib into integration
+      - name: Bundle lib and profiles into integration
         run: |
           # Copy lib/tuya_cloudless into custom_components/tuya_cloudless/lib/
           # so it is importable at runtime without any sys.path manipulation
           mkdir -p custom_components/tuya_cloudless/lib
           cp -r lib/tuya_cloudless custom_components/tuya_cloudless/lib/tuya_cloudless
+          # Copy profiles/ into custom_components/tuya_cloudless/profiles/
+          # so PROFILES_DIR resolves correctly on HACS installs
+          cp -r profiles custom_components/tuya_cloudless/profiles
 
       - name: Build integration zip
         run: |
           cd custom_components
-          zip -r "../tuya_cloudless.zip" tuya_cloudless/ --exclude "tuya_cloudless/__pycache__/*" --exclude "tuya_cloudless/lib/tuya_cloudless/__pycache__/*"
+          zip -r "../tuya_cloudless.zip" tuya_cloudless/ \
+            --exclude "tuya_cloudless/__pycache__/*" \
+            --exclude "tuya_cloudless/lib/tuya_cloudless/__pycache__/*" \
+            --exclude "tuya_cloudless/profiles/__pycache__/*"
           echo "Built tuya_cloudless.zip ($(du -sh ../tuya_cloudless.zip | cut -f1))"
 
       - name: Generate release notes
