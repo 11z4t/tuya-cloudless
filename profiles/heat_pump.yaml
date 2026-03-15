@@ -1,0 +1,13 @@
+name: "Heat Pump"
+model: "hp*"
+entities:
+  - platform: climate
+    name: heat_pump
+    dp_power: {id: "1", type: bool}
+    dp_mode: {id: "2", type: enum}
+    dp_temp_set: {id: "3", type: int, min_raw: 100, max_raw: 300, scale: 10}
+    dp_temp_current: {id: "4", type: int, scale: 10}
+    dp_options: ["heat", "cool", "auto"]
+    target_min: 10
+    target_max: 30
+    step: 0.5

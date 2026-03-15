@@ -171,6 +171,9 @@
     "light": {
       "main_light": {
         "name": "Light"
+      },
+      "fan_light": {
+        "name": "Fan Light"
       }
     },
     "sensor": {
@@ -185,16 +188,78 @@
       },
       "current": {
         "name": "Current"
+      },
+      "battery": {
+        "name": "Battery"
+      },
+      "co2": {
+        "name": "CO₂"
+      },
+      "temperature": {
+        "name": "Temperature"
+      },
+      "humidity": {
+        "name": "Humidity"
+      },
+      "floor_temp": {
+        "name": "Floor Temperature"
       }
     },
     "binary_sensor": {
       "overload": {
         "name": "Overload"
+      },
+      "leak": {
+        "name": "Water Leak"
+      },
+      "motion": {
+        "name": "Motion"
+      },
+      "smoke": {
+        "name": "Smoke"
+      },
+      "contact": {
+        "name": "Door/Window"
+      },
+      "tamper": {
+        "name": "Tamper"
       }
     },
     "cover": {
       "cover": {
         "name": "Cover"
+      }
+    },
+    "number": {
+      "volume": {
+        "name": "Volume"
+      }
+    },
+    "select": {
+      "siren_mode": {
+        "name": "Siren Mode"
+      }
+    },
+    "climate": {
+      "heater": {
+        "name": "Heater"
+      },
+      "thermostat": {
+        "name": "Thermostat"
+      },
+      "ac": {
+        "name": "Air Conditioner"
+      },
+      "floor_heater": {
+        "name": "Floor Heating"
+      },
+      "heat_pump": {
+        "name": "Heat Pump"
+      }
+    },
+    "fan": {
+      "main_fan": {
+        "name": "Fan"
       }
     }
   }

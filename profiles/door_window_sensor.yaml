@@ -1,0 +1,13 @@
+name: "Door/Window Sensor"
+model: "dws*"
+entities:
+  - platform: binary_sensor
+    name: contact
+    dp_power: {id: "1", type: bool}
+    device_class: door
+  - platform: sensor
+    name: battery
+    dp_value: {id: "3", type: int}
+    device_class: battery
+    unit: "%"
+    state_class: measurement

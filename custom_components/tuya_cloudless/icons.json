@@ -62,6 +62,67 @@
       "cover": {
         "default": "mdi:window-shutter"
       }
+    },
+    "number": {
+      "volume": {
+        "default": "mdi:volume-high"
+      }
+    },
+    "select": {
+      "siren_mode": {
+        "default": "mdi:bell-ring"
+      }
+    },
+    "climate": {
+      "heater": {
+        "default": "mdi:radiator"
+      },
+      "thermostat": {
+        "default": "mdi:thermostat"
+      },
+      "ac": {
+        "default": "mdi:air-conditioner"
+      },
+      "floor_heater": {
+        "default": "mdi:heating-coil"
+      },
+      "heat_pump": {
+        "default": "mdi:heat-pump"
+      }
+    },
+    "fan": {
+      "main_fan": {
+        "default": "mdi:fan",
+        "state": {
+          "on": "mdi:fan",
+          "off": "mdi:fan-off"
+        }
+      }
+    },
+    "binary_sensor": {
+      "tamper": {
+        "default": "mdi:shield-alert"
+      }
+    },
+    "sensor": {
+      "battery": {
+        "default": "mdi:battery"
+      },
+      "co2": {
+        "default": "mdi:molecule-co2"
+      },
+      "floor_temp": {
+        "default": "mdi:thermometer-lines"
+      }
+    },
+    "light": {
+      "fan_light": {
+        "default": "mdi:lightbulb",
+        "state": {
+          "on": "mdi:lightbulb",
+          "off": "mdi:lightbulb-outline"
+        }
+      }
     }
   }
 }

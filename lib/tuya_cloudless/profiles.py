@@ -66,7 +66,8 @@ class EntitySpec:
 
     Attributes:
         platform:      HA platform: "switch", "light", "sensor",
-                       "binary_sensor", or "cover".
+                       "binary_sensor", "cover", "number", "select",
+                       "climate", or "fan".
         name:          Translation key shown in HA (e.g. "main_switch").
         dp_power:      Primary on/off DP (switch, binary_sensor).
         dp_value:      Numeric or enum state DP (sensor).
@@ -102,6 +103,15 @@ class EntitySpec:
     device_class: str | None = None
     state_class: str | None = None
     unit: str | None = None
+    # Climate / fan / number / select fields
+    dp_mode: DPSpec | None = None
+    dp_temp_set: DPSpec | None = None
+    dp_temp_current: DPSpec | None = None
+    dp_oscillate: DPSpec | None = None
+    dp_options: tuple[str, ...] = ()
+    target_min: float | None = None
+    target_max: float | None = None
+    step: float = 1.0
 
 
 @dataclass
@@ -181,6 +191,14 @@ def _parse_entity_spec(data: dict[str, Any]) -> EntitySpec:
         device_class=str(data["device_class"]) if "device_class" in data else None,
         state_class=str(data["state_class"]) if "state_class" in data else None,
         unit=str(data["unit"]) if "unit" in data else None,
+        dp_mode=_parse_dp_spec(data.get("dp_mode")),
+        dp_temp_set=_parse_dp_spec(data.get("dp_temp_set")),
+        dp_temp_current=_parse_dp_spec(data.get("dp_temp_current")),
+        dp_oscillate=_parse_dp_spec(data.get("dp_oscillate")),
+        dp_options=tuple(str(v) for v in data.get("dp_options", [])),
+        target_min=float(data["target_min"]) if "target_min" in data else None,
+        target_max=float(data["target_max"]) if "target_max" in data else None,
+        step=float(data.get("step", 1.0)),
     )
 
 

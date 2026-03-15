@@ -1,0 +1,13 @@
+name: "Air Conditioner"
+model: "ac*"
+entities:
+  - platform: climate
+    name: ac
+    dp_power: {id: "1", type: bool}
+    dp_mode: {id: "2", type: enum}
+    dp_temp_set: {id: "3", type: int, min_raw: 160, max_raw: 310, scale: 10}
+    dp_temp_current: {id: "4", type: int, scale: 10}
+    dp_options: ["cool", "heat", "auto", "fan_only", "dry"]
+    target_min: 16
+    target_max: 31
+    step: 1.0

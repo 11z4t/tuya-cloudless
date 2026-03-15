@@ -1,0 +1,7 @@
+name: "Water Leak Sensor"
+model: "wls*"
+entities:
+  - platform: binary_sensor
+    name: leak
+    dp_power: {id: "1", type: bool}
+    device_class: moisture

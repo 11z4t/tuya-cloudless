@@ -1,0 +1,13 @@
+name: "PIR Motion Sensor"
+model: "pir*"
+entities:
+  - platform: binary_sensor
+    name: motion
+    dp_power: {id: "1", type: bool}
+    device_class: motion
+  - platform: sensor
+    name: battery
+    dp_value: {id: "3", type: int}
+    device_class: battery
+    unit: "%"
+    state_class: measurement

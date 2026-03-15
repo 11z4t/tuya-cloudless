@@ -1,0 +1,9 @@
+name: "Ventilation Fan"
+model: "vent*"
+entities:
+  - platform: fan
+    name: main_fan
+    dp_power: {id: "1", type: bool}
+    dp_value: {id: "3", type: int, min_raw: 1, max_raw: 3}
+    dp_mode: {id: "2", type: enum}
+    dp_options: ["sleep", "auto", "turbo"]

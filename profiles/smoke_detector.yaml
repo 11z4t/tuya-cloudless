@@ -1,0 +1,11 @@
+name: "Smoke Detector"
+model: "smoke*"
+entities:
+  - platform: binary_sensor
+    name: smoke
+    dp_power: {id: "1", type: bool}
+    device_class: smoke
+  - platform: binary_sensor
+    name: tamper
+    dp_power: {id: "4", type: bool}
+    device_class: tamper

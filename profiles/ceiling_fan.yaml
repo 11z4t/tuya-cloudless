@@ -1,0 +1,13 @@
+name: "Ceiling Fan"
+model: "fan*"
+entities:
+  - platform: fan
+    name: main_fan
+    dp_power: {id: "1", type: bool}
+    dp_value: {id: "3", type: int, min_raw: 1, max_raw: 6}
+    dp_direction: {id: "4", type: enum}
+    dp_mode: {id: "2", type: enum}
+    dp_options: ["sleep", "auto", "natural"]
+  - platform: light
+    name: fan_light
+    dp_power: {id: "9", type: bool}

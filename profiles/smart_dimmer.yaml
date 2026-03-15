@@ -1,0 +1,7 @@
+name: "Smart Dimmer"
+model: "dimmer*"
+entities:
+  - platform: light
+    name: main_light
+    dp_power: {id: "1", type: bool}
+    dp_brightness: {id: "2", type: int, min_raw: 10, max_raw: 1000}

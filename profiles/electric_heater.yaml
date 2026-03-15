@@ -1,0 +1,13 @@
+name: "Electric Heater"
+model: "heater*"
+entities:
+  - platform: climate
+    name: heater
+    dp_power: {id: "1", type: bool}
+    dp_mode: {id: "2", type: enum}
+    dp_temp_set: {id: "3", type: int, min_raw: 5, max_raw: 35, scale: 1}
+    dp_temp_current: {id: "4", type: int, scale: 1}
+    dp_options: ["manual", "eco", "off"]
+    target_min: 5
+    target_max: 35
+    step: 0.5

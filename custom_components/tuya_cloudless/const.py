@@ -27,7 +27,17 @@ __all__ = [
 DOMAIN = "tuya_cloudless"
 
 # Supported HA platforms
-PLATFORMS: list[str] = ["switch", "light", "sensor", "binary_sensor", "cover"]
+PLATFORMS: list[str] = [
+    "switch",
+    "light",
+    "sensor",
+    "binary_sensor",
+    "cover",
+    "number",
+    "select",
+    "climate",
+    "fan",
+]
 
 # Config entry keys
 CONF_GW_ID = "gw_id"

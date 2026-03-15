@@ -1,0 +1,14 @@
+name: "Siren / Alarm"
+model: "siren*"
+entities:
+  - platform: switch
+    name: main_switch
+    dp_power: {id: "1", type: bool}
+  - platform: select
+    name: siren_mode
+    dp_value: {id: "5", type: enum}
+    dp_options: ["sound1", "sound2", "alarm"]
+  - platform: number
+    name: volume
+    dp_value: {id: "6", type: int, min_raw: 0, max_raw: 100}
+    unit: "%"

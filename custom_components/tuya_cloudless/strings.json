@@ -171,6 +171,9 @@
     "light": {
       "main_light": {
         "name": "Lampa"
+      },
+      "fan_light": {
+        "name": "Fläktlampa"
       }
     },
     "sensor": {
@@ -185,16 +188,78 @@
       },
       "current": {
         "name": "Ström"
+      },
+      "battery": {
+        "name": "Batteri"
+      },
+      "co2": {
+        "name": "CO₂"
+      },
+      "temperature": {
+        "name": "Temperatur"
+      },
+      "humidity": {
+        "name": "Luftfuktighet"
+      },
+      "floor_temp": {
+        "name": "Golvtemperatur"
       }
     },
     "binary_sensor": {
       "overload": {
         "name": "Överlastskydd"
+      },
+      "leak": {
+        "name": "Vattenläcka"
+      },
+      "motion": {
+        "name": "Rörelse"
+      },
+      "smoke": {
+        "name": "Rök"
+      },
+      "contact": {
+        "name": "Öppen/stängd"
+      },
+      "tamper": {
+        "name": "Sabotage"
       }
     },
     "cover": {
       "cover": {
         "name": "Rullgardin"
+      }
+    },
+    "number": {
+      "volume": {
+        "name": "Volym"
+      }
+    },
+    "select": {
+      "siren_mode": {
+        "name": "Sirenläge"
+      }
+    },
+    "climate": {
+      "heater": {
+        "name": "Värmare"
+      },
+      "thermostat": {
+        "name": "Termostat"
+      },
+      "ac": {
+        "name": "Luftkonditionering"
+      },
+      "floor_heater": {
+        "name": "Golvvärme"
+      },
+      "heat_pump": {
+        "name": "Värmepump"
+      }
+    },
+    "fan": {
+      "main_fan": {
+        "name": "Fläkt"
       }
     }
   }
