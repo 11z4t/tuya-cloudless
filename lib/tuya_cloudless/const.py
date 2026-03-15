@@ -120,3 +120,26 @@ RECONNECT_MAX_DELAY: float = 60.0
 
 #: UDP discovery socket read timeout (seconds)
 UDP_READ_TIMEOUT: float = 5.0
+
+# ── Timeouts and buffers ──────────────────────────────────────────────────────
+
+#: TCP connect timeout (seconds)
+TCP_CONNECT_TIMEOUT: float = 10.0
+
+#: TCP receive timeout between chunks (seconds)
+TCP_RECEIVE_TIMEOUT: float = 30.0
+
+#: TCP read buffer size (bytes)
+TCP_READ_BUFFER_SIZE: int = 4096
+
+#: Discovery idle-poll interval when no devices seen yet (seconds)
+DISCOVERY_POLLING_INTERVAL: float = 0.1
+
+#: UDP discovery queue dequeue timeout (seconds)
+UDP_QUEUE_TIMEOUT: float = 1.0
+
+#: Age after which a discovered device is considered stale (seconds)
+DISCOVERY_DEVICE_STALE_AGE: float = 300.0
+
+#: Default timeout for wait_for_device (seconds)
+DISCOVERY_WAIT_TIMEOUT: float = 30.0
