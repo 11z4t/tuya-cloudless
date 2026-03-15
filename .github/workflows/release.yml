@@ -48,6 +48,12 @@ jobs:
             "https://api.github.com/repos/${{ github.repository }}/releases/tags/${TAG}")
           echo "exists=$([ "$STATUS" = "200" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
 
+      - name: Build integration zip
+        run: |
+          cd custom_components
+          zip -r "../tuya_cloudless.zip" tuya_cloudless/
+          echo "Built tuya_cloudless.zip"
+
       - name: Generate release notes
         if: steps.check.outputs.exists == 'false'
         id: notes
@@ -67,6 +73,8 @@ jobs:
             echo "### Installation"
             echo ""
             echo "Install via [HACS](https://hacs.xyz) → Custom repositories → \`https://github.com/11z4t/tuya-cloudless\`"
+            echo ""
+            echo "Full changelog: [CHANGELOG.md](https://github.com/11z4t/tuya-cloudless/blob/main/CHANGELOG.md)"
             echo "NOTES_EOF"
           } >> "$GITHUB_OUTPUT"
 
@@ -77,4 +85,5 @@ jobs:
           tag_name: ${{ steps.tag.outputs.tag }}
           name: ${{ steps.tag.outputs.tag }}
           body: ${{ steps.notes.outputs.notes }}
+          files: tuya_cloudless.zip
           generate_release_notes: false
