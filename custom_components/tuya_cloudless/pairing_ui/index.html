@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tuya Cloudless — Pair Device</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:       #0f172a;
+      --surface:  #1e293b;
+      --border:   #334155;
+      --accent:   #38bdf8;
+      --accent2:  #818cf8;
+      --text:     #e2e8f0;
+      --muted:    #94a3b8;
+      --success:  #34d399;
+      --warn:     #fbbf24;
+      --error:    #f87171;
+      --radius:   12px;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: system-ui, -apple-system, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+      padding: 24px 16px 48px;
+    }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 32px 28px;
+      width: 100%;
+      max-width: 480px;
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+    }
+
+    h1 {
+      font-size: 1.4rem;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    h1 svg { flex-shrink: 0; }
+
+    .step {
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+    .step-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 600;
+      font-size: 0.95rem;
+    }
+    .step-num {
+      background: var(--accent);
+      color: #0f172a;
+      border-radius: 50%;
+      width: 24px;
+      height: 24px;
+      font-size: 0.8rem;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    label {
+      display: block;
+      font-size: 0.85rem;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+
+    input[type="text"],
+    input[type="password"] {
+      width: 100%;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      padding: 10px 14px;
+      font-size: 0.95rem;
+      outline: none;
+      transition: border-color .15s;
+    }
+    input:focus { border-color: var(--accent); }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      border: none;
+      border-radius: 8px;
+      padding: 11px 20px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity .15s, transform .1s;
+      text-decoration: none;
+    }
+    .btn:active { transform: scale(.97); }
+    .btn:disabled { opacity: .4; cursor: not-allowed; transform: none; }
+    .btn-primary { background: var(--accent); color: #0f172a; }
+    .btn-success { background: var(--success); color: #0f172a; }
+    .btn-ha      { background: var(--accent2); color: #0f172a; }
+    .btn-sm      { padding: 8px 14px; font-size: 0.85rem; }
+
+    .status-box {
+      border-radius: 8px;
+      padding: 12px 16px;
+      font-size: 0.9rem;
+      display: none;
+    }
+    .status-box.visible { display: block; }
+    .status-info    { background: #0c2340; border: 1px solid #1d4ed8; color: #93c5fd; }
+    .status-success { background: #052e16; border: 1px solid #166534; color: var(--success); }
+    .status-warn    { background: #2d1a00; border: 1px solid #92400e; color: var(--warn); }
+    .status-error   { background: #2d0000; border: 1px solid #7f1d1d; color: var(--error); }
+
+    .result-grid {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 8px 16px;
+      font-size: 0.9rem;
+    }
+    .result-label { color: var(--muted); }
+    .result-value { font-family: monospace; word-break: break-all; }
+    .key-value    { color: var(--success); font-weight: 700; letter-spacing: .05em; }
+
+    .hidden { display: none !important; }
+
+    .spinner {
+      width: 18px; height: 18px;
+      border: 2px solid rgba(255,255,255,.25);
+      border-top-color: currentColor;
+      border-radius: 50%;
+      animation: spin .7s linear infinite;
+      flex-shrink: 0;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .badge {
+      font-size: 0.72rem;
+      background: var(--border);
+      border-radius: 4px;
+      padding: 2px 6px;
+      color: var(--muted);
+    }
+
+    footer {
+      text-align: center;
+      font-size: 0.78rem;
+      color: var(--muted);
+    }
+    footer a { color: var(--accent); text-decoration: none; }
+  </style>
+</head>
+<body>
+<div class="card">
+
+  <!-- Header -->
+  <h1>
+    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"
+            stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+    Tuya Cloudless &mdash; Pair Device
+  </h1>
+
+  <!-- Browser check -->
+  <div id="no-ble-warning" class="status-box status-warn hidden">
+    ⚠️ <strong>Web Bluetooth not supported.</strong>
+    Use <strong>Chrome</strong> or <strong>Edge</strong> on desktop or Android.
+    Safari and Firefox do not support Web Bluetooth.
+  </div>
+
+  <!-- Step 1 — WiFi credentials -->
+  <div class="step">
+    <div class="step-header">
+      <span class="step-num">1</span> WiFi credentials
+    </div>
+    <div>
+      <label for="ssid">Network name (SSID)</label>
+      <input type="text" id="ssid" placeholder="My Home WiFi" autocomplete="off" spellcheck="false">
+    </div>
+    <div>
+      <label for="password">Password</label>
+      <input type="password" id="password" placeholder="WiFi password" autocomplete="off">
+    </div>
+  </div>
+
+  <!-- Step 2 — BLE pairing -->
+  <div class="step">
+    <div class="step-header">
+      <span class="step-num">2</span>
+      Pair device via Bluetooth
+      <span class="badge">Chrome / Edge</span>
+    </div>
+    <p style="font-size:.85rem;color:var(--muted);">
+      Put your Tuya device in pairing mode (factory reset or hold pair button until
+      the indicator flashes rapidly), then click <strong>Scan &amp; Pair</strong>.
+    </p>
+    <button id="btn-pair" class="btn btn-primary" onclick="startPairing()">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/>
+        <path d="M8 12h8M12 8v8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+      </svg>
+      Scan &amp; Pair
+    </button>
+    <div id="pair-status" class="status-box"></div>
+  </div>
+
+  <!-- Step 3 — Activation result -->
+  <div id="result-section" class="step hidden">
+    <div class="step-header">
+      <span class="step-num">3</span>
+      Device activated ✓
+    </div>
+    <div id="result-grid" class="result-grid"></div>
+    <a id="btn-add-ha" href="#" class="btn btn-ha" target="_top">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"
+              stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        <polyline points="9,22 9,12 15,12 15,22"
+                  stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      Add to Home Assistant
+    </a>
+  </div>
+
+  <footer>
+    Tuya Cloudless &bull; <a href="https://github.com/Z-Solutions-Dev/tuya-cloudless" target="_blank">GitHub</a>
+    &bull; No cloud account required
+  </footer>
+</div>
+
+<script>
+"use strict";
+
+// ── Constants ────────────────────────────────────────────────────────────────
+const BLE_SERVICE      = "0000fd50-0000-1000-8000-00805f9b34fb";
+const WRITE_CHAR       = "00000001-0000-1001-8001-00805f9b07d0";
+const NOTIFY_CHAR      = "00000002-0000-1001-8001-00805f9b07d0";
+const BLE_MAX_MTU      = 20;   // ATT default MTU — 2 byte header, 18 byte payload
+const PROTOCOL_VER     = 0x04; // WiFi+BLE combo protocol version
+const MAGIC            = [0x55, 0xAA];
+const CMD_HANDSHAKE    = 0x00;
+const CMD_WIFI_CONFIG  = 0x01;
+const CMD_PAIR_FAIL    = 0x05;
+
+// ── Activation server (this page's origin) ───────────────────────────────────
+const ACTIVATOR_URL = window.location.origin;
+const EVENTS_URL    = ACTIVATOR_URL + "/api/provision/events";
+
+// ── CRC-16/MODBUS ─────────────────────────────────────────────────────────────
+function crc16Modbus(data) {
+  let crc = 0xFFFF;
+  for (const byte of data) {
+    crc ^= byte;
+    for (let i = 0; i < 8; i++) {
+      if (crc & 1) crc = (crc >>> 1) ^ 0xA001;
+      else crc >>>= 1;
+    }
+  }
+  return crc & 0xFFFF;
+}
+
+// ── Frame encoding ────────────────────────────────────────────────────────────
+function encodeFrame(cmd, seq, payload) {
+  // Header: magic(2) version(1) cmd(1) seq(2 BE) len(2 BE)
+  const header = new Uint8Array(8);
+  header[0] = 0x55; header[1] = 0xAA;
+  header[2] = PROTOCOL_VER;
+  header[3] = cmd;
+  header[4] = (seq >> 8) & 0xFF; header[5] = seq & 0xFF;
+  header[6] = (payload.length >> 8) & 0xFF; header[7] = payload.length & 0xFF;
+
+  const body = new Uint8Array(header.length + payload.length);
+  body.set(header);
+  body.set(payload, header.length);
+
+  const crc = crc16Modbus(body);
+  const frame = new Uint8Array(body.length + 2);
+  frame.set(body);
+  frame[body.length]     = crc & 0xFF;         // LE low byte
+  frame[body.length + 1] = (crc >> 8) & 0xFF;  // LE high byte
+  return frame;
+}
+
+// ── Chunking (20-byte BLE transport) ─────────────────────────────────────────
+function chunkFrame(frameBytes) {
+  const PAYLOAD = BLE_MAX_MTU - 2; // 18 bytes per chunk
+  const chunks = [];
+  let offset = 0;
+  while (offset < frameBytes.length) {
+    chunks.push(frameBytes.slice(offset, offset + PAYLOAD));
+    offset += PAYLOAD;
+  }
+  const total = chunks.length;
+  return chunks.map((data, i) => {
+    const chunk = new Uint8Array(2 + data.length);
+    chunk[0] = i; chunk[1] = total;
+    chunk.set(data, 2);
+    return chunk;
+  });
+}
+
+// ── Response parsing ──────────────────────────────────────────────────────────
+let _recvChunks = [];
+let _recvResolve = null;
+
+function onNotify(event) {
+  const data = new Uint8Array(event.target.value.buffer);
+  _recvChunks.push(data);
+  const chunkNo = data[0], total = data[1];
+  if (chunkNo + 1 === total && _recvResolve) {
+    const resolve = _recvResolve;
+    _recvResolve = null;
+    resolve([..._recvChunks]);
+    _recvChunks = [];
+  }
+}
+
+function waitForResponse(timeoutMs = 10000) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      _recvResolve = null;
+      reject(new Error("BLE response timeout"));
+    }, timeoutMs);
+    _recvResolve = (chunks) => { clearTimeout(timer); resolve(chunks); };
+  });
+}
+
+function reassemble(chunks) {
+  const sorted = [...chunks].sort((a, b) => a[0] - b[0]);
+  const parts = sorted.map(c => c.slice(2));
+  const total = parts.reduce((s, p) => s + p.length, 0);
+  const buf = new Uint8Array(total);
+  let off = 0;
+  for (const p of parts) { buf.set(p, off); off += p.length; }
+  return buf;
+}
+
+function parseFrame(chunks) {
+  const data = reassemble(chunks);
+  if (data.length < 10) throw new Error("Frame too short");
+  if (data[0] !== 0x55 || data[1] !== 0xAA) throw new Error("Bad magic");
+  const cmd = data[3];
+  const payloadLen = (data[6] << 8) | data[7];
+  const payload = data.slice(8, 8 + payloadLen);
+  return { cmd, payload };
+}
+
+// ── Token generation ──────────────────────────────────────────────────────────
+function randomToken() {
+  const arr = new Uint8Array(16);
+  crypto.getRandomValues(arr);
+  return Array.from(arr).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+// ── UI helpers ────────────────────────────────────────────────────────────────
+function setStatus(id, cls, html) {
+  const el = document.getElementById(id);
+  el.className = `status-box ${cls} visible`;
+  el.innerHTML = html;
+}
+
+function showSpinner(id, msg) {
+  setStatus(id, "status-info", `<span style="display:flex;align-items:center;gap:8px"><span class="spinner"></span>${msg}</span>`);
+}
+
+function showResult(gw_id, local_key, ip_address) {
+  const grid = document.getElementById("result-grid");
+  grid.innerHTML = `
+    <span class="result-label">Device ID</span><span class="result-value">${esc(gw_id)}</span>
+    <span class="result-label">IP address</span><span class="result-value">${esc(ip_address)}</span>
+    <span class="result-label">Local key</span><span class="result-value key-value">${esc(local_key)}</span>
+  `;
+  document.getElementById("result-section").classList.remove("hidden");
+
+  // Build deep-link URL to HA config flow with pre-filled data
+  const params = new URLSearchParams({
+    domain: "tuya_cloudless",
+    gw_id,
+    local_key,
+    ip_address,
+  });
+  document.getElementById("btn-add-ha").href =
+    `/config/integrations/add?${params}`;
+}
+
+function esc(s) {
+  return String(s)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+// ── SSE for activation result ─────────────────────────────────────────────────
+function listenForActivation(token) {
+  const es = new EventSource(EVENTS_URL);
+  es.addEventListener("activated", (e) => {
+    try {
+      const d = JSON.parse(e.data);
+      if (!token || d.token === token || !d.token) {
+        es.close();
+        setStatus("pair-status", "status-success",
+          "✓ Device activated! Local key generated.");
+        showResult(d.gw_id, d.local_key, d.ip_address);
+        document.getElementById("btn-pair").disabled = false;
+      }
+    } catch (_) {}
+  });
+  es.onerror = () => es.close();
+  // Auto-close after 2 minutes
+  setTimeout(() => es.close(), 120_000);
+  return es;
+}
+
+// ── Main pairing flow ─────────────────────────────────────────────────────────
+async function startPairing() {
+  const btn  = document.getElementById("btn-pair");
+  const ssid = document.getElementById("ssid").value.trim();
+  const pwd  = document.getElementById("password").value;
+
+  if (!ssid) {
+    setStatus("pair-status", "status-warn", "⚠️ Enter a WiFi network name first.");
+    return;
+  }
+
+  btn.disabled = true;
+  document.getElementById("result-section").classList.add("hidden");
+
+  // 1. Check Web Bluetooth availability
+  if (!navigator.bluetooth) {
+    setStatus("pair-status", "status-error",
+      "❌ Web Bluetooth not available. Use Chrome or Edge.");
+    btn.disabled = false;
+    return;
+  }
+
+  const token = randomToken();
+  const activator = ACTIVATOR_URL;
+
+  // 2. Start listening for activation before BLE (device may activate quickly)
+  const es = listenForActivation(token);
+
+  let device, server, service, writeChar, notifyChar;
+
+  try {
+    // 3. Scan for Tuya BLE device
+    showSpinner("pair-status", "Scanning for Tuya device…");
+    device = await navigator.bluetooth.requestDevice({
+      filters: [{ services: [BLE_SERVICE] }],
+      optionalServices: [BLE_SERVICE],
+    });
+
+    showSpinner("pair-status", `Connecting to ${esc(device.name || device.id)}…`);
+    server = await device.gatt.connect();
+    service = await server.getPrimaryService(BLE_SERVICE);
+    writeChar  = await service.getCharacteristic(WRITE_CHAR);
+    notifyChar = await service.getCharacteristic(NOTIFY_CHAR);
+
+    await notifyChar.startNotifications();
+    notifyChar.addEventListener("characteristicvaluechanged", onNotify);
+
+    // 4. Handshake
+    showSpinner("pair-status", "Handshake…");
+    const controllerNonce = new Uint8Array(16);
+    crypto.getRandomValues(controllerNonce);
+
+    const hsFrame = encodeFrame(CMD_HANDSHAKE, 0, controllerNonce);
+    for (const chunk of chunkFrame(hsFrame)) {
+      await writeChar.writeValueWithoutResponse(chunk);
+    }
+
+    const hsChunks = await waitForResponse(10_000);
+    const hsResp = parseFrame(hsChunks);
+    if (hsResp.payload.length < 16) throw new Error("Bad handshake nonce");
+    // Session key = XOR of nonces (we don't need it in JS for now — device handles encryption)
+
+    // 5. Send WiFi config + token
+    showSpinner("pair-status", "Sending WiFi credentials…");
+    const wifiPayload = JSON.stringify({
+      s: ssid, p: pwd, t: token, r: "az", activator: activator,
+    });
+    const wifiBytes = new TextEncoder().encode(wifiPayload);
+    const wifiFrame = encodeFrame(CMD_WIFI_CONFIG, 1, wifiBytes);
+    for (const chunk of chunkFrame(wifiFrame)) {
+      await writeChar.writeValueWithoutResponse(chunk);
+    }
+
+    // 6. Wait for WiFi config ACK
+    const ackChunks = await waitForResponse(15_000);
+    const ack = parseFrame(ackChunks);
+    if (ack.cmd === CMD_PAIR_FAIL) throw new Error("Device rejected WiFi config");
+
+    showSpinner("pair-status", "Credentials sent ✓ — waiting for device to activate…");
+
+    // Disconnect BLE (device is now connecting to WiFi)
+    if (server.connected) server.disconnect();
+
+  } catch (err) {
+    es.close();
+    if (err.name === "NotFoundError" || err.name === "AbortError") {
+      setStatus("pair-status", "status-warn", "⚠️ Bluetooth scan cancelled.");
+    } else {
+      setStatus("pair-status", "status-error", `❌ ${esc(err.message)}`);
+    }
+    btn.disabled = false;
+  }
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+(function init() {
+  if (!navigator.bluetooth) {
+    document.getElementById("no-ble-warning").classList.remove("hidden");
+    document.getElementById("btn-pair").disabled = true;
+  }
+})();
+</script>
+</body>
+</html>

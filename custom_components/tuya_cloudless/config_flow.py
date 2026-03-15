@@ -100,6 +100,47 @@ class TuyaCloudlessConfigFlow(ConfigFlow, domain=DOMAIN):
         self._discovered: list[dict[str, Any]] = []
         self._device: dict[str, Any] = {}
 
+    # ── Step 0: Pairing tool deep-link ─────────────────────────────────────────
+
+    async def async_step_pair(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Import device data pre-filled from the Tuya Cloudless pairing tool.
+
+        The pairing tool (served at ``http://ha-host:8099``) links back to HA
+        with ``gw_id``, ``local_key``, and ``ip_address`` as URL query params.
+        The config flow framework passes these as ``user_input`` on the first
+        call so the user only has to confirm, not retype credentials.
+
+        Args:
+            user_input: Pre-filled device dict from the pairing tool, or
+                ``None`` on initial render.
+
+        Returns:
+            Config flow result — skips to confirm step if data is valid,
+            otherwise falls through to the manual entry form.
+        """
+        if user_input is not None:
+            gw_id = str(user_input.get(CONF_GW_ID, "")).strip()
+            local_key = str(user_input.get(CONF_LOCAL_KEY, "")).strip()
+            ip_address = str(user_input.get(CONF_IP_ADDRESS, "")).strip()
+
+            if gw_id and len(local_key) == _LOCAL_KEY_LENGTH and ip_address:
+                self._device = {
+                    CONF_GW_ID: gw_id,
+                    CONF_LOCAL_KEY: local_key,
+                    CONF_IP_ADDRESS: ip_address,
+                    CONF_PROTOCOL_VERSION: str(
+                        user_input.get(CONF_PROTOCOL_VERSION, DEFAULT_PROTOCOL_VERSION)
+                    ),
+                    CONF_DEVICE_NAME: str(user_input.get(CONF_DEVICE_NAME, "")).strip()
+                    or ip_address,
+                }
+                return await self.async_step_local_key()
+
+        # Data missing or invalid — fall through to manual entry
+        return await self.async_step_manual()
+
     # ── Step 1: Search ─────────────────────────────────────────────────────────
 
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
