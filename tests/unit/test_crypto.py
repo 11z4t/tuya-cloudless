@@ -18,7 +18,6 @@ from tuya_cloudless.crypto import (
 )
 from tuya_cloudless.exceptions import AuthenticationError, CryptoError, KeyDerivationError
 
-
 # ── Key derivation ────────────────────────────────────────────────────────────
 
 

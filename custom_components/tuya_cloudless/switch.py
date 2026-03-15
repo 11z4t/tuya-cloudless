@@ -41,7 +41,7 @@ class TuyaCloudlessSwitch(TuyaCloudlessEntity, SwitchEntity):
 
     def __init__(self, coordinator: TuyaCloudlessCoordinator) -> None:
         super().__init__(coordinator, dp_id=_DP_POWER)
-        self._attr_unique_id = f"{coordinator._gw_id}_switch"  # noqa: SLF001
+        self._attr_unique_id = f"{coordinator._gw_id}_switch"
 
     @property
     def is_on(self) -> bool | None:

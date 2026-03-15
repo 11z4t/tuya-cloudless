@@ -45,7 +45,7 @@ class MalformedPacketError(ProtocolError):
 
 
 class UnsupportedVersionError(ProtocolError):
-    """Protocol version in packet is not supported (outside 3.1–3.5)."""
+    """Protocol version in packet is not supported (outside 3.1-3.5)."""
 
 
 class CommandError(ProtocolError):

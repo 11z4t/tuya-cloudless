@@ -34,21 +34,21 @@ Usage::
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 import struct
+from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import AsyncIterator
 
 from tuya_cloudless.const import (
     CMD_UDP,
-    FRAME_PREFIX,
     FRAME_HEADER_SIZE,
+    FRAME_PREFIX,
     PROTOCOL_31,
     UDP_ENC_PORT,
     UDP_PORT,
-    VERSIONS_GCM,
 )
 from tuya_cloudless.crypto import decrypt_payload
 from tuya_cloudless.exceptions import CryptoError, DiscoveryError, MalformedPacketError
@@ -168,9 +168,9 @@ class DiscoveryListener:
 
         for port in (UDP_PORT, UDP_ENC_PORT):
             try:
-                bind_addr = self._interface or "0.0.0.0"  # noqa: S104 — intentional UDP listen
+                bind_addr = self._interface or "0.0.0.0"
                 transport, _ = await loop.create_datagram_endpoint(
-                    lambda: _DiscoveryProtocol(self._queue, f"udp:{port}"),
+                    lambda p=port: _DiscoveryProtocol(self._queue, f"udp:{p}"),
                     local_addr=(bind_addr, port),
                     allow_broadcast=True,
                     reuse_port=True,
@@ -193,10 +193,8 @@ class DiscoveryListener:
         self._transports.clear()
         if self._task and not self._task.done():
             self._task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await self._task
-            except asyncio.CancelledError:
-                pass
         _LOGGER.info("Tuya discovery: stopped")
 
     # ── Device enumeration ────────────────────────────────────────────────────
@@ -244,14 +242,12 @@ class DiscoveryListener:
                 return device
             remaining = deadline - asyncio.get_event_loop().time()
             if remaining <= 0:
-                raise asyncio.TimeoutError(
+                raise TimeoutError(
                     f"Device {gw_id!r} not discovered within {timeout}s"
                 )
             self._device_event.clear()
-            try:
+            with contextlib.suppress(TimeoutError):
                 await asyncio.wait_for(self._device_event.wait(), timeout=remaining)
-            except asyncio.TimeoutError:
-                pass
 
     async def devices(self) -> AsyncIterator[DiscoveredDevice]:
         """Async iterator that yields devices as they are discovered or updated.
@@ -279,7 +275,7 @@ class DiscoveryListener:
         while self._running:
             try:
                 data, addr = await asyncio.wait_for(self._queue.get(), timeout=1.0)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 continue
             except asyncio.CancelledError:
                 break
@@ -303,7 +299,15 @@ class DiscoveryListener:
                             device.gw_id,
                             device.ip,
                         )
-            except (MalformedPacketError, struct.error, json.JSONDecodeError, UnicodeDecodeError, ValueError, TypeError, KeyError):
+            except (
+                MalformedPacketError,
+                struct.error,
+                json.JSONDecodeError,
+                UnicodeDecodeError,
+                ValueError,
+                TypeError,
+                KeyError,
+            ):
                 _LOGGER.debug("Failed to parse discovery datagram from %s", addr[0], exc_info=True)
 
     def _parse_datagram(self, data: bytes, source_ip: str) -> DiscoveredDevice | None:

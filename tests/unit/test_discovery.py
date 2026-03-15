@@ -10,7 +10,6 @@ import pytest
 from tuya_cloudless.const import CMD_UDP, FRAME_PREFIX, FRAME_SUFFIX
 from tuya_cloudless.discovery import DiscoveredDevice, DiscoveryListener
 
-
 # ── DiscoveredDevice ──────────────────────────────────────────────────────────
 
 
@@ -71,7 +70,7 @@ class TestDiscoveryListenerParsing:
             "ability": 0,
         }
         raw = _make_discovery_packet(info)
-        device = listener._parse_datagram(raw, "10.0.0.1")  # noqa: SLF001
+        device = listener._parse_datagram(raw, "10.0.0.1")
         assert device is not None
         assert device.gw_id == "gw_001"
         assert device.ip == "10.0.0.1"
@@ -81,18 +80,18 @@ class TestDiscoveryListenerParsing:
     def test_parse_missing_gw_id_returns_none(self) -> None:
         listener = self._listener()
         raw = _make_discovery_packet({"ip": "10.0.0.2", "version": "3.1"})
-        device = listener._parse_datagram(raw, "10.0.0.2")  # noqa: SLF001
+        device = listener._parse_datagram(raw, "10.0.0.2")
         assert device is None
 
     def test_parse_too_short_returns_none(self) -> None:
         listener = self._listener()
-        device = listener._parse_datagram(b"\x00" * 5, "10.0.0.3")  # noqa: SLF001
+        device = listener._parse_datagram(b"\x00" * 5, "10.0.0.3")
         assert device is None
 
     def test_parse_bad_prefix_returns_none(self) -> None:
         listener = self._listener()
         raw = b"\xDE\xAD\xBE\xEF" + b"\x00" * 20
-        device = listener._parse_datagram(raw, "10.0.0.4")  # noqa: SLF001
+        device = listener._parse_datagram(raw, "10.0.0.4")
         assert device is None
 
     def test_source_ip_used_as_fallback(self) -> None:
@@ -100,7 +99,7 @@ class TestDiscoveryListenerParsing:
         listener = self._listener()
         info = {"gwId": "gw_002", "version": "3.1"}
         raw = _make_discovery_packet(info)
-        device = listener._parse_datagram(raw, "192.168.2.5")  # noqa: SLF001
+        device = listener._parse_datagram(raw, "192.168.2.5")
         assert device is not None
         assert device.ip == "192.168.2.5"
 

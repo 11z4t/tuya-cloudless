@@ -10,7 +10,6 @@ from homeassistant.components.light import (
     ATTR_COLOR_TEMP_KELVIN,
     ColorMode,
     LightEntity,
-    LightEntityFeature,
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -24,8 +23,8 @@ _LOGGER = logging.getLogger(__name__)
 # Standard Tuya light DPs
 _DP_POWER = "1"
 _DP_MODE = "2"       # "white" / "colour" / "scene"
-_DP_BRIGHTNESS = "3" # 10–1000
-_DP_COLOR_TEMP = "4" # 0 (warm) – 1000 (cool)
+_DP_BRIGHTNESS = "3" # 10-1000
+_DP_COLOR_TEMP = "4" # 0 (warm) - 1000 (cool)
 
 _TUYA_BRIGHTNESS_MAX = 1000
 _TUYA_BRIGHTNESS_MIN = 10
@@ -66,14 +65,14 @@ class TuyaCloudlessLight(TuyaCloudlessEntity, LightEntity):
     """
 
     _attr_translation_key = "main_light"
-    _attr_supported_color_modes = {ColorMode.COLOR_TEMP}
+    _attr_supported_color_modes = frozenset({ColorMode.COLOR_TEMP})
     _attr_color_mode = ColorMode.COLOR_TEMP
     _attr_min_color_temp_kelvin = 2700
     _attr_max_color_temp_kelvin = 6500
 
     def __init__(self, coordinator: TuyaCloudlessCoordinator) -> None:
         super().__init__(coordinator, dp_id=_DP_POWER)
-        self._attr_unique_id = f"{coordinator._gw_id}_light"  # noqa: SLF001
+        self._attr_unique_id = f"{coordinator._gw_id}_light"
 
     @property
     def is_on(self) -> bool | None:

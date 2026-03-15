@@ -13,6 +13,7 @@ Architecture:
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -117,10 +118,8 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         for task in (self._connect_task, self._heartbeat_task, self._read_task):
             if task and not task.done():
                 task.cancel()
-                try:
+                with contextlib.suppress(asyncio.CancelledError):
                     await task
-                except asyncio.CancelledError:
-                    pass
         await self._disconnect()
 
     # ── DPS control ───────────────────────────────────────────────────────────
@@ -146,7 +145,7 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 self._do_send_dps(dps),
                 timeout=DEFAULT_COMMAND_TIMEOUT,
             )
-        except asyncio.TimeoutError as exc:
+        except TimeoutError as exc:
             raise HomeAssistantError(
                 f"Device {self._gw_id} did not respond within {DEFAULT_COMMAND_TIMEOUT}s"
             ) from exc
@@ -180,7 +179,7 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 delay = RECONNECT_INITIAL_DELAY  # Reset on success
             except asyncio.CancelledError:
                 return
-            except (OSError, asyncio.TimeoutError, TuyaCloudlessError) as exc:
+            except (TimeoutError, OSError, TuyaCloudlessError) as exc:
                 self.state.available = False
                 self.state.last_error = str(exc)
                 _LOGGER.warning(
@@ -261,7 +260,7 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         while True:
             try:
                 chunk = await asyncio.wait_for(reader.read(4096), timeout=30.0)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 _LOGGER.debug("[%s] Receive timeout — checking connection", self._gw_id)
                 continue
             if not chunk:
@@ -307,7 +306,7 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     @classmethod
     def from_config_entry(
         cls, hass: HomeAssistant, entry: Any
-    ) -> "TuyaCloudlessCoordinator":
+    ) -> TuyaCloudlessCoordinator:
         """Construct a coordinator from a config entry.
 
         Args:

@@ -16,11 +16,11 @@ HA-initiated discovery:
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 from typing import Any
 
 import voluptuous as vol
-
 from homeassistant.config_entries import ConfigEntry, ConfigFlow, ConfigFlowResult, OptionsFlow
 from homeassistant.core import callback
 from homeassistant.helpers.selector import (
@@ -96,7 +96,7 @@ class TuyaCloudlessConfigFlow(ConfigFlow, domain=DOMAIN):
                     self._run_discovery(),
                     timeout=_DISCOVERY_TIMEOUT,
                 )
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 self._discovered = []
             except OSError as exc:
                 _LOGGER.debug("Discovery socket error: %s", exc)
@@ -418,7 +418,7 @@ class TuyaCloudlessConfigFlow(ConfigFlow, domain=DOMAIN):
     @callback
     def async_get_options_flow(
         config_entry: ConfigEntry,
-    ) -> "TuyaCloudlessOptionsFlow":
+    ) -> TuyaCloudlessOptionsFlow:
         """Return the options flow handler."""
         return TuyaCloudlessOptionsFlow(config_entry)
 
@@ -475,11 +475,9 @@ class TuyaCloudlessConfigFlow(ConfigFlow, domain=DOMAIN):
                 timeout=_CONNECTION_TIMEOUT,
             )
             _writer.close()
-            try:
+            with contextlib.suppress(OSError):
                 await _writer.wait_closed()
-            except OSError:
-                pass
-        except (OSError, asyncio.TimeoutError) as exc:
+        except (TimeoutError, OSError) as exc:
             _LOGGER.debug("Connection test to %s failed: %s", ip_address, exc)
             errors[CONF_IP_ADDRESS] = "cannot_connect"
         return errors

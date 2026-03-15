@@ -6,16 +6,15 @@ Local-only control of Tuya WiFi devices using:
   - TCP port 6668 for runtime control (push updates)
   - UDP 6666/6667 for device discovery
 
-Compatible with Tuya LAN protocol versions 3.1–3.5.
+Compatible with Tuya LAN protocol versions 3.1-3.5.
 """
 
 from __future__ import annotations
 
 import logging
 import sys
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
 # Ensure bundled lib/tuya_cloudless is importable both in production (lib/ symlinked
 # inside custom_components) and in development (lib/ at repo root).

@@ -11,7 +11,7 @@ from typing import Any
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import CONF_GW_ID, DOMAIN
+from .const import DOMAIN
 from .coordinator import TuyaCloudlessCoordinator
 
 
@@ -50,12 +50,12 @@ class TuyaCloudlessEntity(CoordinatorEntity[TuyaCloudlessCoordinator]):
     @property
     def device_info(self) -> DeviceInfo:
         """Return device registry info linking all entities for this device."""
-        gw_id: str = self.coordinator._gw_id  # noqa: SLF001 — intentional internal access
+        gw_id: str = self.coordinator._gw_id
         return DeviceInfo(
             identifiers={(DOMAIN, gw_id)},
             name=gw_id,
             manufacturer="Tuya",
-            model=f"Tuya Cloudless ({self.coordinator._version})",  # noqa: SLF001
+            model=f"Tuya Cloudless ({self.coordinator._version})",
         )
 
     def get_dp(self, dp_id: str | None = None) -> Any:

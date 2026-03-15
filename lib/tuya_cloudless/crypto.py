@@ -1,9 +1,9 @@
-"""Cryptographic operations for Tuya LAN protocol v3.1–3.5.
+"""Cryptographic operations for Tuya LAN protocol v3.1-3.5.
 
 SECURITY PRINCIPLES:
   - Key material is NEVER logged, printed, or included in exception messages.
   - All MAC/tag verification uses constant-time comparison (hmac.compare_digest).
-  - AES-ECB is used ONLY for single-block MD5-key derivation (v3.1–3.3).
+  - AES-ECB is used ONLY for single-block MD5-key derivation (v3.1-3.3).
     Multi-block payloads use CBC mode — ECB weakness does not apply here.
   - AES-GCM (v3.4/3.5) provides authenticated encryption with ECDH-derived keys.
 
@@ -34,7 +34,6 @@ from tuya_cloudless.const import (
     GCM_TAG_SIZE,
     MD5_KEY_PREFIX,
     V33_PAYLOAD_HEADER,
-    VERSIONS_ECB,
     VERSIONS_GCM,
     VERSIONS_WITH_PAYLOAD_HEADER,
 )
@@ -50,7 +49,7 @@ _MD5_KEY_BYTES = 16  # Only the first 16 bytes of the MD5 digest are used
 
 
 def derive_ecb_key(local_key: bytes) -> bytes:
-    """Derive the AES-ECB encryption key for protocol v3.1–3.3.
+    """Derive the AES-ECB encryption key for protocol v3.1-3.3.
 
     The key is the first 16 bytes of MD5(MD5_KEY_PREFIX + local_key).
     ``local_key`` is the per-device 16-byte secret obtained during provisioning.
@@ -93,14 +92,14 @@ def _unpad_pkcs7(data: bytes) -> bytes:
     return data[:-pad_len]
 
 
-# ── AES-ECB (v3.1–3.3) ───────────────────────────────────────────────────────
+# ── AES-ECB (v3.1-3.3) ───────────────────────────────────────────────────────
 
 
 def encrypt_ecb(key: bytes, plaintext: bytes) -> bytes:
     """Encrypt ``plaintext`` with AES-128-CBC (Tuya uses CBC for multi-block payloads).
 
     Despite being named ECB-variants in some community docs, Tuya's actual
-    v3.1–3.3 LAN payload encryption uses AES-128-CBC with a zero IV.
+    v3.1-3.3 LAN payload encryption uses AES-128-CBC with a zero IV.
     Key is derived via :func:`derive_ecb_key`.
 
     Args:
@@ -314,13 +313,13 @@ def derive_session_key(
     return mac[:_MD5_KEY_BYTES]
 
 
-# ── CRC-32 checksum (v3.1–3.3 frame integrity) ───────────────────────────────
+# ── CRC-32 checksum (v3.1-3.3 frame integrity) ───────────────────────────────
 
 
 def compute_crc32(data: bytes) -> int:
     """Compute CRC-32 checksum for Tuya LAN frame integrity.
 
-    Used in protocol versions 3.1–3.3. Versions 3.4/3.5 use GCM tags instead.
+    Used in protocol versions 3.1-3.3. Versions 3.4/3.5 use GCM tags instead.
 
     Args:
         data: Bytes to checksum (typically: prefix + seq + cmd + length + payload).
