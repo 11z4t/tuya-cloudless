@@ -528,6 +528,68 @@ class TuyaCloudlessConfigFlow(ConfigFlow, domain=DOMAIN):
             },
         )
 
+    # ── Reconfigure flow ───────────────────────────────────────────────────────
+
+    async def async_step_reconfigure(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Allow the user to update IP address or local key without removing the device.
+
+        Unlike re-auth (which is triggered automatically on key rejection), reconfigure
+        is user-initiated — useful when the device gets a new IP after DHCP renewal.
+
+        Args:
+            user_input: Submitted form data, or ``None`` on first render.
+
+        Returns:
+            Config flow result — updates and reloads the entry on success.
+        """
+        reconfigure_entry = self._get_reconfigure_entry()
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            local_key = user_input[CONF_LOCAL_KEY].strip()
+            ip_address = user_input[CONF_IP_ADDRESS].strip()
+
+            if len(local_key) != _LOCAL_KEY_LENGTH:
+                errors[CONF_LOCAL_KEY] = "invalid_local_key"
+            elif not ip_address:
+                errors[CONF_IP_ADDRESS] = "invalid_ip"
+            else:
+                errors = await self._check_connection(ip_address)
+
+            if not errors:
+                return self.async_update_reload_and_abort(
+                    reconfigure_entry,
+                    data={
+                        **reconfigure_entry.data,
+                        CONF_LOCAL_KEY: local_key,
+                        CONF_IP_ADDRESS: ip_address,
+                    },
+                )
+
+        schema = vol.Schema(
+            {
+                vol.Required(
+                    CONF_IP_ADDRESS,
+                    default=reconfigure_entry.data.get(CONF_IP_ADDRESS, ""),
+                ): str,
+                vol.Required(
+                    CONF_LOCAL_KEY,
+                    default=reconfigure_entry.data.get(CONF_LOCAL_KEY, ""),
+                ): str,
+            }
+        )
+
+        return self.async_show_form(
+            step_id="reconfigure",
+            data_schema=schema,
+            errors=errors,
+            description_placeholders={
+                "device_name": reconfigure_entry.title,
+            },
+        )
+
     # ── Options flow ───────────────────────────────────────────────────────────
 
     @staticmethod

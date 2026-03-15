@@ -24,6 +24,9 @@ from .entity import TuyaCloudlessEntity
 
 _LOGGER = logging.getLogger(__name__)
 
+# Protect single-threaded Tuya devices from concurrent HA service calls
+PARALLEL_UPDATES = 1
+
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -132,6 +135,7 @@ class TuyaLastSeenSensor(TuyaCloudlessEntity, SensorEntity):
     _attr_translation_key = "last_seen"
     _attr_icon = "mdi:clock-outline"
     _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_entity_registry_enabled_default = False
 
     def __init__(self, coordinator: TuyaCloudlessCoordinator) -> None:
         """Initialise the last-seen sensor."""
@@ -150,16 +154,16 @@ class TuyaLastSeenSensor(TuyaCloudlessEntity, SensorEntity):
 class TuyaReconnectSensor(TuyaCloudlessEntity, SensorEntity):
     """Sensor counting TCP reconnection attempts since startup."""
 
-    _attr_translation_key = "rssi"
+    _attr_translation_key = "reconnects"
     _attr_icon = "mdi:wifi-sync"
     _attr_state_class = SensorStateClass.TOTAL_INCREASING
     _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_entity_registry_enabled_default = False
 
     def __init__(self, coordinator: TuyaCloudlessCoordinator) -> None:
         """Initialise the reconnect-count sensor."""
         super().__init__(coordinator)
         self._attr_unique_id = f"{coordinator._gw_id}_reconnects"
-        self._attr_name = "Reconnects"
 
     @property
     def native_value(self) -> int:

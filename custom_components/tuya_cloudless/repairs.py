@@ -1,8 +1,15 @@
 """Repair issue flows for Tuya Cloudless.
 
-Provides a guided fix for authentication failures — directs the user to
-the re-authentication flow so they can enter a new security key without
-removing and re-adding the integration.
+Two repair types are provided:
+
+auth_failure
+    Raised when the device rejects the local key (e.g. after factory reset).
+    Guides the user to the re-authentication flow to enter the new key.
+
+connectivity
+    Raised when the device cannot be reached on the network after multiple
+    reconnect attempts.  Guides the user to check the device IP address and
+    update it via the reconfigure flow if needed.
 """
 
 from __future__ import annotations
@@ -19,6 +26,14 @@ class TuyaCloudlessAuthRepairFlow(ConfirmRepairFlow):
     """
 
 
+class TuyaCloudlessConnectivityRepairFlow(ConfirmRepairFlow):
+    """Repair flow for persistent connectivity failures.
+
+    Confirms the issue and guides the user to the reconfigure flow to
+    update the IP address or other connection settings.
+    """
+
+
 async def async_create_fix_flow(
     hass: HomeAssistant,
     issue_id: str,
@@ -28,10 +43,12 @@ async def async_create_fix_flow(
 
     Args:
         hass: Home Assistant instance.
-        issue_id: The issue identifier string.
+        issue_id: The issue identifier string (e.g. ``auth_failure``, ``connectivity``).
         data: Optional extra data attached to the issue.
 
     Returns:
-        A :class:`RepairsFlow` instance that handles the user interaction.
+        A :class:`RepairsFlow` instance appropriate for the issue type.
     """
+    if issue_id == "connectivity":
+        return TuyaCloudlessConnectivityRepairFlow()
     return TuyaCloudlessAuthRepairFlow()

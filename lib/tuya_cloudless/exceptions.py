@@ -9,6 +9,24 @@ SECURITY: Exception messages MUST NEVER contain secret material
 
 from __future__ import annotations
 
+__all__ = [
+    "ActivationError",
+    "AuthenticationError",
+    "CommandError",
+    "ConnectionError",
+    "CryptoError",
+    "DeviceNotFoundError",
+    "DeviceTimeoutError",
+    "DeviceUnavailableError",
+    "DiscoveryError",
+    "KeyDerivationError",
+    "MalformedPacketError",
+    "PairingError",
+    "ProtocolError",
+    "TuyaCloudlessError",
+    "UnsupportedVersionError",
+]
+
 
 class TuyaCloudlessError(Exception):
     """Base exception for all Tuya Cloudless operations."""

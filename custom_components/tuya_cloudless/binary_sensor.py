@@ -20,6 +20,9 @@ from .entity import TuyaCloudlessEntity
 
 _LOGGER = logging.getLogger(__name__)
 
+# Protect single-threaded Tuya devices from concurrent HA service calls
+PARALLEL_UPDATES = 1
+
 
 async def async_setup_entry(
     hass: HomeAssistant,

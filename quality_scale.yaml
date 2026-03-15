@@ -1,0 +1,120 @@
+rules:
+  # ── Bronze ──────────────────────────────────────────────────────────────────
+  action-setup:
+    status: done
+    comment: Services registered in __init__.py async_setup_entry via async_register_entity_service.
+  appropriate-polling:
+    status: done
+    comment: iot_class is local_push — device pushes state changes. No polling.
+  brands:
+    status: done
+    comment: Brand icon and logo present in custom_components/tuya_cloudless/brand/.
+  common-modules:
+    status: done
+    comment: Coordinator, entity base, and const separated per HA convention.
+  config-flow:
+    status: done
+    comment: Full config flow with guided device setup (IP, local key, profile).
+  config-flow-test-coverage:
+    status: todo
+    comment: Integration test with HA hass fixture planned in PLAT-641.
+  dependency-transparency:
+    status: done
+    comment: All dependencies in manifest.json requirements. No implicit installs.
+  docs-actions:
+    status: todo
+  docs-high-level-description:
+    status: done
+    comment: README and ARCHITECTURE.md present.
+  docs-installation-instructions:
+    status: done
+    comment: README covers HACS and manual install.
+  docs-removal-instructions:
+    status: todo
+  entity-event-setup:
+    status: done
+    comment: Coordinator uses DataUpdateCoordinator — entities subscribe via async_write_ha_state.
+  entity-unique-id:
+    status: done
+    comment: All entities have unique_id = {gw_id}_{platform}_{name}.
+  has-entity-name:
+    status: done
+    comment: All entities use has_entity_name = True via TuyaCloudlessEntity base.
+  runtime-data:
+    status: done
+    comment: TuyaCloudlessRuntimeData (frozen dataclass) attached to entry.runtime_data.
+  test-before-configure:
+    status: done
+    comment: Config flow validates TCP connection before saving entry.
+  test-before-setup:
+    status: done
+    comment: coordinator.async_start() connects and verifies before setup returns.
+  unique-config-entry:
+    status: done
+    comment: Config flow aborts on duplicate gateway_id (unique_id = gw_id).
+
+  # ── Silver ──────────────────────────────────────────────────────────────────
+  action-exceptions:
+    status: done
+    comment: All actions raise HomeAssistantError with translation_key on failure.
+  config-entry-unloading:
+    status: done
+    comment: async_unload_entry implemented; stops coordinator and unloads platforms.
+  docs-configuration-parameters:
+    status: todo
+  docs-installation-parameters:
+    status: todo
+  entity-unavailable:
+    status: done
+    comment: available property returns False when TCP is disconnected.
+  integration-owner:
+    status: done
+    comment: codeowners set to @kvista-se in manifest.json.
+  log-when-unavailable:
+    status: done
+    comment: Coordinator logs warning on disconnect and info on reconnect.
+  parallel-updates:
+    status: done
+    comment: PARALLEL_UPDATES = 1 on all platform files to protect single-threaded devices.
+  reauthentication-flow:
+    status: done
+    comment: async_step_reauth + async_step_reauth_confirm implemented.
+  reconfiguration-flow:
+    status: done
+    comment: async_step_reconfigure implemented for IP/key update without re-add.
+  test-coverage:
+    status: todo
+    comment: Currently at ~46%, target 90% — PLAT-641.
+
+  # ── Gold ────────────────────────────────────────────────────────────────────
+  devices:
+    status: done
+    comment: DeviceInfo with identifiers, manufacturer, model, sw_version.
+  diagnostics:
+    status: done
+    comment: diagnostics.py returns config/state/connection dict.
+  discovery:
+    status: done
+    comment: UDP discovery on port 6666/6667 via TuyaDiscoveryListener.
+  docs-device-trigger:
+    status: todo
+  entity-category:
+    status: done
+    comment: last_seen and reconnects sensors use EntityCategory.DIAGNOSTIC.
+  entity-disabled-by-default:
+    status: done
+    comment: Diagnostic sensors disabled_by_default = True.
+  exception-translations:
+    status: done
+    comment: All HomeAssistantError calls use translation_key from strings.json.
+  icon-translations:
+    status: done
+    comment: icons.json covers all entity translation keys.
+  reconfiguration-flow:
+    status: done
+  repair-issues:
+    status: done
+    comment: auth_failure and connectivity repair issues implemented.
+  stale-devices:
+    status: done
+    comment: async_remove_config_entry_device allows removal of offline devices.

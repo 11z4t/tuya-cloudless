@@ -80,12 +80,25 @@
           "local_key": "16 tecken från den senaste ihopkopplingen",
           "ip_address": "Lämna tomt om adressen inte har ändrats"
         }
+      },
+      "reconfigure": {
+        "title": "Ändra anslutningsinställningar",
+        "description": "Uppdatera IP-adress eller säkerhetsnyckel för **{device_name}** utan att ta bort och lägga till enheten på nytt.",
+        "data": {
+          "ip_address": "IP-adress",
+          "local_key": "Säkerhetsnyckel"
+        },
+        "data_description": {
+          "ip_address": "Enhetens aktuella IP-adress på nätverket",
+          "local_key": "16-teckens säkerhetsnyckel"
+        }
       }
     },
     "error": {
       "cannot_connect": "Det gick inte att nå enheten — kontrollera IP-adressen och att enheten är på samma nätverk som Home Assistant",
       "invalid_local_key": "Ogiltig säkerhetsnyckel — nyckeln måste vara exakt 16 tecken",
       "invalid_gw_id": "Ogiltigt enhets-ID — får inte vara tomt",
+      "invalid_ip": "Ogiltig IP-adress — får inte vara tom",
       "auth_failed": "Anslutningen nekades — säkerhetsnyckeln kan vara felaktig eller enheten har kopplats ihop på nytt med Tuya-appen",
       "no_devices_found": "Inga Tuya-enheter hittades på nätverket. Se till att enheten är påslagen och på samma Wi-Fi. Byt till **Manuell** ovan för att ange uppgifterna för hand.",
       "unknown": "Oväntat fel — kontrollera Home Assistant-loggen för detaljer"
@@ -93,7 +106,25 @@
     "abort": {
       "already_configured": "Den här enheten är redan inlagd",
       "not_tuya_device": "Enheten svarade inte som förväntat",
-      "reauth_successful": "Säkerhetsnyckeln uppdaterades — enheten är ansluten igen"
+      "reauth_successful": "Säkerhetsnyckeln uppdaterades — enheten är ansluten igen",
+      "reconfigure_successful": "Inställningarna uppdaterades — enheten laddas om"
+    }
+  },
+  "exceptions": {
+    "device_unavailable": {
+      "message": "Enheten är inte tillgänglig — anslutningen är bruten"
+    },
+    "command_timeout": {
+      "message": "Kommandot nådde inte enheten inom tidsgränsen — försök igen"
+    },
+    "entry_not_found": {
+      "message": "Konfigurationsposten hittades inte"
+    },
+    "entry_not_loaded": {
+      "message": "Konfigurationsposten är inte laddad"
+    },
+    "send_failed": {
+      "message": "Det gick inte att skicka kommandot till enheten"
     }
   },
   "options": {
@@ -143,7 +174,7 @@
       }
     },
     "sensor": {
-      "rssi": {
+      "reconnects": {
         "name": "Återanslutningar"
       },
       "last_seen": {

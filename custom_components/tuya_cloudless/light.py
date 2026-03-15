@@ -25,6 +25,9 @@ from .entity import TuyaCloudlessEntity
 
 _LOGGER = logging.getLogger(__name__)
 
+# Protect single-threaded Tuya devices from concurrent HA service calls
+PARALLEL_UPDATES = 1
+
 _HA_BRIGHTNESS_MAX = 255
 _MIN_COLOR_TEMP_KELVIN = 2700
 _MAX_COLOR_TEMP_KELVIN = 6500

@@ -1,0 +1,22 @@
+send_raw_dps:
+  name: Send raw DPS
+  description: >
+    Send one or more raw Data Point (DP) values directly to a Tuya device.
+    Use this for advanced control of DPs not exposed as entities.
+  fields:
+    entry_id:
+      name: Config entry ID
+      description: The config entry ID of the target device (visible in device info).
+      required: true
+      selector:
+        config_entry:
+          integration: tuya_cloudless
+    dps:
+      name: DPS values
+      description: >
+        Dict mapping DP string IDs to values, e.g. {"1": true, "19": 500}.
+        Keys must be strings. Values can be bool, int, or str.
+      required: true
+      example: '{"1": true}'
+      selector:
+        object:

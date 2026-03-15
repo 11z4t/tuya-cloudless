@@ -13,8 +13,9 @@ from __future__ import annotations
 
 import logging
 import sys
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
+from typing import TypeAlias
 
 # Ensure bundled lib/tuya_cloudless is importable both in production (lib/ symlinked
 # inside custom_components) and in development (lib/ at repo root).
@@ -26,7 +27,8 @@ for _lib_dir in (_BUNDLED_LIB, _DEV_LIB):
         break
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, ServiceCall
+from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers.device_registry import DeviceInfo
 
 from tuya_cloudless.profiles import (
@@ -105,14 +107,22 @@ def _resolve_profile(entry: ConfigEntry) -> DeviceProfile | None:
     return profile
 
 
-@dataclass
+@dataclass(frozen=True)
 class TuyaCloudlessRuntimeData:
-    """Typed runtime data attached to each config entry."""
+    """Typed runtime data attached to each config entry.
+
+    Frozen to prevent accidental mutation after setup. All fields are set
+    once during ``async_setup_entry`` and then treated as read-only.
+    """
 
     coordinator: TuyaCloudlessCoordinator
     device_info: DeviceInfo
-    entity_specs: list[EntitySpec] = field(default_factory=list)
-    profile_name: str = ""
+    entity_specs: tuple[EntitySpec, ...]
+    profile_name: str
+
+
+# Typed config entry alias — gives type-safe access to entry.runtime_data
+TuyaCloudlessConfigEntry: TypeAlias = ConfigEntry[TuyaCloudlessRuntimeData]
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -156,7 +166,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     entry.runtime_data = TuyaCloudlessRuntimeData(
         coordinator=coordinator,
         device_info=device_info,
-        entity_specs=entity_specs,
+        entity_specs=tuple(entity_specs),
         profile_name=profile_name,
     )
 
@@ -166,8 +176,51 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
 
+    _register_services(hass)
+
     _LOGGER.info("Tuya Cloudless entry set up: %s", entry.title)
     return True
+
+
+def _register_services(hass: HomeAssistant) -> None:
+    """Register integration-level services (idempotent — safe to call multiple times)."""
+
+    if hass.services.has_service(DOMAIN, "send_raw_dps"):
+        return
+
+    async def _handle_send_raw_dps(call: ServiceCall) -> None:
+        """Handle the send_raw_dps service call."""
+        entry_id: str = call.data["entry_id"]
+        dps: dict[str, object] = call.data["dps"]
+
+        entry = hass.config_entries.async_get_entry(entry_id)
+        if entry is None:
+            raise ServiceValidationError(
+                f"Config entry '{entry_id}' not found",
+                translation_domain=DOMAIN,
+                translation_key="entry_not_found",
+            )
+
+        runtime: TuyaCloudlessRuntimeData | None = getattr(entry, "runtime_data", None)
+        if runtime is None:
+            raise ServiceValidationError(
+                f"Entry '{entry_id}' is not loaded",
+                translation_domain=DOMAIN,
+                translation_key="entry_not_loaded",
+            )
+
+        try:
+            await runtime.coordinator.async_send_dps(dps)
+        except HomeAssistantError:
+            raise
+        except Exception as exc:
+            raise HomeAssistantError(
+                f"Failed to send DPS to {entry_id}: {exc}",
+                translation_domain=DOMAIN,
+                translation_key="send_failed",
+            ) from exc
+
+    hass.services.async_register(DOMAIN, "send_raw_dps", _handle_send_raw_dps)
 
 
 async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None:
@@ -194,6 +247,19 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     _LOGGER.info("Tuya Cloudless entry unloaded: %s (ok=%s)", entry.title, unload_ok)
     return unload_ok
+
+
+async def async_remove_config_entry_device(
+    hass: HomeAssistant,
+    config_entry: ConfigEntry,
+    device_entry: object,
+) -> bool:
+    """Allow the user to remove a device that is no longer present.
+
+    Returns True unconditionally — if the coordinator has disconnected the device,
+    HA can safely remove it from the device registry.
+    """
+    return True
 
 
 async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:

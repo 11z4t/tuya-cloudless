@@ -80,12 +80,25 @@
           "local_key": "16-character key from the latest pairing",
           "ip_address": "Leave empty if the address has not changed"
         }
+      },
+      "reconfigure": {
+        "title": "Update connection settings",
+        "description": "Update the IP address or security key for **{device_name}** without removing and re-adding the device.",
+        "data": {
+          "ip_address": "IP address",
+          "local_key": "Security key"
+        },
+        "data_description": {
+          "ip_address": "Current IP address of the device on your network",
+          "local_key": "16-character security key"
+        }
       }
     },
     "error": {
       "cannot_connect": "Could not reach the device — check the IP address and that the device is on the same network as Home Assistant",
       "invalid_local_key": "Invalid security key — must be exactly 16 characters",
       "invalid_gw_id": "Invalid device ID — must not be empty",
+      "invalid_ip": "Invalid IP address — must not be empty",
       "auth_failed": "Connection refused — the security key may be wrong, or the device was paired again using the Tuya app",
       "no_devices_found": "No Tuya devices found on your network. Make sure the device is powered on and on the same Wi-Fi. Switch to **Manual** above to enter details by hand.",
       "unknown": "Unexpected error — check the Home Assistant log for details"
@@ -93,7 +106,25 @@
     "abort": {
       "already_configured": "This device is already set up",
       "not_tuya_device": "The device did not respond as expected",
-      "reauth_successful": "Security key updated — the device is connected again"
+      "reauth_successful": "Security key updated — the device is connected again",
+      "reconfigure_successful": "Settings updated — the device is reloading"
+    }
+  },
+  "exceptions": {
+    "device_unavailable": {
+      "message": "Device is unavailable — the connection is down"
+    },
+    "command_timeout": {
+      "message": "Command did not reach the device within the timeout — please try again"
+    },
+    "entry_not_found": {
+      "message": "Config entry not found"
+    },
+    "entry_not_loaded": {
+      "message": "Config entry is not loaded"
+    },
+    "send_failed": {
+      "message": "Failed to send command to the device"
     }
   },
   "options": {
@@ -143,7 +174,7 @@
       }
     },
     "sensor": {
-      "rssi": {
+      "reconnects": {
         "name": "Reconnects"
       },
       "last_seen": {

@@ -11,5 +11,6 @@
   "config_flow": true,
   "iot_class": "local_push",
   "loggers": ["tuya_cloudless"],
-  "requirements": ["cryptography>=42.0", "aiohttp>=3.9"]
+  "requirements": ["cryptography>=42.0", "aiohttp>=3.9"],
+  "homeassistant": "2024.4.0"
 }

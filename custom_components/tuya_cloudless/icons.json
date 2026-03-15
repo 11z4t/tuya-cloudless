@@ -1,0 +1,67 @@
+{
+  "entity": {
+    "switch": {
+      "main_switch": {
+        "default": "mdi:power"
+      }
+    },
+    "light": {
+      "main_light": {
+        "default": "mdi:lightbulb",
+        "state": {
+          "on": "mdi:lightbulb",
+          "off": "mdi:lightbulb-outline"
+        }
+      }
+    },
+    "sensor": {
+      "power_consumption": {
+        "default": "mdi:lightning-bolt"
+      },
+      "current": {
+        "default": "mdi:current-ac"
+      },
+      "voltage": {
+        "default": "mdi:sine-wave"
+      },
+      "temperature": {
+        "default": "mdi:thermometer"
+      },
+      "humidity": {
+        "default": "mdi:water-percent"
+      },
+      "last_seen": {
+        "default": "mdi:clock-outline"
+      },
+      "reconnects": {
+        "default": "mdi:wifi-sync"
+      }
+    },
+    "binary_sensor": {
+      "overload": {
+        "default": "mdi:alert-circle"
+      },
+      "leak": {
+        "default": "mdi:water-alert"
+      },
+      "motion": {
+        "default": "mdi:motion-sensor"
+      },
+      "smoke": {
+        "default": "mdi:smoke-detector"
+      },
+      "contact": {
+        "default": "mdi:door-closed",
+        "state": {
+          "on": "mdi:door-open",
+          "off": "mdi:door-closed"
+        }
+      }
+    },
+    "cover": {
+      "cover": {
+        "default": "mdi:window-shutter"
+      }
+    }
+  }
+}

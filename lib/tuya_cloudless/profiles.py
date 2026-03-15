@@ -11,6 +11,18 @@ integration startup. Each profile maps to one or more Home Assistant entities
 from __future__ import annotations
 
 import fnmatch
+
+__all__ = [
+    "DPSpec",
+    "DeviceProfile",
+    "EntitySpec",
+    "find_profile",
+    "find_profile_by_product_key",
+    "init_profiles",
+    "list_profiles",
+    "load_profile",
+    "load_profiles_from_dir",
+]
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path

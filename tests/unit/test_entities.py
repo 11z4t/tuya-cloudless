@@ -9,7 +9,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 from typing import Any
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -31,6 +31,7 @@ def _make_coordinator(dps: dict[str, Any] | None = None, gw_id: str = "gw001") -
     coord.state = MagicMock()
     coord.state.available = True
     coord.state.dps = dps or {}
+    coord.async_send_dps = AsyncMock()
     return coord
 
 
@@ -308,3 +309,226 @@ class TestUniqueIdNoCollision:
         assert sw_uid != sen_uid
         assert sw_uid == "gw001_switch_main"
         assert sen_uid == "gw001_sensor_main"
+
+
+# ── Switch action tests ────────────────────────────────────────────────────────
+
+
+class TestSwitchActions:
+    def _make(self, dps: dict[str, Any] | None = None) -> Any:
+        from custom_components.tuya_cloudless.switch import TuyaCloudlessSwitch
+
+        coord = _make_coordinator(dps)
+        spec = _make_switch_spec()
+        entity = TuyaCloudlessSwitch.__new__(TuyaCloudlessSwitch)
+        entity.coordinator = coord
+        entity._dp_id = "1"
+        entity._spec = spec
+        entity._attr_unique_id = f"{coord._gw_id}_{spec.platform}_{spec.name}"
+        return entity
+
+    @pytest.mark.asyncio
+    async def test_turn_on_sends_true(self) -> None:
+        e = self._make()
+        await e.async_turn_on()
+        e.coordinator.async_send_dps.assert_called_once_with({"1": True})
+
+    @pytest.mark.asyncio
+    async def test_turn_off_sends_false(self) -> None:
+        e = self._make({"1": True})
+        await e.async_turn_off()
+        e.coordinator.async_send_dps.assert_called_once_with({"1": False})
+
+    def test_is_on_bool_cast(self) -> None:
+        e = self._make({"1": 1})
+        assert e.is_on is True
+
+    def test_is_on_false_cast(self) -> None:
+        e = self._make({"1": 0})
+        assert e.is_on is False
+
+
+# ── Sensor action tests ────────────────────────────────────────────────────────
+
+
+class TestSensorNativeValue:
+    def _make(self, dps: dict[str, Any] | None = None) -> Any:
+        from custom_components.tuya_cloudless.sensor import TuyaCloudlessSensor
+
+        coord = _make_coordinator(dps)
+        spec = _make_sensor_spec()
+        entity = TuyaCloudlessSensor.__new__(TuyaCloudlessSensor)
+        entity.coordinator = coord
+        entity._dp_id = "19"
+        entity._spec = spec
+        return entity
+
+    def test_native_value_with_scale_1(self) -> None:
+        spec = EntitySpec(
+            platform="sensor",
+            name="raw",
+            dp_value=DPSpec(id="5", type="int", scale=1.0),
+        )
+        coord = _make_coordinator({"5": 42})
+        entity = __import__(
+            "custom_components.tuya_cloudless.sensor", fromlist=["TuyaCloudlessSensor"]
+        ).TuyaCloudlessSensor.__new__(
+            __import__(
+                "custom_components.tuya_cloudless.sensor",
+                fromlist=["TuyaCloudlessSensor"],
+            ).TuyaCloudlessSensor
+        )
+        entity.coordinator = coord
+        entity._dp_id = "5"
+        entity._spec = spec
+        assert entity.native_value == 42
+
+    def test_native_value_no_dp_value_spec(self) -> None:
+        spec = EntitySpec(platform="sensor", name="empty", dp_value=None)
+        coord = _make_coordinator({})
+        from custom_components.tuya_cloudless.sensor import TuyaCloudlessSensor
+
+        entity = TuyaCloudlessSensor.__new__(TuyaCloudlessSensor)
+        entity.coordinator = coord
+        entity._dp_id = None
+        entity._spec = spec
+        assert entity.native_value is None
+
+
+# ── BinarySensor action tests ──────────────────────────────────────────────────
+
+
+class TestBinarySensorIsOn:
+    def _make(self, dps: dict[str, Any] | None = None) -> Any:
+        from custom_components.tuya_cloudless.binary_sensor import TuyaCloudlessBinarySensor
+
+        coord = _make_coordinator(dps)
+        spec = _make_binary_sensor_spec()
+        entity = TuyaCloudlessBinarySensor.__new__(TuyaCloudlessBinarySensor)
+        entity.coordinator = coord
+        entity._dp_id = "26"
+        entity._spec = spec
+        return entity
+
+    def test_is_on_uses_dp_power(self) -> None:
+        e = self._make({"26": True})
+        assert e.is_on is True
+
+    def test_is_on_false(self) -> None:
+        e = self._make({"26": False})
+        assert e.is_on is False
+
+    def test_is_on_none_when_missing(self) -> None:
+        e = self._make({})
+        assert e.is_on is None
+
+
+# ── Cover action tests ─────────────────────────────────────────────────────────
+
+
+class TestCoverActions:
+    def _make(
+        self,
+        dps: dict[str, Any] | None = None,
+        spec: EntitySpec | None = None,
+    ) -> Any:
+        from custom_components.tuya_cloudless.cover import TuyaCloudlessCover
+
+        coord = _make_coordinator(dps)
+        _spec = spec or _make_cover_spec()
+
+        entity = TuyaCloudlessCover.__new__(TuyaCloudlessCover)
+        entity.coordinator = coord
+        entity._dp_id = _spec.dp_open.id if _spec.dp_open else None
+        entity._spec = _spec
+        entity._attr_unique_id = f"{coord._gw_id}_{_spec.platform}_{_spec.name}"
+        entity._attr_supported_features = MagicMock()
+        return entity
+
+    @pytest.mark.asyncio
+    async def test_open_cover_sends_true(self) -> None:
+        e = self._make()
+        await e.async_open_cover()
+        e.coordinator.async_send_dps.assert_called_once_with({"1": True})
+
+    @pytest.mark.asyncio
+    async def test_close_cover_sends_false(self) -> None:
+        e = self._make()
+        await e.async_close_cover()
+        e.coordinator.async_send_dps.assert_called_once_with({"1": False})
+
+    @pytest.mark.asyncio
+    async def test_set_cover_position(self) -> None:
+        from homeassistant.components.cover import ATTR_POSITION
+
+        e = self._make()
+        await e.async_set_cover_position(**{ATTR_POSITION: 75})
+        e.coordinator.async_send_dps.assert_called_once_with({"2": 75})
+
+    @pytest.mark.asyncio
+    async def test_set_cover_tilt(self) -> None:
+        from homeassistant.components.cover import ATTR_TILT_POSITION
+
+        spec = _make_cover_spec(dp_tilt_id="3")
+        e = self._make(spec=spec)
+        await e.async_set_cover_tilt_position(**{ATTR_TILT_POSITION: 45})
+        e.coordinator.async_send_dps.assert_called_once_with({"3": 45})
+
+    @pytest.mark.asyncio
+    async def test_set_position_noop_when_no_spec(self) -> None:
+        from homeassistant.components.cover import ATTR_POSITION
+
+        spec = _make_cover_spec(dp_position_id=None)
+        e = self._make(spec=spec)
+        await e.async_set_cover_position(**{ATTR_POSITION: 50})
+        e.coordinator.async_send_dps.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_set_tilt_noop_when_no_spec(self) -> None:
+        from homeassistant.components.cover import ATTR_TILT_POSITION
+
+        e = self._make()
+        await e.async_set_cover_tilt_position(**{ATTR_TILT_POSITION: 45})
+        e.coordinator.async_send_dps.assert_not_called()
+
+
+# ── Entity base tests ─────────────────────────────────────────────────────────
+
+
+class TestEntityBase:
+    def _make(self, dp_id: str | None, dps: dict[str, Any]) -> Any:
+        from custom_components.tuya_cloudless.entity import TuyaCloudlessEntity
+
+        coord = _make_coordinator(dps)
+        entity = TuyaCloudlessEntity.__new__(TuyaCloudlessEntity)
+        entity.coordinator = coord
+        entity._dp_id = dp_id
+        return entity
+
+    def test_available_reflects_coordinator_state(self) -> None:
+        e = self._make("1", {})
+        e.coordinator.state.available = True
+        assert e.available is True
+
+    def test_available_false_when_disconnected(self) -> None:
+        e = self._make("1", {})
+        e.coordinator.state.available = False
+        assert e.available is False
+
+    def test_device_info_has_domain(self) -> None:
+        from custom_components.tuya_cloudless.const import DOMAIN
+
+        e = self._make("1", {})
+        info = e.device_info
+        assert (DOMAIN, "gw001") in info["identifiers"]
+
+    def test_device_info_sw_version(self) -> None:
+        e = self._make("1", {})
+        info = e.device_info
+        assert info["sw_version"] == "3.3"
+
+    @pytest.mark.asyncio
+    async def test_async_send_dp_delegates_to_coordinator(self) -> None:
+        e = self._make("1", {})
+        await e.async_send_dp("1", True)
+        e.coordinator.async_send_dps.assert_called_once_with({"1": True})

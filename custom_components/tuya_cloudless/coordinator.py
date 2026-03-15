@@ -158,7 +158,10 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         from homeassistant.exceptions import HomeAssistantError
 
         if not self.state.available or self._writer is None:
-            raise HomeAssistantError(f"Device {self._gw_id} is unavailable — cannot send command")
+            raise HomeAssistantError(
+                translation_domain="tuya_cloudless",
+                translation_key="device_unavailable",
+            )
 
         try:
             await asyncio.wait_for(
@@ -167,14 +170,21 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             )
         except TimeoutError as exc:
             raise HomeAssistantError(
-                f"Device {self._gw_id} did not respond within {self._command_timeout}s"
+                translation_domain="tuya_cloudless",
+                translation_key="command_timeout",
             ) from exc
 
     async def _do_send_dps(self, dps: dict[str, Any]) -> None:
         """Internal: encode and write DPS control frame."""
+        from homeassistant.exceptions import HomeAssistantError
+
         from tuya_cloudless.protocol import encode_control
 
-        assert self._writer is not None
+        if self._writer is None:
+            raise HomeAssistantError(
+                translation_domain="tuya_cloudless",
+                translation_key="device_unavailable",
+            )
         frame = encode_control(
             dps,
             sequence=self._next_sequence(),
