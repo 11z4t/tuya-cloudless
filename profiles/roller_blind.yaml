@@ -1,0 +1,9 @@
+name: "Roller Blind"
+model: "cl*"
+entities:
+  - platform: cover
+    name: cover
+    dp_open: {id: "1", type: bool}
+    dp_position: {id: "2", type: int, min_raw: 0, max_raw: 100}
+    dp_direction: {id: "3", type: enum}
+    device_class: blind

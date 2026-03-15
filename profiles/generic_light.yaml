@@ -1,0 +1,8 @@
+name: "Generic Light"
+model: "*light*"
+entities:
+  - platform: light
+    name: main_light
+    dp_power: {id: "1", type: bool}
+    dp_brightness: {id: "3", type: int, min_raw: 10, max_raw: 1000}
+    dp_color_temp: {id: "4", type: int, min_raw: 0, max_raw: 1000}

@@ -8,6 +8,8 @@ Architecture:
   - TCP connection maintained in background with exponential back-off reconnect.
   - Heartbeats sent every 20 s to detect silent disconnects.
   - DPS state held in ``state`` dict; listeners notified on every update.
+  - v3.4/3.5: ECDH session key negotiated on every new connection.
+  - Frame error recovery: ≥5 consecutive decode errors triggers reconnect.
 """
 
 from __future__ import annotations
@@ -36,6 +38,9 @@ from .const import (
 )
 
 _LOGGER = logging.getLogger(__name__)
+
+#: Number of consecutive frame decode errors before triggering reconnect
+_MAX_CONSECUTIVE_ERRORS = 5
 
 
 @dataclass
@@ -71,6 +76,7 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         ip_address: Device IP address.
         local_key: 16-byte device local key.
         version: Protocol version string (e.g. "3.3").
+        port: TCP port (default 6668; overridable for tests).
     """
 
     def __init__(
@@ -81,6 +87,7 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         ip_address: str,
         local_key: str,
         version: str,
+        port: int = DEFAULT_TCP_PORT,
     ) -> None:
         super().__init__(
             hass,
@@ -92,16 +99,18 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._ip = ip_address
         self._local_key = local_key.encode() if isinstance(local_key, str) else local_key
         self._version = version
+        self._port = port
 
         self.state = DeviceState()
         self._sequence: int = 0
-        self._session_key: bytes | None = None  # Set after v3.4/3.5 key exchange
+        self._session_key: bytes | None = None
+        self._consecutive_decode_errors: int = 0
 
         self._reader: asyncio.StreamReader | None = None
         self._writer: asyncio.StreamWriter | None = None
-        self._connect_task: asyncio.Task | None = None
-        self._heartbeat_task: asyncio.Task | None = None
-        self._read_task: asyncio.Task | None = None
+        self._connect_task: asyncio.Task[None] | None = None
+        self._heartbeat_task: asyncio.Task[None] | None = None
+        self._read_task: asyncio.Task[None] | None = None
 
     # ── Lifecycle ─────────────────────────────────────────────────────────────
 
@@ -136,9 +145,7 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         from homeassistant.exceptions import HomeAssistantError
 
         if not self.state.available or self._writer is None:
-            raise HomeAssistantError(
-                f"Device {self._gw_id} is unavailable — cannot send command"
-            )
+            raise HomeAssistantError(f"Device {self._gw_id} is unavailable — cannot send command")
 
         try:
             await asyncio.wait_for(
@@ -173,7 +180,13 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         from tuya_cloudless.const import RECONNECT_INITIAL_DELAY, RECONNECT_MAX_DELAY
 
         delay = RECONNECT_INITIAL_DELAY
+        _first_attempt = True
         while True:
+            if not _first_attempt:
+                # Count every reconnect attempt (successful or not)
+                self.state.reconnect_count += 1
+            _first_attempt = False
+
             try:
                 await self._connect()
                 delay = RECONNECT_INITIAL_DELAY  # Reset on success
@@ -188,7 +201,6 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     exc,
                     delay,
                 )
-                self.state.reconnect_count += 1
                 self.async_update_listeners()
                 await asyncio.sleep(delay)
                 delay = min(delay * 2, RECONNECT_MAX_DELAY)
@@ -197,13 +209,33 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Establish TCP connection and run receive loop until disconnected."""
         from tuya_cloudless.const import TCP_CONNECT_TIMEOUT
 
-        _LOGGER.info("[%s] Connecting to %s:%d", self._gw_id, self._ip, DEFAULT_TCP_PORT)
+        _LOGGER.info("[%s] Connecting to %s:%d", self._gw_id, self._ip, self._port)
         reader, writer = await asyncio.wait_for(
-            asyncio.open_connection(self._ip, DEFAULT_TCP_PORT),
+            asyncio.open_connection(self._ip, self._port),
             timeout=TCP_CONNECT_TIMEOUT,
         )
         self._reader = reader
         self._writer = writer
+
+        # For v3.4/3.5: negotiate ECDH session key before sending any commands
+        if self._version in ("3.4", "3.5"):
+            try:
+                self._session_key = await self._negotiate_session_key(reader, writer)
+                _LOGGER.info("[%s] Session key established for %s", self._gw_id, self._version)
+            except (TuyaCloudlessError, OSError, TimeoutError) as exc:
+                _LOGGER.warning(
+                    "[%s] Session key negotiation failed: %s — reconnecting",
+                    self._gw_id,
+                    exc,
+                )
+                writer.close()
+                with contextlib.suppress(OSError):
+                    await writer.wait_closed()
+                raise
+        else:
+            self._session_key = None
+
+        self._consecutive_decode_errors = 0
         self.state.available = True
         self.state.last_error = None
         _LOGGER.info("[%s] Connected to %s", self._gw_id, self._ip)
@@ -231,6 +263,7 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 pass
             self._writer = None
             self._reader = None
+        self._session_key = None
         self.state.available = False
 
     async def _heartbeat_loop(self) -> None:
@@ -283,23 +316,138 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                         local_key=self._local_key,
                         session_key=self._session_key,
                     )
+                    self._consecutive_decode_errors = 0
                     self._on_frame(frame)
                 except (TuyaCloudlessError, ValueError) as exc:
-                    _LOGGER.debug("[%s] Frame decode error: %s", self._gw_id, exc)
+                    self._consecutive_decode_errors += 1
+                    _LOGGER.debug(
+                        "[%s] Frame decode error #%d: %s",
+                        self._gw_id,
+                        self._consecutive_decode_errors,
+                        exc,
+                    )
+                    if self._consecutive_decode_errors >= _MAX_CONSECUTIVE_ERRORS:
+                        _LOGGER.warning(
+                            "[%s] %d consecutive decode errors — forcing reconnect",
+                            self._gw_id,
+                            self._consecutive_decode_errors,
+                        )
+                        # Close TCP stream to trigger reconnect loop
+                        if self._writer is not None:
+                            self._writer.close()
+                        return
 
     @callback
     def _on_frame(self, frame: Any) -> None:
         """Handle a decoded frame — update DPS state and notify listeners."""
         try:
-            dps = frame.dps
+            payload = frame.dps
         except AttributeError:
             return
 
+        # Tuya frames carry DPS nested under a "dps" key: {"dps": {"1": true}}
+        dps: dict[str, Any] = payload.get("dps", {}) if isinstance(payload, dict) else {}
         if dps:
             self.state.dps.update(dps)
             self.state.last_seen = datetime.now(UTC)
             _LOGGER.debug("[%s] DPS update: %s", self._gw_id, list(dps.keys()))
             self.async_set_updated_data(self.state.dps)
+
+    # ── Session key negotiation (v3.4/3.5) ───────────────────────────────────
+
+    async def _negotiate_session_key(
+        self,
+        reader: asyncio.StreamReader,
+        writer: asyncio.StreamWriter,
+    ) -> bytes:
+        """Perform ECDH session key exchange for protocol v3.4/3.5.
+
+        Protocol:
+          1. Generate X25519 ephemeral key pair.
+          2. Send CMD_SESS_KEY_NEG_START with our 32-byte public key.
+          3. Read device's CMD_SESS_KEY_NEG_RESPONSE with its 32-byte public key.
+          4. Compute shared session key via ECDH + HMAC-SHA256.
+          5. Send CMD_SESS_KEY_NEG_FINISH to confirm.
+
+        Args:
+            reader: Async stream reader for the open TCP connection.
+            writer: Async stream writer for the open TCP connection.
+
+        Returns:
+            16-byte AES session key derived from ECDH shared secret.
+
+        Raises:
+            TuyaCloudlessError: If negotiation fails or times out.
+        """
+        from tuya_cloudless.crypto import derive_session_key, generate_ecdh_keypair
+        from tuya_cloudless.protocol import encode_session_key_finish, encode_session_key_start
+
+        keypair = generate_ecdh_keypair()
+
+        # Step 1 — send our public key
+        start_frame = encode_session_key_start(
+            keypair.public_key_bytes,
+            sequence=self._next_sequence(),
+            local_key=self._local_key,
+        )
+        writer.write(start_frame)
+        await writer.drain()
+
+        # Step 2 — read device public key
+        try:
+            raw = await asyncio.wait_for(reader.read(256), timeout=5.0)
+        except TimeoutError as exc:
+            raise TuyaCloudlessError(
+                "Session key negotiation timed out waiting for device response"
+            ) from exc
+
+        if not raw:
+            raise TuyaCloudlessError("Session key negotiation failed: device closed connection")
+
+        # Extract device public key from response payload
+        # The response frame carries the device's 32-byte X25519 public key
+        # We use the raw bytes after the 16-byte frame header
+        from tuya_cloudless.protocol import decode_frame, split_frames
+
+        frames, _ = split_frames(raw)
+        if not frames:
+            raise TuyaCloudlessError(
+                "Session key negotiation: could not parse device response frame"
+            )
+
+        # Decode using ECB (no session key yet for negotiation frames)
+        resp_frame = decode_frame(
+            frames[0],
+            version="3.3",  # Decode negotiation frames as ECB
+            local_key=self._local_key,
+            session_key=None,
+        )
+        device_pubkey = resp_frame.payload[:32]
+        if len(device_pubkey) < 32:
+            raise TuyaCloudlessError(
+                f"Session key negotiation: device public key too short "
+                f"({len(device_pubkey)} bytes, expected 32)"
+            )
+
+        # Step 3 — derive session key
+        session_key = derive_session_key(keypair.private_key, device_pubkey, self._local_key)
+
+        # Step 4 — send FINISH confirmation
+        import hashlib
+        import hmac
+
+        confirmation = hmac.new(session_key, device_pubkey, hashlib.sha256).digest()
+        finish_frame = encode_session_key_finish(
+            confirmation,
+            sequence=self._next_sequence(),
+            local_key=self._local_key,
+            session_key=session_key,
+        )
+        writer.write(finish_frame)
+        await writer.drain()
+
+        _LOGGER.debug("[%s] Session key negotiated (key length=%d)", self._gw_id, len(session_key))
+        return session_key
 
     # ── Utility ───────────────────────────────────────────────────────────────
 
@@ -309,9 +457,7 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         return self._sequence
 
     @classmethod
-    def from_config_entry(
-        cls, hass: HomeAssistant, entry: Any
-    ) -> TuyaCloudlessCoordinator:
+    def from_config_entry(cls, hass: HomeAssistant, entry: Any) -> TuyaCloudlessCoordinator:
         """Construct a coordinator from a config entry.
 
         Args:

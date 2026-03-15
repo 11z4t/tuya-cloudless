@@ -1,0 +1,76 @@
+{
+  "config": {
+    "flow_title": "{name}",
+    "step": {
+      "user": {
+        "title": "Tuya-apparaat toevoegen",
+        "description": "Kies hoe je je apparaat wilt toevoegen. **Zoeken** scant je netwerk automatisch — zorg ervoor dat het apparaat is ingeschakeld en verbonden met hetzelfde Wi-Fi als Home Assistant.",
+        "data": { "setup_mode": "Installatiemethode" },
+        "data_description": { "setup_mode": "Zoeken vindt apparaten automatisch. Kies Handmatig als je apparaat niet wordt gevonden." }
+      },
+      "select": {
+        "title": "{count} apparaat/apparaten gevonden",
+        "description": "Selecteer het apparaat dat je wilt toevoegen.",
+        "data": { "device": "Apparaat" }
+      },
+      "local_key": {
+        "title": "Beveiligingssleutel invoeren",
+        "description": "Je apparaat op **{ip_address}** (firmware {firmware}) heeft een beveiligingssleutel nodig.\n\nDe sleutel wordt getoond bij het koppelen met Tuya Cloudless. Hij wordt alleen in Home Assistant opgeslagen.",
+        "data": { "local_key": "Beveiligingssleutel", "device_name": "Naam van het apparaat", "profile": "Apparaattype" },
+        "data_description": { "local_key": "Sleutel van 16 tekens uit het koppelen", "device_name": "Een naam in Home Assistant (leeg laten voor het IP-adres)", "profile": "Kies het type dat het beste bij je apparaat past" }
+      },
+      "confirm": {
+        "title": "Klaar om te verbinden",
+        "description": "**{device_name}** op `{ip_address}` wordt toegevoegd aan Home Assistant.\n\nKlik op **Verbinden** om de verbinding te testen.",
+        "data": {}
+      },
+      "manual": {
+        "title": "Apparaat handmatig toevoegen",
+        "description": "Voer de gegevens in van je Tuya-apparaat. De apparaat-ID en beveiligingssleutel worden getoond in de Tuya Cloudless-tool.",
+        "data": { "gw_id": "Apparaat-ID", "local_key": "Beveiligingssleutel", "ip_address": "IP-adres", "protocol_version": "Apparaatmodel", "profile": "Apparaattype", "device_name": "Naam van het apparaat" },
+        "data_description": { "gw_id": "Uniek apparaat-ID (bijv. abc123def456)", "local_key": "Sleutel van 16 tekens", "ip_address": "IP-adres van het apparaat", "protocol_version": "Model 3.3 werkt voor de meeste apparaten van na 2020", "profile": "Kies het type dat het beste past" }
+      },
+      "discovery": {
+        "title": "Tuya-apparaat gevonden",
+        "description": "Een apparaat is gedetecteerd op **{ip_address}** (firmware {firmware}).\n\nVoer de beveiligingssleutel in om de installatie te voltooien.",
+        "data": { "local_key": "Beveiligingssleutel", "profile": "Apparaattype", "device_name": "Naam van het apparaat" },
+        "data_description": { "local_key": "Sleutel van 16 tekens uit de Tuya Cloudless-tool" }
+      },
+      "reauth_confirm": {
+        "title": "Beveiligingssleutel bijwerken",
+        "description": "De beveiligingssleutel van **{device_name}** werkt niet meer. Voer de nieuwe sleutel in om opnieuw verbinding te maken.",
+        "data": { "local_key": "Nieuwe beveiligingssleutel", "ip_address": "IP-adres (als dit veranderd is)" },
+        "data_description": { "local_key": "Sleutel van 16 tekens uit het laatste koppelen", "ip_address": "Leeg laten als het adres niet veranderd is" }
+      }
+    },
+    "error": {
+      "cannot_connect": "Kan het apparaat niet bereiken — controleer het IP-adres en of het apparaat op hetzelfde netwerk zit",
+      "invalid_local_key": "Ongeldige beveiligingssleutel — moet precies 16 tekens hebben",
+      "invalid_gw_id": "Ongeldig apparaat-ID — mag niet leeg zijn",
+      "auth_failed": "Verbinding geweigerd — de sleutel is mogelijk onjuist of het apparaat is opnieuw gekoppeld",
+      "no_devices_found": "Geen Tuya-apparaten gevonden. Zorg dat het apparaat is ingeschakeld en op hetzelfde Wi-Fi zit. Gebruik **Handmatig** hierboven.",
+      "unknown": "Onverwachte fout — controleer het Home Assistant-logboek"
+    },
+    "abort": {
+      "already_configured": "Dit apparaat is al ingesteld",
+      "not_tuya_device": "Het apparaat reageerde niet zoals verwacht",
+      "reauth_successful": "Beveiligingssleutel bijgewerkt — het apparaat is opnieuw verbonden"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Apparaatinstellingen",
+        "data": { "ip_address": "IP-adres", "protocol_version": "Apparaatmodel" },
+        "data_description": { "ip_address": "Bijwerken als het IP-adres veranderd is", "protocol_version": "Alleen wijzigen als het apparaat na een firmware-update niet meer reageert" }
+      }
+    }
+  },
+  "entity": {
+    "switch": { "main_switch": { "name": "Schakelaar" } },
+    "light": { "main_light": { "name": "Lamp" } },
+    "sensor": { "rssi": { "name": "Herverbindingen" }, "last_seen": { "name": "Laatst gezien" }, "power_consumption": { "name": "Vermogen" }, "current": { "name": "Stroom" } },
+    "binary_sensor": { "overload": { "name": "Overbelasting" } },
+    "cover": { "cover": { "name": "Rolgordijn" } }
+  }
+}

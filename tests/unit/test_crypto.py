@@ -6,7 +6,6 @@ import pytest
 from tuya_cloudless.crypto import (
     _pad_pkcs7,
     _unpad_pkcs7,
-    add_v33_header,
     compute_crc32,
     decrypt_ecb,
     decrypt_gcm,
@@ -17,7 +16,6 @@ from tuya_cloudless.crypto import (
     encrypt_gcm,
     encrypt_payload,
     generate_ecdh_keypair,
-    strip_v33_header,
     verify_crc32,
 )
 from tuya_cloudless.exceptions import AuthenticationError, CryptoError, KeyDerivationError
@@ -157,7 +155,7 @@ class TestAesEcb:
         """Decrypting with wrong key must either raise CryptoError or return wrong data."""
         plaintext = b'{"dps":{"1":true}}'
         ct = encrypt_ecb(self._KEY, plaintext)
-        wrong_key = b"\xFF" * 16
+        wrong_key = b"\xff" * 16
         try:
             result = decrypt_ecb(wrong_key, ct)
             # If padding happened to look valid, plaintext must still differ
@@ -200,7 +198,7 @@ class TestAesGcm:
 
     def test_wrong_key_raises(self) -> None:
         ct = encrypt_gcm(self._KEY, b"data")
-        wrong_key = b"\xFF" * 16
+        wrong_key = b"\xff" * 16
         with pytest.raises(AuthenticationError):
             decrypt_gcm(wrong_key, ct)
 
@@ -215,7 +213,7 @@ class TestAesGcm:
 
     def test_extra_nonce_roundtrip(self) -> None:
         """extra_nonce is XOR'd into IV; decrypt uses IV from wire — should still work."""
-        extra = b"\xAA" * 12
+        extra = b"\xaa" * 12
         ct = encrypt_gcm(self._KEY, b"nonce-test", extra_nonce=extra)
         assert decrypt_gcm(self._KEY, ct) == b"nonce-test"
 
@@ -351,7 +349,7 @@ class TestUnifiedPayload:
     @pytest.mark.parametrize("version", ["3.4", "3.5"])
     def test_gcm_roundtrip(self, version: str) -> None:
         plaintext = b'{"dps":{"1":true}}'
-        session_key = b"\xAB" * 16
+        session_key = b"\xab" * 16
         ct = encrypt_payload(version, self._LOCAL_KEY, plaintext, session_key=session_key)
         pt = decrypt_payload(version, self._LOCAL_KEY, ct, session_key=session_key)
         assert pt == plaintext
@@ -361,7 +359,7 @@ class TestUnifiedPayload:
             encrypt_payload("3.4", self._LOCAL_KEY, b"data")
 
     def test_gcm_decrypt_without_session_key_raises(self) -> None:
-        session_key = b"\xAB" * 16
+        session_key = b"\xab" * 16
         ct = encrypt_payload("3.4", self._LOCAL_KEY, b"data", session_key=session_key)
         with pytest.raises(CryptoError):
             decrypt_payload("3.4", self._LOCAL_KEY, ct)
@@ -382,7 +380,7 @@ class TestUnifiedPayload:
     @pytest.mark.parametrize("version", ["3.4", "3.5"])
     def test_gcm_roundtrip_large(self, version: str) -> None:
         plaintext = b"E" * 5000
-        session_key = b"\xCD" * 16
+        session_key = b"\xcd" * 16
         ct = encrypt_payload(version, self._LOCAL_KEY, plaintext, session_key=session_key)
         pt = decrypt_payload(version, self._LOCAL_KEY, ct, session_key=session_key)
         assert pt == plaintext

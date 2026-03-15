@@ -1,0 +1,76 @@
+{
+  "config": {
+    "flow_title": "{name}",
+    "step": {
+      "user": {
+        "title": "Adicionar dispositivo Tuya",
+        "description": "Escolha como adicionar seu dispositivo. **Pesquisar** verifica sua rede automaticamente — certifique-se de que o dispositivo está ligado e conectado ao mesmo Wi-Fi que o Home Assistant.",
+        "data": { "setup_mode": "Método de configuração" },
+        "data_description": { "setup_mode": "Pesquisar encontra dispositivos automaticamente. Escolha Manual se o seu dispositivo não for encontrado." }
+      },
+      "select": {
+        "title": "{count} dispositivo(s) encontrado(s)",
+        "description": "Selecione o dispositivo que deseja adicionar.",
+        "data": { "device": "Dispositivo" }
+      },
+      "local_key": {
+        "title": "Inserir a chave de segurança",
+        "description": "Seu dispositivo em **{ip_address}** (firmware {firmware}) precisa de uma chave de segurança.\n\nA chave é exibida ao vincular o dispositivo com o Tuya Cloudless. Ela é armazenada apenas no Home Assistant.",
+        "data": { "local_key": "Chave de segurança", "device_name": "Nome do dispositivo", "profile": "Tipo de dispositivo" },
+        "data_description": { "local_key": "Chave de 16 caracteres da vinculação", "device_name": "Um nome no Home Assistant (deixe vazio para usar o endereço IP)", "profile": "Selecione o tipo que melhor corresponde ao seu dispositivo" }
+      },
+      "confirm": {
+        "title": "Pronto para conectar",
+        "description": "**{device_name}** em `{ip_address}` será adicionado ao Home Assistant.\n\nClique em **Conectar** para testar a conexão.",
+        "data": {}
+      },
+      "manual": {
+        "title": "Adicionar dispositivo manualmente",
+        "description": "Insira os dados do seu dispositivo Tuya. O ID e a chave de segurança são exibidos na ferramenta Tuya Cloudless.",
+        "data": { "gw_id": "ID do dispositivo", "local_key": "Chave de segurança", "ip_address": "Endereço IP", "protocol_version": "Modelo", "profile": "Tipo de dispositivo", "device_name": "Nome do dispositivo" },
+        "data_description": { "gw_id": "ID único do dispositivo (ex. abc123def456)", "local_key": "Chave de 16 caracteres", "ip_address": "Endereço IP do dispositivo", "protocol_version": "O modelo 3.3 funciona para a maioria dos dispositivos desde 2020", "profile": "Selecione o tipo que melhor corresponde" }
+      },
+      "discovery": {
+        "title": "Dispositivo Tuya encontrado",
+        "description": "Um dispositivo foi detectado em **{ip_address}** (firmware {firmware}).\n\nInsira a chave de segurança para concluir a configuração.",
+        "data": { "local_key": "Chave de segurança", "profile": "Tipo de dispositivo", "device_name": "Nome do dispositivo" },
+        "data_description": { "local_key": "Chave de 16 caracteres da ferramenta Tuya Cloudless" }
+      },
+      "reauth_confirm": {
+        "title": "Atualizar chave de segurança",
+        "description": "A chave de segurança de **{device_name}** parou de funcionar. Insira a nova chave para reconectar.",
+        "data": { "local_key": "Nova chave de segurança", "ip_address": "Endereço IP (se mudou)" },
+        "data_description": { "local_key": "Chave de 16 caracteres da última vinculação", "ip_address": "Deixe vazio se o endereço não mudou" }
+      }
+    },
+    "error": {
+      "cannot_connect": "Não foi possível alcançar o dispositivo — verifique o endereço IP e se o dispositivo está na mesma rede",
+      "invalid_local_key": "Chave de segurança inválida — deve ter exatamente 16 caracteres",
+      "invalid_gw_id": "ID do dispositivo inválido — não pode estar vazio",
+      "auth_failed": "Conexão recusada — a chave pode estar incorreta ou o dispositivo foi revinculado",
+      "no_devices_found": "Nenhum dispositivo Tuya encontrado. Certifique-se de que está ligado e no mesmo Wi-Fi. Use **Manual** acima.",
+      "unknown": "Erro inesperado — verifique o log do Home Assistant"
+    },
+    "abort": {
+      "already_configured": "Este dispositivo já está configurado",
+      "not_tuya_device": "O dispositivo não respondeu como esperado",
+      "reauth_successful": "Chave de segurança atualizada — o dispositivo está conectado novamente"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Configurações do dispositivo",
+        "data": { "ip_address": "Endereço IP", "protocol_version": "Modelo" },
+        "data_description": { "ip_address": "Atualizar se o endereço IP mudou", "protocol_version": "Alterar apenas se o dispositivo parou de responder após uma atualização" }
+      }
+    }
+  },
+  "entity": {
+    "switch": { "main_switch": { "name": "Interruptor" } },
+    "light": { "main_light": { "name": "Luz" } },
+    "sensor": { "rssi": { "name": "Reconexões" }, "last_seen": { "name": "Visto pela última vez" }, "power_consumption": { "name": "Potência" }, "current": { "name": "Corrente" } },
+    "binary_sensor": { "overload": { "name": "Sobrecarga" } },
+    "cover": { "cover": { "name": "Persiana" } }
+  }
+}

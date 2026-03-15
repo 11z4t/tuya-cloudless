@@ -13,10 +13,10 @@ from __future__ import annotations
 # ── Wire framing ──────────────────────────────────────────────────────────────
 
 #: 4-byte magic prefix on every Tuya LAN frame
-FRAME_PREFIX: bytes = b"\x00\x00\x55\xAA"
+FRAME_PREFIX: bytes = b"\x00\x00\x55\xaa"
 
 #: 4-byte magic suffix on every Tuya LAN frame
-FRAME_SUFFIX: bytes = b"\x00\x00\xAA\x55"
+FRAME_SUFFIX: bytes = b"\x00\x00\xaa\x55"
 
 #: Header size: prefix(4) + seq(4) + cmd(4) + length(4) = 16 bytes
 FRAME_HEADER_SIZE: int = 16  # bytes before payload
@@ -44,9 +44,7 @@ VERSIONS_ECB: frozenset[str] = frozenset({PROTOCOL_31, PROTOCOL_32, PROTOCOL_33}
 VERSIONS_GCM: frozenset[str] = frozenset({PROTOCOL_34, PROTOCOL_35})
 
 #: v3.3 and later embed a version header inside the encrypted payload
-VERSIONS_WITH_PAYLOAD_HEADER: frozenset[str] = frozenset(
-    {PROTOCOL_33, PROTOCOL_34, PROTOCOL_35}
-)
+VERSIONS_WITH_PAYLOAD_HEADER: frozenset[str] = frozenset({PROTOCOL_33, PROTOCOL_34, PROTOCOL_35})
 
 # ── Command codes ─────────────────────────────────────────────────────────────
 

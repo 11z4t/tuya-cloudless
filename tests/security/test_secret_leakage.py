@@ -10,7 +10,7 @@ from tuya_cloudless.exceptions import AuthenticationError, CryptoError, KeyDeriv
 class TestSecretLeakage:
     """Verify that key material never leaks into exception messages."""
 
-    _SECRET_KEY = b"\xDE\xAD\xBE\xEF" * 4  # 16 bytes
+    _SECRET_KEY = b"\xde\xad\xbe\xef" * 4  # 16 bytes
     _SECRET_STR = "deadbeefdeadbeef"
 
     def _key_hex(self) -> str:
@@ -27,7 +27,7 @@ class TestSecretLeakage:
 
     def test_gcm_wrong_key_no_secret_in_message(self) -> None:
         ct = encrypt_gcm(self._SECRET_KEY, b"payload")
-        wrong_key = b"\xFF" * 16
+        wrong_key = b"\xff" * 16
         with pytest.raises(AuthenticationError) as exc_info:
             decrypt_gcm(wrong_key, ct)
         msg = str(exc_info.value)

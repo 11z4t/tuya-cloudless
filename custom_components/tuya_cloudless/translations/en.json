@@ -21,16 +21,16 @@
       },
       "local_key": {
         "title": "Enter the security key",
-        "description": "Your device at **{ip_address}** (firmware {firmware}) requires a security key to communicate locally.\n\nThe key is shown when you pair the device using the Tuya Cloudless pairing tool. It is stored only on your Home Assistant instance.",
+        "description": "Your device at **{ip_address}** (firmware {firmware}) needs a security key to communicate locally.\n\nThe key is shown when you pair the device using the Tuya Cloudless tool. It is stored only in Home Assistant — nothing is sent to the cloud.",
         "data": {
           "local_key": "Security key",
           "device_name": "Device name",
-          "device_type": "Device type"
+          "profile": "Device type"
         },
         "data_description": {
           "local_key": "16-character key from the pairing tool",
-          "device_name": "A friendly name shown in Home Assistant (optional — defaults to the IP address)",
-          "device_type": "Select the closest match — affects which controls are created"
+          "device_name": "A friendly name shown in Home Assistant (leave empty to use the IP address)",
+          "profile": "Select the type that best matches your device"
         }
       },
       "confirm": {
@@ -45,28 +45,40 @@
           "gw_id": "Device ID",
           "local_key": "Security key",
           "ip_address": "IP address",
-          "protocol_version": "Device generation",
-          "device_type": "Device type",
+          "protocol_version": "Device model",
+          "profile": "Device type",
           "device_name": "Device name"
         },
         "data_description": {
-          "gw_id": "Unique identifier for the device (shown during pairing, e.g. abc123def456)",
+          "gw_id": "Unique device identifier (shown during pairing, e.g. abc123def456)",
           "local_key": "16-character security key from the pairing tool",
-          "ip_address": "Device IP address (set a static address in your router for reliability)",
-          "protocol_version": "Generation 3.3 works for most devices made after 2020",
-          "device_type": "Select the closest match — affects which controls are created"
+          "ip_address": "Device IP address (set a fixed address in your router for best reliability)",
+          "protocol_version": "Model 3.3 works for most devices made after 2020",
+          "profile": "Select the type that best matches your device"
         }
       },
       "discovery": {
         "title": "Tuya device found",
-        "description": "A device was detected at **{ip_address}** (firmware {firmware}).\n\nEnter the security key to complete setup.",
+        "description": "A device was detected at **{ip_address}** (firmware {firmware}).\n\nEnter the security key to finish setup.",
         "data": {
           "local_key": "Security key",
-          "device_type": "Device type",
+          "profile": "Device type",
           "device_name": "Device name"
         },
         "data_description": {
           "local_key": "16-character key from the Tuya Cloudless pairing tool"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Update security key",
+        "description": "The security key for **{device_name}** stopped working. This happens if the device was factory reset or paired again.\n\nEnter the new security key to reconnect.",
+        "data": {
+          "local_key": "New security key",
+          "ip_address": "IP address (if it changed)"
+        },
+        "data_description": {
+          "local_key": "16-character key from the latest pairing",
+          "ip_address": "Leave empty if the address has not changed"
         }
       }
     },
@@ -74,13 +86,14 @@
       "cannot_connect": "Could not reach the device — check the IP address and that the device is on the same network as Home Assistant",
       "invalid_local_key": "Invalid security key — must be exactly 16 characters",
       "invalid_gw_id": "Invalid device ID — must not be empty",
-      "auth_failed": "Connection refused — the security key may be wrong, or the device was re-paired using the Tuya cloud app",
-      "no_devices_found": "No Tuya devices found on your network. Make sure your device is powered on and on the same Wi-Fi. Switch to Manual above to enter details by hand.",
+      "auth_failed": "Connection refused — the security key may be wrong, or the device was paired again using the Tuya app",
+      "no_devices_found": "No Tuya devices found on your network. Make sure the device is powered on and on the same Wi-Fi. Switch to **Manual** above to enter details by hand.",
       "unknown": "Unexpected error — check the Home Assistant log for details"
     },
     "abort": {
       "already_configured": "This device is already set up",
-      "not_tuya_device": "The device did not respond as expected"
+      "not_tuya_device": "The device did not respond as expected",
+      "reauth_successful": "Security key updated — the device is connected again"
     }
   },
   "options": {
@@ -89,7 +102,7 @@
         "title": "Device settings",
         "data": {
           "ip_address": "IP address",
-          "protocol_version": "Device generation"
+          "protocol_version": "Device model"
         },
         "data_description": {
           "ip_address": "Update if the device IP address changed",
@@ -111,10 +124,26 @@
     },
     "sensor": {
       "rssi": {
-        "name": "Signal strength"
+        "name": "Reconnects"
       },
       "last_seen": {
         "name": "Last seen"
+      },
+      "power_consumption": {
+        "name": "Power"
+      },
+      "current": {
+        "name": "Current"
+      }
+    },
+    "binary_sensor": {
+      "overload": {
+        "name": "Overload"
+      }
+    },
+    "cover": {
+      "cover": {
+        "name": "Cover"
       }
     }
   }

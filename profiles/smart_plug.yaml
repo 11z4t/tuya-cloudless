@@ -1,0 +1,22 @@
+name: "Smart Plug"
+model: "sp*"
+entities:
+  - platform: switch
+    name: main_switch
+    dp_power: {id: "1", type: bool}
+  - platform: sensor
+    name: power_consumption
+    dp_value: {id: "19", type: int, scale: 0.1}
+    device_class: power
+    unit: W
+    state_class: measurement
+  - platform: sensor
+    name: current
+    dp_value: {id: "18", type: int, scale: 0.001}
+    device_class: current
+    unit: A
+    state_class: measurement
+  - platform: binary_sensor
+    name: overload
+    dp_power: {id: "26", type: bool}
+    device_class: problem

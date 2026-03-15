@@ -90,7 +90,7 @@ class TestDiscoveryListenerParsing:
 
     def test_parse_bad_prefix_returns_none(self) -> None:
         listener = self._listener()
-        raw = b"\xDE\xAD\xBE\xEF" + b"\x00" * 20
+        raw = b"\xde\xad\xbe\xef" + b"\x00" * 20
         device = listener._parse_datagram(raw, "10.0.0.4")
         assert device is None
 

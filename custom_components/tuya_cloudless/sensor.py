@@ -1,13 +1,22 @@
-"""Sensor platform for Tuya Cloudless — diagnostic sensors."""
+"""Sensor platform for Tuya Cloudless.
+
+Creates two kinds of sensors:
+  1. Profile-based sensors — from device profile ``EntitySpec`` entries
+     (e.g. power consumption, current).
+  2. Diagnostic sensors — always created regardless of profile
+     (last seen timestamp, reconnect counter).
+"""
 
 from __future__ import annotations
 
 import logging
 
-from homeassistant.components.sensor import SensorEntity, SensorStateClass
+from homeassistant.components.sensor import SensorDeviceClass, SensorEntity, SensorStateClass
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+
+from tuya_cloudless.profiles import EntitySpec
 
 from .coordinator import TuyaCloudlessCoordinator
 from .entity import TuyaCloudlessEntity
@@ -20,29 +29,102 @@ async def async_setup_entry(
     entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up Tuya Cloudless diagnostic sensor entities."""
+    """Set up Tuya Cloudless sensor entities.
+
+    Creates both profile-based sensors (if any in the profile) and the
+    two fixed diagnostic sensors (last seen, reconnect count).
+
+    Args:
+        hass: Home Assistant instance.
+        entry: Config entry with ``runtime_data`` attached.
+        async_add_entities: Callback to register new entities.
+    """
     from . import TuyaCloudlessRuntimeData
 
     runtime: TuyaCloudlessRuntimeData = entry.runtime_data
-    async_add_entities([
-        TuyaLastSeenSensor(runtime.coordinator),
-        TuyaReconnectSensor(runtime.coordinator),
-    ])
+    entities: list[SensorEntity] = []
+
+    # Profile-based sensors
+    for spec in runtime.entity_specs:
+        if spec.platform == "sensor":
+            entities.append(TuyaCloudlessSensor(runtime.coordinator, spec))
+
+    # Diagnostic sensors (always present)
+    entities.append(TuyaLastSeenSensor(runtime.coordinator))
+    entities.append(TuyaReconnectSensor(runtime.coordinator))
+
+    async_add_entities(entities)
+
+
+# ── Profile-based sensor ───────────────────────────────────────────────────────
+
+
+class TuyaCloudlessSensor(TuyaCloudlessEntity, SensorEntity):
+    """Tuya Cloudless measurement sensor (e.g. power, current, temperature).
+
+    Value, unit, device class, and state class are all driven by the profile.
+    The raw DP value is multiplied by ``spec.dp_value.scale`` before display.
+    """
+
+    def __init__(
+        self,
+        coordinator: TuyaCloudlessCoordinator,
+        spec: EntitySpec,
+    ) -> None:
+        """Initialise the sensor.
+
+        Args:
+            coordinator: The device coordinator.
+            spec: Entity specification from the device profile.
+        """
+        dp_id = spec.dp_value.id if spec.dp_value else None
+        super().__init__(coordinator, dp_id=dp_id)
+        self._spec = spec
+        self._attr_unique_id = f"{coordinator._gw_id}_{spec.name}"
+        self._attr_translation_key = spec.name
+
+        if spec.unit:
+            self._attr_native_unit_of_measurement = spec.unit
+
+        if spec.device_class:
+            with __import__("contextlib").suppress(ValueError):
+                self._attr_device_class = SensorDeviceClass(spec.device_class)
+
+        if spec.state_class:
+            with __import__("contextlib").suppress(ValueError):
+                self._attr_state_class = SensorStateClass(spec.state_class)
+
+    @property
+    def native_value(self) -> float | str | None:
+        """Return the sensor value, scaled by the DP spec's scale factor."""
+        if self._spec.dp_value is None:
+            return None
+        raw = self.get_dp(self._spec.dp_value.id)
+        if raw is None:
+            return None
+        scale = self._spec.dp_value.scale
+        if scale == 1.0:
+            return raw  # type: ignore[return-value]
+        return round(float(raw) * scale, 3)
+
+
+# ── Diagnostic sensors ────────────────────────────────────────────────────────
 
 
 class TuyaLastSeenSensor(TuyaCloudlessEntity, SensorEntity):
-    """Sensor showing when the device last sent a DPS update."""
+    """Sensor showing when the device last sent a status update."""
 
     _attr_translation_key = "last_seen"
     _attr_icon = "mdi:clock-outline"
 
     def __init__(self, coordinator: TuyaCloudlessCoordinator) -> None:
+        """Initialise the last-seen sensor."""
         super().__init__(coordinator)
         self._attr_unique_id = f"{coordinator._gw_id}_last_seen"
 
     @property
     def native_value(self) -> str | None:
-        """Return the ISO-8601 timestamp of the last DPS update, or None."""
+        """Return the ISO-8601 timestamp of the last status update, or None."""
         ts = self.coordinator.state.last_seen
         if ts is None:
             return None
@@ -57,6 +139,7 @@ class TuyaReconnectSensor(TuyaCloudlessEntity, SensorEntity):
     _attr_state_class = SensorStateClass.TOTAL_INCREASING
 
     def __init__(self, coordinator: TuyaCloudlessCoordinator) -> None:
+        """Initialise the reconnect-count sensor."""
         super().__init__(coordinator)
         self._attr_unique_id = f"{coordinator._gw_id}_reconnects"
         self._attr_name = "Reconnects"

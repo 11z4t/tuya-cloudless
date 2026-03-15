@@ -3,7 +3,7 @@
 Four-step guided setup (happy path):
   1. async_step_user       — Scan the local network for Tuya devices.
   2. async_step_select     — Choose a discovered device.
-  3. async_step_local_key  — Enter the device local key.
+  3. async_step_local_key  — Enter the device local key and choose a profile.
   4. async_step_confirm    — Review details, test connection, and save.
 
 Manual fallback:
@@ -11,6 +11,10 @@ Manual fallback:
 
 HA-initiated discovery:
   async_step_discovery     — Called when HA auto-detects a Tuya device.
+
+Re-authentication:
+  async_step_reauth        — Triggered when the security key is rejected.
+  async_step_reauth_confirm — Update the key and test the new connection.
 """
 
 from __future__ import annotations
@@ -32,16 +36,16 @@ from homeassistant.helpers.selector import (
 
 from .const import (
     CONF_DEVICE_NAME,
-    CONF_DEVICE_TYPE,
     CONF_GW_ID,
     CONF_IP_ADDRESS,
     CONF_LOCAL_KEY,
+    CONF_PROFILE,
     CONF_PROTOCOL_VERSION,
     CONFIG_ENTRY_VERSION,
     DEFAULT_PROTOCOL_VERSION,
     DEFAULT_TCP_PORT,
-    DEVICE_TYPES,
     DOMAIN,
+    PROFILES_DIR,
     PROTOCOL_VERSIONS,
 )
 
@@ -51,6 +55,28 @@ _LOCAL_KEY_LENGTH = 16
 _DISCOVERY_LISTEN_SECS = 5.0
 _DISCOVERY_TIMEOUT = _DISCOVERY_LISTEN_SECS + 1.0
 _CONNECTION_TIMEOUT = 3.0
+
+
+def _get_profile_options() -> list[SelectOptionDict]:
+    """Return profile select options, loading profiles if needed.
+
+    Returns:
+        List of :class:`SelectOptionDict` with profile names as values.
+    """
+    try:
+        from tuya_cloudless.profiles import init_profiles, list_profiles
+
+        profiles = list_profiles()
+        if not profiles:
+            init_profiles(PROFILES_DIR)
+            profiles = list_profiles()
+    except ImportError:
+        profiles = []
+
+    if not profiles:
+        return [SelectOptionDict(value="Generic Switch", label="Generic Switch")]
+
+    return [SelectOptionDict(value=p.name, label=p.name) for p in profiles]
 
 
 class TuyaCloudlessConfigFlow(ConfigFlow, domain=DOMAIN):
@@ -69,9 +95,7 @@ class TuyaCloudlessConfigFlow(ConfigFlow, domain=DOMAIN):
 
     # ── Step 1: Search ─────────────────────────────────────────────────────────
 
-    async def async_step_user(
-        self, user_input: dict[str, Any] | None = None
-    ) -> ConfigFlowResult:
+    async def async_step_user(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """Step 1: Present setup options and optionally scan the network.
 
         Offers two paths: automatic network scan or manual device entry.
@@ -109,9 +133,7 @@ class TuyaCloudlessConfigFlow(ConfigFlow, domain=DOMAIN):
 
         schema = vol.Schema(
             {
-                vol.Required("setup_mode", default="search"): vol.In(
-                    ["search", "manual"]
-                ),
+                vol.Required("setup_mode", default="search"): vol.In(["search", "manual"]),
             }
         )
 
@@ -123,9 +145,7 @@ class TuyaCloudlessConfigFlow(ConfigFlow, domain=DOMAIN):
 
     # ── Step 2: Select ─────────────────────────────────────────────────────────
 
-    async def async_step_select(
-        self, user_input: dict[str, Any] | None = None
-    ) -> ConfigFlowResult:
+    async def async_step_select(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """Step 2: Choose one of the discovered devices.
 
         Shows a list of devices found on the local network, labelled with
@@ -159,9 +179,7 @@ class TuyaCloudlessConfigFlow(ConfigFlow, domain=DOMAIN):
             )
             for d in self._discovered
         ]
-        device_options.append(
-            SelectOptionDict(value="__manual__", label="Add a device manually…")
-        )
+        device_options.append(SelectOptionDict(value="__manual__", label="Add a device manually…"))
 
         schema = vol.Schema(
             {
@@ -180,16 +198,15 @@ class TuyaCloudlessConfigFlow(ConfigFlow, domain=DOMAIN):
             description_placeholders={"count": str(len(self._discovered))},
         )
 
-    # ── Step 3: Local key ──────────────────────────────────────────────────────
+    # ── Step 3: Local key + profile ────────────────────────────────────────────
 
     async def async_step_local_key(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Step 3: Enter the security key for the selected device.
+        """Step 3: Enter the security key and choose a device profile.
 
-        The local key is a 16-character string that is generated when the
-        device is paired with the Tuya Cloudless pairing tool. It stays
-        on your Home Assistant instance and is never sent to any cloud.
+        The local key is a 16-character string generated during pairing.
+        The profile determines which controls appear in Home Assistant.
 
         Args:
             user_input: Submitted form data, or ``None`` on first render.
@@ -208,19 +225,24 @@ class TuyaCloudlessConfigFlow(ConfigFlow, domain=DOMAIN):
                 self._device.update(
                     {
                         CONF_LOCAL_KEY: local_key,
-                        CONF_DEVICE_NAME: name
-                        or self._device.get(CONF_IP_ADDRESS, "Tuya device"),
-                        CONF_DEVICE_TYPE: user_input.get(CONF_DEVICE_TYPE, "generic"),
+                        CONF_DEVICE_NAME: name or self._device.get(CONF_IP_ADDRESS, "Tuya device"),
+                        CONF_PROFILE: user_input.get(CONF_PROFILE, "Generic Switch"),
                     }
                 )
                 return await self.async_step_confirm()
+
+        profile_options = _get_profile_options()
+        default_profile = profile_options[0]["value"] if profile_options else "Generic Switch"
 
         schema = vol.Schema(
             {
                 vol.Required(CONF_LOCAL_KEY): str,
                 vol.Optional(CONF_DEVICE_NAME, default=""): str,
-                vol.Optional(CONF_DEVICE_TYPE, default="generic"): vol.In(
-                    DEVICE_TYPES
+                vol.Optional(CONF_PROFILE, default=default_profile): SelectSelector(
+                    SelectSelectorConfig(
+                        options=profile_options,
+                        mode=SelectSelectorMode.LIST,
+                    )
                 ),
             }
         )
@@ -273,7 +295,7 @@ class TuyaCloudlessConfigFlow(ConfigFlow, domain=DOMAIN):
                         CONF_PROTOCOL_VERSION: self._device.get(
                             CONF_PROTOCOL_VERSION, DEFAULT_PROTOCOL_VERSION
                         ),
-                        CONF_DEVICE_TYPE: self._device.get(CONF_DEVICE_TYPE, "generic"),
+                        CONF_PROFILE: self._device.get(CONF_PROFILE, "Generic Switch"),
                         CONF_DEVICE_NAME: title,
                     },
                 )
@@ -290,9 +312,7 @@ class TuyaCloudlessConfigFlow(ConfigFlow, domain=DOMAIN):
 
     # ── Manual fallback ────────────────────────────────────────────────────────
 
-    async def async_step_manual(
-        self, user_input: dict[str, Any] | None = None
-    ) -> ConfigFlowResult:
+    async def async_step_manual(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """Manual device setup — all fields in a single form.
 
         For users who have device details available and do not need the
@@ -334,20 +354,28 @@ class TuyaCloudlessConfigFlow(ConfigFlow, domain=DOMAIN):
                         CONF_PROTOCOL_VERSION: user_input.get(
                             CONF_PROTOCOL_VERSION, DEFAULT_PROTOCOL_VERSION
                         ),
-                        CONF_DEVICE_TYPE: user_input.get(CONF_DEVICE_TYPE, "generic"),
+                        CONF_PROFILE: user_input.get(CONF_PROFILE, "Generic Switch"),
                         CONF_DEVICE_NAME: title,
                     },
                 )
+
+        profile_options = _get_profile_options()
+        default_profile = profile_options[0]["value"] if profile_options else "Generic Switch"
 
         schema = vol.Schema(
             {
                 vol.Required(CONF_GW_ID): str,
                 vol.Required(CONF_LOCAL_KEY): str,
                 vol.Required(CONF_IP_ADDRESS): str,
-                vol.Optional(
-                    CONF_PROTOCOL_VERSION, default=DEFAULT_PROTOCOL_VERSION
-                ): vol.In(PROTOCOL_VERSIONS),
-                vol.Optional(CONF_DEVICE_TYPE, default="generic"): vol.In(DEVICE_TYPES),
+                vol.Optional(CONF_PROTOCOL_VERSION, default=DEFAULT_PROTOCOL_VERSION): vol.In(
+                    PROTOCOL_VERSIONS
+                ),
+                vol.Optional(CONF_PROFILE, default=default_profile): SelectSelector(
+                    SelectSelectorConfig(
+                        options=profile_options,
+                        mode=SelectSelectorMode.LIST,
+                    )
+                ),
                 vol.Optional(CONF_DEVICE_NAME, default=""): str,
             }
         )
@@ -387,18 +415,25 @@ class TuyaCloudlessConfigFlow(ConfigFlow, domain=DOMAIN):
                 self._device.update(
                     {
                         CONF_LOCAL_KEY: local_key,
-                        CONF_DEVICE_NAME: name
-                        or self._device.get(CONF_IP_ADDRESS, "Tuya device"),
-                        CONF_DEVICE_TYPE: user_input.get(CONF_DEVICE_TYPE, "generic"),
+                        CONF_DEVICE_NAME: name or self._device.get(CONF_IP_ADDRESS, "Tuya device"),
+                        CONF_PROFILE: user_input.get(CONF_PROFILE, "Generic Switch"),
                     }
                 )
                 return await self.async_step_confirm()
+
+        profile_options = _get_profile_options()
+        default_profile = profile_options[0]["value"] if profile_options else "Generic Switch"
 
         schema = vol.Schema(
             {
                 vol.Required(CONF_LOCAL_KEY): str,
                 vol.Optional(CONF_DEVICE_NAME, default=""): str,
-                vol.Optional(CONF_DEVICE_TYPE, default="generic"): vol.In(DEVICE_TYPES),
+                vol.Optional(CONF_PROFILE, default=default_profile): SelectSelector(
+                    SelectSelectorConfig(
+                        options=profile_options,
+                        mode=SelectSelectorMode.LIST,
+                    )
+                ),
             }
         )
 
@@ -409,6 +444,81 @@ class TuyaCloudlessConfigFlow(ConfigFlow, domain=DOMAIN):
             description_placeholders={
                 "ip_address": self._device.get(CONF_IP_ADDRESS, ""),
                 "firmware": self._device.get(CONF_PROTOCOL_VERSION, ""),
+            },
+        )
+
+    # ── Re-authentication ──────────────────────────────────────────────────────
+
+    async def async_step_reauth(self, entry_data: dict[str, Any]) -> ConfigFlowResult:
+        """Initiate re-authentication when the security key is rejected.
+
+        This step is triggered automatically by the coordinator when the
+        device refuses the current key (e.g. after factory reset or
+        re-pairing via the Tuya app).
+
+        Args:
+            entry_data: Current config entry data dict.
+
+        Returns:
+            Config flow result showing the re-auth form.
+        """
+        return await self.async_step_reauth_confirm()
+
+    async def async_step_reauth_confirm(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Handle the re-authentication form submission.
+
+        Validates the new security key and tests the connection before
+        updating the config entry.
+
+        Args:
+            user_input: Submitted form data, or ``None`` on first render.
+
+        Returns:
+            Config flow result — updates the entry on success.
+        """
+        errors: dict[str, str] = {}
+
+        reauth_entry = self._get_reauth_entry()
+
+        if user_input is not None:
+            local_key = user_input[CONF_LOCAL_KEY].strip()
+            if len(local_key) != _LOCAL_KEY_LENGTH:
+                errors[CONF_LOCAL_KEY] = "invalid_local_key"
+            else:
+                ip_address = user_input.get(CONF_IP_ADDRESS, "").strip() or reauth_entry.data.get(
+                    CONF_IP_ADDRESS, ""
+                )
+                errors = await self._check_connection(ip_address)
+
+                if not errors:
+                    new_data = {
+                        **reauth_entry.data,
+                        CONF_LOCAL_KEY: local_key,
+                        CONF_IP_ADDRESS: ip_address,
+                    }
+                    return self.async_update_reload_and_abort(
+                        reauth_entry,
+                        data=new_data,
+                    )
+
+        schema = vol.Schema(
+            {
+                vol.Required(CONF_LOCAL_KEY): str,
+                vol.Optional(
+                    CONF_IP_ADDRESS,
+                    default=reauth_entry.data.get(CONF_IP_ADDRESS, ""),
+                ): str,
+            }
+        )
+
+        return self.async_show_form(
+            step_id="reauth_confirm",
+            data_schema=schema,
+            errors=errors,
+            description_placeholders={
+                "device_name": reauth_entry.title,
             },
         )
 
@@ -493,9 +603,7 @@ class TuyaCloudlessOptionsFlow(OptionsFlow):
         """Initialise the options flow."""
         self._config_entry = config_entry
 
-    async def async_step_init(
-        self, user_input: dict[str, Any] | None = None
-    ) -> ConfigFlowResult:
+    async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """Show the options form.
 
         Args:

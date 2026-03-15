@@ -4,9 +4,9 @@
     "step": {
       "user": {
         "title": "Lägg till en Tuya-enhet",
-        "description": "Välj hur du vill lägga till din enhet. **Sök** skannar nätverket automatiskt — se till att enheten är påslagen och ansluten till samma Wi-Fi som Home Assistant.",
+        "description": "Välj hur du vill lägga till din enhet. **Sök** hittar enheter automatiskt på ditt nätverk — se till att enheten är påslagen och ansluten till samma Wi-Fi som Home Assistant.",
         "data": {
-          "setup_mode": "Installationsmetod"
+          "setup_mode": "Inställningsmetod"
         },
         "data_description": {
           "setup_mode": "Sök hittar enheter automatiskt. Välj manuell om din enhet inte hittas."
@@ -21,66 +21,79 @@
       },
       "local_key": {
         "title": "Ange säkerhetsnyckeln",
-        "description": "Din enhet på **{ip_address}** (firmware {firmware}) behöver en säkerhetsnyckel för att kommunicera lokalt.\n\nNyckeln visas när du parar enheten med Tuya Cloudless-paransverktyget. Den lagras bara i din Home Assistant-instans.",
+        "description": "Din enhet på **{ip_address}** (firmware {firmware}) behöver en säkerhetsnyckel för att kommunicera lokalt.\n\nNyckeln visas när du kopplar ihop enheten med Tuya Cloudless. Den lagras bara i Home Assistant — inget skickas till molnet.",
         "data": {
           "local_key": "Säkerhetsnyckel",
           "device_name": "Enhetsnamn",
-          "device_type": "Enhetstyp"
+          "profile": "Enhetstyp"
         },
         "data_description": {
-          "local_key": "16-teckens nyckel från paransverktyget",
-          "device_name": "Ett valfritt namn som visas i Home Assistant (lämna tomt för att använda IP-adressen)",
-          "device_type": "Välj närmaste match — avgör vilka kontroller som skapas"
+          "local_key": "16 tecken från ihopkopplingen",
+          "device_name": "Ett eget namn som visas i Home Assistant (lämna tomt för att använda IP-adressen)",
+          "profile": "Välj den typ som passar din enhet bäst"
         }
       },
       "confirm": {
         "title": "Redo att ansluta",
-        "description": "**{device_name}** på `{ip_address}` läggs till i Home Assistant.\n\nKlicka på **Anslut** för att testa anslutningen och slutföra konfigurationen.",
+        "description": "**{device_name}** på `{ip_address}` läggs till i Home Assistant.\n\nKlicka på **Anslut** för att testa anslutningen och slutföra inställningen.",
         "data": {}
       },
       "manual": {
         "title": "Lägg till enhet manuellt",
-        "description": "Ange uppgifterna för din Tuya-enhet. Enhets-ID och säkerhetsnyckel visas i Tuya Cloudless-paransverktyget.",
+        "description": "Ange uppgifterna för din Tuya-enhet. Enhets-ID och säkerhetsnyckel visas i Tuya Cloudless-verktyget.",
         "data": {
           "gw_id": "Enhets-ID",
           "local_key": "Säkerhetsnyckel",
           "ip_address": "IP-adress",
-          "protocol_version": "Enhetsgeneration",
-          "device_type": "Enhetstyp",
+          "protocol_version": "Enhetsmodell",
+          "profile": "Enhetstyp",
           "device_name": "Enhetsnamn"
         },
         "data_description": {
-          "gw_id": "Unikt ID för enheten (visas under parning, t.ex. abc123def456)",
-          "local_key": "16-teckens säkerhetsnyckel från paransverktyget",
-          "ip_address": "Enhetens IP-adress (sätt en fast adress i din router för tillförlitlighet)",
-          "protocol_version": "Generation 3.3 fungerar för de flesta enheter från 2020 och senare",
-          "device_type": "Välj närmaste match — avgör vilka kontroller som skapas"
+          "gw_id": "Unikt ID för enheten (visas under ihopkopplingen, t.ex. abc123def456)",
+          "local_key": "16 tecken från ihopkopplingen",
+          "ip_address": "Enhetens IP-adress (ange en fast adress i routern för bättre stabilitet)",
+          "protocol_version": "Modell 3.3 fungerar för de flesta enheter tillverkade efter 2020",
+          "profile": "Välj den typ som passar din enhet bäst"
         }
       },
       "discovery": {
         "title": "Tuya-enhet hittad",
-        "description": "En enhet hittades på **{ip_address}** (firmware {firmware}).\n\nAnge säkerhetsnyckeln för att slutföra konfigurationen.",
+        "description": "En enhet hittades på **{ip_address}** (firmware {firmware}).\n\nAnge säkerhetsnyckeln för att slutföra inställningen.",
         "data": {
           "local_key": "Säkerhetsnyckel",
-          "device_type": "Enhetstyp",
+          "profile": "Enhetstyp",
           "device_name": "Enhetsnamn"
         },
         "data_description": {
-          "local_key": "16-teckens nyckel från Tuya Cloudless-paransverktyget"
+          "local_key": "16 tecken från Tuya Cloudless-verktyget"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Uppdatera säkerhetsnyckeln",
+        "description": "Säkerhetsnyckeln för **{device_name}** har slutat fungera. Det händer om enheten har återställts till fabriksinställningar eller kopplats ihop på nytt.\n\nAnge den nya säkerhetsnyckeln för att återansluta.",
+        "data": {
+          "local_key": "Ny säkerhetsnyckel",
+          "ip_address": "IP-adress (om den har ändrats)"
+        },
+        "data_description": {
+          "local_key": "16 tecken från den senaste ihopkopplingen",
+          "ip_address": "Lämna tomt om adressen inte har ändrats"
         }
       }
     },
     "error": {
-      "cannot_connect": "Kunde inte nå enheten — kontrollera IP-adressen och att enheten är på samma nätverk som Home Assistant",
-      "invalid_local_key": "Ogiltig säkerhetsnyckel — måste vara exakt 16 tecken",
+      "cannot_connect": "Det gick inte att nå enheten — kontrollera IP-adressen och att enheten är på samma nätverk som Home Assistant",
+      "invalid_local_key": "Ogiltig säkerhetsnyckel — nyckeln måste vara exakt 16 tecken",
       "invalid_gw_id": "Ogiltigt enhets-ID — får inte vara tomt",
-      "auth_failed": "Anslutning nekad — säkerhetsnyckeln kan vara fel, eller enheten har parats om via Tuya-molnappen",
-      "no_devices_found": "Inga Tuya-enheter hittades på nätverket. Kontrollera att enheten är påslagen och på samma Wi-Fi. Välj Manuell ovan för att ange uppgifter för hand.",
+      "auth_failed": "Anslutningen nekades — säkerhetsnyckeln kan vara felaktig eller enheten har kopplats ihop på nytt med Tuya-appen",
+      "no_devices_found": "Inga Tuya-enheter hittades på nätverket. Se till att enheten är påslagen och på samma Wi-Fi. Byt till **Manuell** ovan för att ange uppgifterna för hand.",
       "unknown": "Oväntat fel — kontrollera Home Assistant-loggen för detaljer"
     },
     "abort": {
-      "already_configured": "Den här enheten är redan konfigurerad",
-      "not_tuya_device": "Enheten svarade inte som förväntat"
+      "already_configured": "Den här enheten är redan inlagd",
+      "not_tuya_device": "Enheten svarade inte som förväntat",
+      "reauth_successful": "Säkerhetsnyckeln uppdaterades — enheten är ansluten igen"
     }
   },
   "options": {
@@ -89,7 +102,7 @@
         "title": "Enhetsinställningar",
         "data": {
           "ip_address": "IP-adress",
-          "protocol_version": "Enhetsgeneration"
+          "protocol_version": "Enhetsmodell"
         },
         "data_description": {
           "ip_address": "Uppdatera om enhetens IP-adress har ändrats",
@@ -111,10 +124,26 @@
     },
     "sensor": {
       "rssi": {
-        "name": "Signalstyrka"
+        "name": "Återanslutningar"
       },
       "last_seen": {
         "name": "Senast sedd"
+      },
+      "power_consumption": {
+        "name": "Effekt"
+      },
+      "current": {
+        "name": "Ström"
+      }
+    },
+    "binary_sensor": {
+      "overload": {
+        "name": "Överlastskydd"
+      }
+    },
+    "cover": {
+      "cover": {
+        "name": "Rullgardin"
       }
     }
   }
