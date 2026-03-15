@@ -536,7 +536,7 @@ class TuyaCloudlessConfigFlow(ConfigFlow, domain=DOMAIN):
         config_entry: ConfigEntry,
     ) -> TuyaCloudlessOptionsFlow:
         """Return the options flow handler."""
-        return TuyaCloudlessOptionsFlow(config_entry)
+        return TuyaCloudlessOptionsFlow()
 
     # ── Private helpers ────────────────────────────────────────────────────────
 
@@ -605,10 +605,6 @@ class TuyaCloudlessConfigFlow(ConfigFlow, domain=DOMAIN):
 class TuyaCloudlessOptionsFlow(OptionsFlow):
     """Handle Tuya Cloudless options (IP address, device generation)."""
 
-    def __init__(self, config_entry: ConfigEntry) -> None:
-        """Initialise the options flow."""
-        self._config_entry = config_entry
-
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """Show the options form.
 
@@ -621,17 +617,17 @@ class TuyaCloudlessOptionsFlow(OptionsFlow):
         if user_input is not None:
             return self.async_create_entry(data=user_input)
 
-        opts = self._config_entry.options or {}
+        opts = self.config_entry.options or {}
 
         schema = vol.Schema(
             {
                 vol.Optional(
                     CONF_IP_ADDRESS,
-                    default=self._config_entry.data.get(CONF_IP_ADDRESS, ""),
+                    default=self.config_entry.data.get(CONF_IP_ADDRESS, ""),
                 ): str,
                 vol.Optional(
                     CONF_PROTOCOL_VERSION,
-                    default=self._config_entry.data.get(
+                    default=self.config_entry.data.get(
                         CONF_PROTOCOL_VERSION, DEFAULT_PROTOCOL_VERSION
                     ),
                 ): vol.In(PROTOCOL_VERSIONS),
@@ -643,9 +639,7 @@ class TuyaCloudlessOptionsFlow(OptionsFlow):
                 ): vol.All(vol.Coerce(int), vol.Range(min=5, max=300)),
                 vol.Optional(
                     CONF_OPT_COMMAND_TIMEOUT,
-                    default=int(
-                        opts.get(CONF_OPT_COMMAND_TIMEOUT, DEFAULT_OPT_COMMAND_TIMEOUT)
-                    ),
+                    default=int(opts.get(CONF_OPT_COMMAND_TIMEOUT, DEFAULT_OPT_COMMAND_TIMEOUT)),
                 ): vol.All(vol.Coerce(int), vol.Range(min=1, max=30)),
                 vol.Optional(
                     CONF_OPT_RECONNECT_MAX_DELAY,

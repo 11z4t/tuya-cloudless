@@ -13,6 +13,7 @@ import logging
 
 from homeassistant.components.sensor import SensorDeviceClass, SensorEntity, SensorStateClass
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
@@ -80,19 +81,33 @@ class TuyaCloudlessSensor(TuyaCloudlessEntity, SensorEntity):
         dp_id = spec.dp_value.id if spec.dp_value else None
         super().__init__(coordinator, dp_id=dp_id)
         self._spec = spec
-        self._attr_unique_id = f"{coordinator._gw_id}_{spec.name}"
+        self._attr_unique_id = f"{coordinator._gw_id}_{spec.platform}_{spec.name}"
         self._attr_translation_key = spec.name
 
         if spec.unit:
             self._attr_native_unit_of_measurement = spec.unit
 
         if spec.device_class:
-            with __import__("contextlib").suppress(ValueError):
+            try:
                 self._attr_device_class = SensorDeviceClass(spec.device_class)
+            except ValueError:
+                _LOGGER.warning(
+                    "[%s] Unknown device_class '%s' for sensor '%s' — ignored",
+                    coordinator._gw_id,
+                    spec.device_class,
+                    spec.name,
+                )
 
         if spec.state_class:
-            with __import__("contextlib").suppress(ValueError):
+            try:
                 self._attr_state_class = SensorStateClass(spec.state_class)
+            except ValueError:
+                _LOGGER.warning(
+                    "[%s] Unknown state_class '%s' for sensor '%s' — ignored",
+                    coordinator._gw_id,
+                    spec.state_class,
+                    spec.name,
+                )
 
     @property
     def native_value(self) -> float | str | None:
@@ -116,6 +131,7 @@ class TuyaLastSeenSensor(TuyaCloudlessEntity, SensorEntity):
 
     _attr_translation_key = "last_seen"
     _attr_icon = "mdi:clock-outline"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
 
     def __init__(self, coordinator: TuyaCloudlessCoordinator) -> None:
         """Initialise the last-seen sensor."""
@@ -137,6 +153,7 @@ class TuyaReconnectSensor(TuyaCloudlessEntity, SensorEntity):
     _attr_translation_key = "rssi"
     _attr_icon = "mdi:wifi-sync"
     _attr_state_class = SensorStateClass.TOTAL_INCREASING
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
 
     def __init__(self, coordinator: TuyaCloudlessCoordinator) -> None:
         """Initialise the reconnect-count sensor."""

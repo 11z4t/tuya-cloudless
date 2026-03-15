@@ -46,6 +46,9 @@ _LOGGER = logging.getLogger(__name__)
 #: Number of consecutive frame decode errors before triggering reconnect
 _MAX_CONSECUTIVE_ERRORS = 5
 
+#: Maximum receive buffer — forces reconnect if exceeded (guards against corrupt streams)
+_MAX_BUFFER_BYTES = 65_536  # 64 KB
+
 
 @dataclass
 class DeviceState:
@@ -316,6 +319,15 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 break
 
             buffer += chunk
+            if len(buffer) > _MAX_BUFFER_BYTES:
+                _LOGGER.warning(
+                    "[%s] Receive buffer exceeded %d bytes — forcing reconnect",
+                    self._gw_id,
+                    _MAX_BUFFER_BYTES,
+                )
+                if self._writer is not None:
+                    self._writer.close()
+                return
             frames, buffer = split_frames(buffer)
 
             for raw_frame in frames:
@@ -412,6 +424,34 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         Raises:
             TuyaCloudlessError: If negotiation fails or times out.
         """
+        _MAX_NEG_ATTEMPTS = 3
+        last_exc: Exception | None = None
+
+        for attempt in range(_MAX_NEG_ATTEMPTS):
+            if attempt:
+                _LOGGER.debug(
+                    "[%s] Session key negotiation attempt %d/%d",
+                    self._gw_id,
+                    attempt + 1,
+                    _MAX_NEG_ATTEMPTS,
+                )
+                await asyncio.sleep(0.5)
+
+            try:
+                return await self._negotiate_session_key_once(reader, writer)
+            except (TuyaCloudlessError, OSError, TimeoutError) as exc:
+                last_exc = exc
+
+        raise TuyaCloudlessError(
+            f"Session key negotiation failed after {_MAX_NEG_ATTEMPTS} attempts"
+        ) from last_exc
+
+    async def _negotiate_session_key_once(
+        self,
+        reader: asyncio.StreamReader,
+        writer: asyncio.StreamWriter,
+    ) -> bytes:
+        """Single attempt at ECDH session key exchange."""
         from tuya_cloudless.crypto import derive_session_key, generate_ecdh_keypair
         from tuya_cloudless.protocol import encode_session_key_finish, encode_session_key_start
 
@@ -511,9 +551,7 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             heartbeat_interval=float(
                 opts.get(CONF_OPT_HEARTBEAT_INTERVAL, DEFAULT_OPT_HEARTBEAT_INTERVAL)
             ),
-            command_timeout=float(
-                opts.get(CONF_OPT_COMMAND_TIMEOUT, DEFAULT_OPT_COMMAND_TIMEOUT)
-            ),
+            command_timeout=float(opts.get(CONF_OPT_COMMAND_TIMEOUT, DEFAULT_OPT_COMMAND_TIMEOUT)),
             reconnect_max_delay=float(
                 opts.get(CONF_OPT_RECONNECT_MAX_DELAY, DEFAULT_OPT_RECONNECT_MAX_DELAY)
             ),

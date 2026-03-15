@@ -62,6 +62,7 @@ class EntitySpec:
         dp_color_temp: Colour temperature DP (light only, 0=warm, 1000=cool).
         dp_open:          Open/close DP (cover only; True = open).
         dp_position:      Position DP (cover; 0-100).
+        dp_tilt:          Tilt position DP (cover; 0-100, optional).
         dp_direction:     Direction DP (cover; enum string).
         dp_hs_hue:        Hue DP (light; 0-360 raw typical).
         dp_hs_saturation: Saturation DP (light; 0-1000 raw typical).
@@ -80,6 +81,7 @@ class EntitySpec:
     dp_color_temp: DPSpec | None = None
     dp_open: DPSpec | None = None
     dp_position: DPSpec | None = None
+    dp_tilt: DPSpec | None = None
     dp_direction: DPSpec | None = None
     dp_hs_hue: DPSpec | None = None
     dp_hs_saturation: DPSpec | None = None
@@ -158,6 +160,7 @@ def _parse_entity_spec(data: dict[str, Any]) -> EntitySpec:
         dp_color_temp=_parse_dp_spec(data.get("dp_color_temp")),
         dp_open=_parse_dp_spec(data.get("dp_open")),
         dp_position=_parse_dp_spec(data.get("dp_position")),
+        dp_tilt=_parse_dp_spec(data.get("dp_tilt")),
         dp_direction=_parse_dp_spec(data.get("dp_direction")),
         dp_hs_hue=_parse_dp_spec(data.get("dp_hs_hue")),
         dp_hs_saturation=_parse_dp_spec(data.get("dp_hs_saturation")),

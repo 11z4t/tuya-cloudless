@@ -1,16 +1,18 @@
 """Cover platform for Tuya Cloudless.
 
 Creates cover entities (blinds, curtains, garage doors) from device profiles.
-Supports open/close, position control, and direction setting.
+Supports open/close, position control, tilt, and direction setting.
 """
 
 from __future__ import annotations
 
+import contextlib
 import logging
 from typing import Any
 
 from homeassistant.components.cover import (
     ATTR_POSITION,
+    ATTR_TILT_POSITION,
     CoverDeviceClass,
     CoverEntity,
     CoverEntityFeature,
@@ -55,7 +57,11 @@ class TuyaCloudlessCover(TuyaCloudlessEntity, CoverEntity):
     Supports:
     - Open / close via a boolean DP.
     - Position control via an integer DP (0-100).
+    - Tilt control via an optional tilt DP (0-100).
     - Optional direction DP (for motor direction control).
+
+    ``is_closed`` is derived from position when available (position == 0),
+    otherwise falls back to the boolean open DP.
     """
 
     def __init__(
@@ -72,7 +78,7 @@ class TuyaCloudlessCover(TuyaCloudlessEntity, CoverEntity):
         dp_id = spec.dp_open.id if spec.dp_open else None
         super().__init__(coordinator, dp_id=dp_id)
         self._spec = spec
-        self._attr_unique_id = f"{coordinator._gw_id}_{spec.name}"
+        self._attr_unique_id = f"{coordinator._gw_id}_{spec.platform}_{spec.name}"
         self._attr_translation_key = spec.name
 
         # Build supported features based on available DPs in spec
@@ -81,21 +87,34 @@ class TuyaCloudlessCover(TuyaCloudlessEntity, CoverEntity):
             features |= CoverEntityFeature.OPEN | CoverEntityFeature.CLOSE
         if spec.dp_position is not None:
             features |= CoverEntityFeature.SET_POSITION
+        if spec.dp_tilt is not None:
+            features |= CoverEntityFeature.SET_TILT_POSITION
         self._attr_supported_features = features
 
         if spec.device_class:
-            with __import__("contextlib").suppress(ValueError):
+            with contextlib.suppress(ValueError):
                 self._attr_device_class = CoverDeviceClass(spec.device_class)
 
     @property
     def is_closed(self) -> bool | None:
-        """Return True if the cover is closed (open DP is False)."""
-        if self._spec.dp_open is None:
-            return None
-        value = self.get_dp(self._spec.dp_open.id)
-        if value is None:
-            return None
-        return not bool(value)
+        """Return True if the cover is fully closed.
+
+        Uses position DP when available (position == 0 = closed).
+        Falls back to boolean open DP when no position DP is configured.
+        """
+        if self._spec.dp_position is not None:
+            pos = self.current_cover_position
+            if pos is None:
+                return None
+            return pos == 0
+
+        if self._spec.dp_open is not None:
+            value = self.get_dp(self._spec.dp_open.id)
+            if value is None:
+                return None
+            return not bool(value)
+
+        return None
 
     @property
     def current_cover_position(self) -> int | None:
@@ -103,6 +122,16 @@ class TuyaCloudlessCover(TuyaCloudlessEntity, CoverEntity):
         if self._spec.dp_position is None:
             return None
         raw = self.get_dp(self._spec.dp_position.id)
+        if raw is None:
+            return None
+        return int(raw)
+
+    @property
+    def current_cover_tilt_position(self) -> int | None:
+        """Return current tilt position (0 = closed, 100 = open), or None."""
+        if self._spec.dp_tilt is None:
+            return None
+        raw = self.get_dp(self._spec.dp_tilt.id)
         if raw is None:
             return None
         return int(raw)
@@ -127,3 +156,14 @@ class TuyaCloudlessCover(TuyaCloudlessEntity, CoverEntity):
             return
         position: int = kwargs[ATTR_POSITION]
         await self.async_send_dp(self._spec.dp_position.id, position)
+
+    async def async_set_cover_tilt_position(self, **kwargs: Any) -> None:
+        """Set the tilt position (0-100).
+
+        Args:
+            **kwargs: Must include ``ATTR_TILT_POSITION`` (int 0-100).
+        """
+        if self._spec.dp_tilt is None:
+            return
+        tilt: int = kwargs[ATTR_TILT_POSITION]
+        await self.async_send_dp(self._spec.dp_tilt.id, tilt)

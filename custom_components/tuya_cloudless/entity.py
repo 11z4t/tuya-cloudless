@@ -55,7 +55,8 @@ class TuyaCloudlessEntity(CoordinatorEntity[TuyaCloudlessCoordinator]):
             identifiers={(DOMAIN, gw_id)},
             name=gw_id,
             manufacturer="Tuya",
-            model=f"Tuya Cloudless ({self.coordinator._version})",
+            model="Tuya Cloudless",
+            sw_version=self.coordinator._version,
         )
 
     def get_dp(self, dp_id: str | None = None) -> Any:
@@ -71,6 +72,16 @@ class TuyaCloudlessEntity(CoordinatorEntity[TuyaCloudlessCoordinator]):
         if key is None:
             return None
         return self.coordinator.state.dps.get(key)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return the raw DP id and current value for diagnostics."""
+        if self._dp_id is None:
+            return {}
+        return {
+            "dp_id": self._dp_id,
+            "raw_value": self.coordinator.state.dps.get(self._dp_id),
+        }
 
     async def async_send_dp(self, dp_id: str, value: Any) -> None:
         """Send a single DP value to the device.
