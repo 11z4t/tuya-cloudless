@@ -44,11 +44,15 @@ from datetime import UTC, datetime
 
 from tuya_cloudless.const import (
     CMD_UDP,
+    DISCOVERY_DEVICE_STALE_AGE,
+    DISCOVERY_POLLING_INTERVAL,
+    DISCOVERY_WAIT_TIMEOUT,
     FRAME_HEADER_SIZE,
     FRAME_PREFIX,
     PROTOCOL_31,
     UDP_ENC_PORT,
     UDP_PORT,
+    UDP_QUEUE_TIMEOUT,
 )
 from tuya_cloudless.crypto import decrypt_payload
 from tuya_cloudless.exceptions import CryptoError, DiscoveryError, MalformedPacketError
@@ -84,7 +88,7 @@ class DiscoveredDevice:
     seen_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     raw_data: dict = field(default_factory=dict, repr=False)
 
-    def is_stale(self, max_age_seconds: float = 300.0) -> bool:
+    def is_stale(self, max_age_seconds: float = DISCOVERY_DEVICE_STALE_AGE) -> bool:
         """Return True if this device has not been seen within ``max_age_seconds``."""
         age = (datetime.now(UTC) - self.seen_at).total_seconds()
         return age > max_age_seconds
@@ -232,7 +236,7 @@ class DiscoveryListener:
     async def wait_for_device(
         self,
         gw_id: str,
-        timeout: float = 30.0,
+        timeout: float = DISCOVERY_WAIT_TIMEOUT,
     ) -> DiscoveredDevice:
         """Wait until a specific device is discovered.
 
@@ -275,7 +279,7 @@ class DiscoveryListener:
             for dev in yield_batch:
                 yield dev
             if not yield_batch:
-                await asyncio.sleep(0.1)
+                await asyncio.sleep(DISCOVERY_POLLING_INTERVAL)
                 continue
             await self._device_event.wait()
 
@@ -285,7 +289,7 @@ class DiscoveryListener:
         """Background task: drain queue and parse discovery datagrams."""
         while self._running:
             try:
-                data, addr = await asyncio.wait_for(self._queue.get(), timeout=1.0)
+                data, addr = await asyncio.wait_for(self._queue.get(), timeout=UDP_QUEUE_TIMEOUT)
             except TimeoutError:
                 continue
             except asyncio.CancelledError:

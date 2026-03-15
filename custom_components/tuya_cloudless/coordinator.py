@@ -195,10 +195,12 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     async def _connect(self) -> None:
         """Establish TCP connection and run receive loop until disconnected."""
+        from tuya_cloudless.const import TCP_CONNECT_TIMEOUT
+
         _LOGGER.info("[%s] Connecting to %s:%d", self._gw_id, self._ip, DEFAULT_TCP_PORT)
         reader, writer = await asyncio.wait_for(
             asyncio.open_connection(self._ip, DEFAULT_TCP_PORT),
-            timeout=10.0,
+            timeout=TCP_CONNECT_TIMEOUT,
         )
         self._reader = reader
         self._writer = writer
@@ -254,12 +256,15 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     async def _receive_loop(self, reader: asyncio.StreamReader) -> None:
         """Read TCP frames and update DPS state until connection drops."""
+        from tuya_cloudless.const import TCP_READ_BUFFER_SIZE, TCP_RECEIVE_TIMEOUT
         from tuya_cloudless.protocol import decode_frame, split_frames
 
         buffer = b""
         while True:
             try:
-                chunk = await asyncio.wait_for(reader.read(4096), timeout=30.0)
+                chunk = await asyncio.wait_for(
+                    reader.read(TCP_READ_BUFFER_SIZE), timeout=TCP_RECEIVE_TIMEOUT
+                )
             except TimeoutError:
                 _LOGGER.debug("[%s] Receive timeout — checking connection", self._gw_id)
                 continue
