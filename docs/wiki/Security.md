@@ -28,7 +28,7 @@ When you download diagnostics:
 
 Please do not open a public GitHub issue for security problems.
 
-Email us instead (see SECURITY.md in the repository) with:
+Email **security@kvista.se** instead (see SECURITY.md in the repository) with:
 - A description of the vulnerability
 - Steps to reproduce it (if possible)
 - Your suggested fix (optional)
