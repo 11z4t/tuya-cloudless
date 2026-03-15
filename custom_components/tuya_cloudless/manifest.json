@@ -1,7 +1,7 @@
 {
   "domain": "tuya_cloudless",
   "name": "Tuya Cloudless",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "integration_type": "hub",
   "documentation": "https://github.com/kvista-se/tuya-cloudless/wiki",
   "issue_tracker": "https://github.com/kvista-se/tuya-cloudless/issues",

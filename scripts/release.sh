@@ -13,6 +13,12 @@ if [ "$TAG" != "$MANIFEST_VERSION" ]; then
     exit 1
 fi
 
+# Bundle lib into custom_components before zipping
+echo "Bundling lib/tuya_cloudless..."
+mkdir -p custom_components/tuya_cloudless/lib
+cp -r lib/tuya_cloudless custom_components/tuya_cloudless/lib/tuya_cloudless
+trap 'rm -rf custom_components/tuya_cloudless/lib' EXIT
+
 # Create and push git tag
 if git rev-parse "$TAG" >/dev/null 2>&1; then
     echo "Tag $TAG already exists locally"

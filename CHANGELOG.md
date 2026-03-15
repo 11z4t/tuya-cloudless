@@ -3,6 +3,13 @@
 All notable changes to Tuya Cloudless are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [0.2.2] — 2026-03-15
+
+### Fixed
+- Config flow failed to load ("Invalid handler specified") because `lib/tuya_cloudless`
+  was missing from HACS installations. Release zip now bundles the library at
+  `tuya_cloudless/lib/tuya_cloudless/` where `__init__.py` already looks for it.
+
 ## [0.2.1] — 2026-03-15
 
 ### Fixed

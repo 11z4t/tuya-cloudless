@@ -48,11 +48,18 @@ jobs:
             "https://api.github.com/repos/${{ github.repository }}/releases/tags/${TAG}")
           echo "exists=$([ "$STATUS" = "200" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
 
+      - name: Bundle lib into integration
+        run: |
+          # Copy lib/tuya_cloudless into custom_components/tuya_cloudless/lib/
+          # so it is importable at runtime without any sys.path manipulation
+          mkdir -p custom_components/tuya_cloudless/lib
+          cp -r lib/tuya_cloudless custom_components/tuya_cloudless/lib/tuya_cloudless
+
       - name: Build integration zip
         run: |
           cd custom_components
-          zip -r "../tuya_cloudless.zip" tuya_cloudless/
-          echo "Built tuya_cloudless.zip"
+          zip -r "../tuya_cloudless.zip" tuya_cloudless/ --exclude "tuya_cloudless/__pycache__/*" --exclude "tuya_cloudless/lib/tuya_cloudless/__pycache__/*"
+          echo "Built tuya_cloudless.zip ($(du -sh ../tuya_cloudless.zip | cut -f1))"
 
       - name: Generate release notes
         if: steps.check.outputs.exists == 'false'
