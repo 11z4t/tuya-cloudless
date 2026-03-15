@@ -208,3 +208,128 @@ class TestSplitFrames:
         frames, _leftover = split_frames(data)
         # Should find the valid frame after skipping garbage
         assert len(frames) == 1
+
+    def test_no_prefix_found(self) -> None:
+        frames, leftover = split_frames(b"\xde\xad\xbe\xef" * 10)
+        assert frames == []
+
+    def test_bad_suffix_skips(self) -> None:
+        """A frame with wrong suffix at expected position should be skipped."""
+        from tuya_cloudless.crypto import compute_crc32
+
+        payload = b""
+        length = len(payload) + 8
+        header = struct.pack(">4sIII", FRAME_PREFIX, 1, CMD_HEARTBEAT, length)
+        body = header + payload
+        crc = compute_crc32(body)
+        # Wrong suffix
+        bad_frame = body + struct.pack(">I", crc) + b"\xde\xad\xbe\xef"
+        frames, leftover = split_frames(bad_frame)
+        assert frames == []
+
+
+# ── Status query / response ──────────────────────────────────────────────────
+
+
+class TestEncodeStatusQuery:
+    def test_v33_uses_cmd_status(self) -> None:
+        from tuya_cloudless.protocol import encode_status_query
+
+        raw = encode_status_query(
+            sequence=1, version="3.3", local_key=_LOCAL_KEY
+        )
+        _, seq, cmd, _ = struct.unpack_from(">4sIII", raw, 0)
+        assert cmd == CMD_STATUS
+
+    def test_v34_uses_dp_query(self) -> None:
+        from tuya_cloudless.const import CMD_DP_QUERY
+        from tuya_cloudless.protocol import encode_status_query
+
+        session_key = b"\xab" * 16
+        raw = encode_status_query(
+            sequence=1, version="3.4", local_key=_LOCAL_KEY, session_key=session_key
+        )
+        _, seq, cmd, _ = struct.unpack_from(">4sIII", raw, 0)
+        assert cmd == CMD_DP_QUERY
+
+
+class TestEncodeStatusResponse:
+    def test_v33_roundtrip(self) -> None:
+        from tuya_cloudless.protocol import encode_status_response
+
+        dps = {"1": True, "2": 50}
+        raw = encode_status_response(
+            dps, sequence=1, version="3.3", local_key=_LOCAL_KEY
+        )
+        frame = decode_frame(raw, version="3.3", local_key=_LOCAL_KEY)
+        assert frame.dps == {"dps": dps}
+
+
+# ── Session key negotiation frames ───────────────────────────────────────────
+
+
+class TestSessionKeyFrames:
+    def test_encode_session_key_start(self) -> None:
+        from tuya_cloudless.protocol import encode_session_key_start
+
+        pubkey = b"\x42" * 32
+        raw = encode_session_key_start(
+            pubkey, sequence=1, local_key=_LOCAL_KEY
+        )
+        assert raw[:4] == FRAME_PREFIX
+        assert raw[-4:] == FRAME_SUFFIX
+
+    def test_encode_session_key_finish(self) -> None:
+        from tuya_cloudless.protocol import encode_session_key_finish
+
+        confirmation = b"\xAA" * 32
+        session_key = b"\xBB" * 16
+        raw = encode_session_key_finish(
+            confirmation,
+            sequence=1,
+            local_key=_LOCAL_KEY,
+            session_key=session_key,
+        )
+        assert raw[:4] == FRAME_PREFIX
+        assert raw[-4:] == FRAME_SUFFIX
+
+
+# ── Non-dict DPS raises ─────────────────────────────────────────────────────
+
+
+class TestTuyaFrameNonDict:
+    def test_non_dict_payload_raises(self) -> None:
+        from tuya_cloudless.exceptions import ProtocolError
+
+        frame = TuyaFrame(
+            sequence=1,
+            command=CMD_CONTROL,
+            version="3.3",
+            payload=b"[1,2,3]",
+        )
+        with pytest.raises(ProtocolError, match="not a JSON object"):
+            _ = frame.dps
+
+
+# ── Bad suffix in decode ─────────────────────────────────────────────────────
+
+
+class TestDecodeFrameBadSuffix:
+    def test_bad_suffix_raises(self) -> None:
+        from tuya_cloudless.crypto import compute_crc32
+
+        payload = b""
+        length = len(payload) + 8
+        header = struct.pack(">4sIII", FRAME_PREFIX, 1, CMD_HEARTBEAT, length)
+        body = header + payload
+        crc = compute_crc32(body)
+        bad = body + struct.pack(">I", crc) + b"\xde\xad\xbe\xef"
+        with pytest.raises(MalformedPacketError, match="suffix"):
+            decode_frame(bad, version="3.1", local_key=_LOCAL_KEY)
+
+    def test_frame_length_exceeds_data(self) -> None:
+        # Build header claiming larger length than available data
+        length = 9999
+        header = struct.pack(">4sIII", FRAME_PREFIX, 1, CMD_HEARTBEAT, length)
+        with pytest.raises(MalformedPacketError, match="exceeds"):
+            decode_frame(header + b"\x00" * 10, version="3.1", local_key=_LOCAL_KEY)

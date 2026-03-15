@@ -44,6 +44,10 @@ class MalformedPacketError(ProtocolError):
     """Received packet failed structural validation (bad magic, length, CRC)."""
 
 
+class InvalidMessageError(ProtocolError):
+    """Message-level validation failed (bad prefix, suffix, checksum, or command)."""
+
+
 class UnsupportedVersionError(ProtocolError):
     """Protocol version in packet is not supported (outside 3.1-3.5)."""
 

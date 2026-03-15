@@ -21,6 +21,7 @@ import hashlib
 import hmac
 import os
 import struct
+from enum import Enum
 from typing import NamedTuple
 
 from cryptography.exceptions import InvalidTag
@@ -44,6 +45,50 @@ from tuya_cloudless.exceptions import AuthenticationError, CryptoError, KeyDeriv
 
 _AES_BLOCK = 16
 _MD5_KEY_BYTES = 16  # Only the first 16 bytes of the MD5 digest are used
+
+
+# ── Protocol version enum ────────────────────────────────────────────────────
+
+
+class ProtocolVersion(str, Enum):
+    """Tuya LAN protocol version identifiers."""
+
+    V31 = "3.1"
+    V32 = "3.2"
+    V33 = "3.3"
+    V34 = "3.4"
+    V35 = "3.5"
+
+
+# ── Checksum helpers (used by message.py) ────────────────────────────────────
+
+
+def crc32_bytes(data: bytes) -> bytes:
+    """Compute CRC-32 and return as 4 big-endian bytes.
+
+    Args:
+        data: Bytes to checksum.
+
+    Returns:
+        4-byte CRC-32 value in big-endian byte order.
+    """
+    import binascii
+
+    crc = binascii.crc32(data) & 0xFFFFFFFF
+    return struct.pack(">I", crc)
+
+
+def hmac_sha256(key: bytes, data: bytes) -> bytes:
+    """Compute HMAC-SHA256.
+
+    Args:
+        key: HMAC key bytes.
+        data: Data to authenticate.
+
+    Returns:
+        32-byte HMAC-SHA256 digest.
+    """
+    return hmac.new(key, data, hashlib.sha256).digest()
 
 
 # ── Key derivation ────────────────────────────────────────────────────────────
