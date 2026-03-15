@@ -105,6 +105,12 @@ class _DiscoveryProtocol(asyncio.DatagramProtocol):
         self._label = label
 
     def datagram_received(self, data: bytes, addr: tuple[str, int]) -> None:
+        """Enqueue a received UDP datagram for processing by DiscoveryListener.
+
+        Args:
+            data: Raw UDP payload bytes.
+            addr: (host, port) tuple of the sender.
+        """
         _LOGGER.debug("[%s] UDP datagram from %s:%d (%d bytes)", self._label, *addr, len(data))
         try:
             self._queue.put_nowait((data, addr))
@@ -112,6 +118,11 @@ class _DiscoveryProtocol(asyncio.DatagramProtocol):
             _LOGGER.warning("[%s] Discovery queue full — dropping datagram", self._label)
 
     def error_received(self, exc: Exception) -> None:
+        """Log a non-fatal UDP transport error.
+
+        Args:
+            exc: The exception reported by the asyncio transport.
+        """
         _LOGGER.warning("[%s] UDP error: %s", self._label, exc)
 
 
