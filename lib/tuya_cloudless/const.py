@@ -92,7 +92,7 @@ UDP_ENC_PORT: int = 6667
 
 # ── Key derivation (ECB versions) ─────────────────────────────────────────────
 
-#: Salt appended to local key before MD5 derivation (v3.1–3.3)
+#: Salt appended to local key before MD5 derivation (v3.1-3.3)
 MD5_KEY_PREFIX: bytes = b"yGAdlopoPVldABfn"
 
 #: Prefix embedded in v3.3+ encrypted payloads

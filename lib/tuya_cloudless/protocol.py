@@ -1,4 +1,4 @@
-"""Tuya LAN protocol v3.1–3.5 — frame encode/decode.
+"""Tuya LAN protocol v3.1-3.5 - frame encode/decode.
 
 Frame wire format (all multi-byte fields are big-endian):
 
@@ -34,12 +34,8 @@ from tuya_cloudless.const import (
     CMD_STATUS,
     FRAME_PREFIX,
     FRAME_SUFFIX,
-    FRAME_HEADER_SIZE,
     MAX_PAYLOAD_SIZE,
     PROTOCOL_31,
-    PROTOCOL_33,
-    PROTOCOL_34,
-    PROTOCOL_35,
     VERSIONS_ECB,
     VERSIONS_GCM,
 )
@@ -130,7 +126,7 @@ def encode_frame(
         Complete wire-format frame bytes.
 
     Raises:
-        UnsupportedVersionError: If ``version`` is not in 3.1–3.5.
+        UnsupportedVersionError: If ``version`` is not in 3.1-3.5.
         CryptoError: On encryption failure.
     """
     _check_version(version)
@@ -189,7 +185,7 @@ def encode_control(
     Returns:
         Wire-format control frame.
     """
-    cmd = CMD_CONTROL if version in VERSIONS_ECB else CMD_CONTROL
+    cmd = CMD_CONTROL
     payload = json.dumps({"dps": dps}, separators=(",", ":")).encode()
     return encode_frame(
         cmd,
@@ -299,7 +295,7 @@ def decode_frame(
             f"Payload too large: {len(raw_payload)} bytes (max {MAX_PAYLOAD_SIZE})"
         )
 
-    # Verify CRC over header + payload (v3.1–3.3 only; v3.4/3.5 use GCM)
+    # Verify CRC over header + payload (v3.1-3.3 only; v3.4/3.5 use GCM)
     if version not in VERSIONS_GCM:
         verify_crc32(data[:payload_end], crc_received)
 

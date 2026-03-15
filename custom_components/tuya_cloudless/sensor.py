@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-from datetime import UTC, datetime
 
 from homeassistant.components.sensor import SensorEntity, SensorStateClass
 from homeassistant.config_entries import ConfigEntry
@@ -39,7 +38,7 @@ class TuyaLastSeenSensor(TuyaCloudlessEntity, SensorEntity):
 
     def __init__(self, coordinator: TuyaCloudlessCoordinator) -> None:
         super().__init__(coordinator)
-        self._attr_unique_id = f"{coordinator._gw_id}_last_seen"  # noqa: SLF001
+        self._attr_unique_id = f"{coordinator._gw_id}_last_seen"
 
     @property
     def native_value(self) -> str | None:
@@ -58,7 +57,7 @@ class TuyaReconnectSensor(TuyaCloudlessEntity, SensorEntity):
 
     def __init__(self, coordinator: TuyaCloudlessCoordinator) -> None:
         super().__init__(coordinator)
-        self._attr_unique_id = f"{coordinator._gw_id}_reconnects"  # noqa: SLF001
+        self._attr_unique_id = f"{coordinator._gw_id}_reconnects"
         self._attr_name = "Reconnects"
 
     @property

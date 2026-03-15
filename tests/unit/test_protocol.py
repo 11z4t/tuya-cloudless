@@ -13,17 +13,15 @@ from tuya_cloudless.const import (
     FRAME_PREFIX,
     FRAME_SUFFIX,
 )
-from tuya_cloudless.exceptions import MalformedPacketError, UnsupportedVersionError
+from tuya_cloudless.exceptions import CryptoError, MalformedPacketError, UnsupportedVersionError
 from tuya_cloudless.protocol import (
     TuyaFrame,
     decode_frame,
     encode_control,
     encode_frame,
     encode_heartbeat,
-    encode_status_query,
     split_frames,
 )
-
 
 _LOCAL_KEY = b"0123456789abcdef"
 _VERSION = "3.3"
@@ -117,7 +115,7 @@ class TestDecodeFrame:
         raw = bytearray(self._make_v31_frame(CMD_STATUS, b"hello"))
         # Flip the CRC bytes
         raw[-8] ^= 0xFF
-        with pytest.raises(Exception):
+        with pytest.raises(CryptoError):
             decode_frame(bytes(raw), version="3.1", local_key=_LOCAL_KEY)
 
     def test_unsupported_version_raises(self) -> None:
@@ -217,6 +215,6 @@ class TestSplitFrames:
         frame = self._simple_frame()
         # Prepend some garbage (no valid prefix)
         data = b"\xDE\xAD" + frame
-        frames, leftover = split_frames(data)
+        frames, _leftover = split_frames(data)
         # Should find the valid frame after skipping garbage
         assert len(frames) == 1
