@@ -8,7 +8,7 @@
 
 ## Reporting a vulnerability
 
-Report security issues to **security@zimpligo.se** (not public GitHub issues).
+Report security issues to **security@kvista.se** (not public GitHub issues).
 
 Expected response: acknowledgement within 48 hours, patch within 14 days for critical issues.
 

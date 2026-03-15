@@ -1,6 +1,6 @@
 # Tuya Cloudless
 
-[![CI](https://git.malmgrens.me/4recon/tuya-cloudless/actions/workflows/ci.yml/badge.svg)](https://git.malmgrens.me/4recon/tuya-cloudless/actions)
+[![CI](https://github.com/kvista-se/tuya-cloudless/actions/workflows/ci.yml/badge.svg)](https://github.com/kvista-se/tuya-cloudless/actions)
 [![HACS](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://hacs.xyz)
 
 Local control of Tuya WiFi devices — **no cloud, no registration, no data leaves your home**.
@@ -49,4 +49,4 @@ Copy `custom_components/tuya_cloudless/` to your HA `custom_components/` directo
 
 ## Related projects
 
-- [tuya-ble-mesh](https://git.malmgrens.me/4recon/tuya-ble-mesh) — BLE mesh (Malmbergs lights, no WiFi required)
+- [tuya-ble-mesh](https://github.com/kvista-se/tuya-ble-mesh) — BLE mesh (Malmbergs lights, no WiFi required)

@@ -3,8 +3,8 @@
   "name": "Tuya Cloudless",
   "version": "0.1.0",
   "integration_type": "hub",
-  "documentation": "https://git.malmgrens.me/4recon/tuya-cloudless",
-  "issue_tracker": "https://git.malmgrens.me/4recon/tuya-cloudless/issues",
+  "documentation": "https://github.com/kvista-se/tuya-cloudless/wiki",
+  "issue_tracker": "https://github.com/kvista-se/tuya-cloudless/issues",
   "codeowners": [
     "@kvista-se"
   ],

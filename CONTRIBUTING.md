@@ -8,7 +8,7 @@ This guide covers how to run the checks, add support for a new device, and submi
 ## Getting started
 
 ```bash
-git clone git@192.168.5.40:4recon/tuya-cloudless.git
+git clone https://github.com/kvista-se/tuya-cloudless.git
 cd tuya-cloudless
 pip install -e ".[test]"
 ```
