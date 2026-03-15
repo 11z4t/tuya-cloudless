@@ -1,6 +1,6 @@
 # Tuya Cloudless
 
-[![CI](https://github.com/kvista-se/tuya-cloudless/actions/workflows/ci.yml/badge.svg)](https://github.com/kvista-se/tuya-cloudless/actions)
+[![CI](https://github.com/11z4t/tuya-cloudless/actions/workflows/ci.yml/badge.svg)](https://github.com/11z4t/tuya-cloudless/actions)
 [![HACS](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://hacs.xyz)
 
 Local control of Tuya WiFi devices — **no cloud, no registration, no data leaves your home**.
