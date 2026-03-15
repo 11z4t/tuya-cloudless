@@ -42,6 +42,7 @@ class TuyaLastSeenSensor(TuyaCloudlessEntity, SensorEntity):
 
     @property
     def native_value(self) -> str | None:
+        """Return the ISO-8601 timestamp of the last DPS update, or None."""
         ts = self.coordinator.state.last_seen
         if ts is None:
             return None
@@ -62,4 +63,5 @@ class TuyaReconnectSensor(TuyaCloudlessEntity, SensorEntity):
 
     @property
     def native_value(self) -> int:
+        """Return the total number of TCP reconnection attempts since startup."""
         return self.coordinator.state.reconnect_count

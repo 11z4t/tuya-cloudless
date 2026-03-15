@@ -76,6 +76,7 @@ class TuyaCloudlessLight(TuyaCloudlessEntity, LightEntity):
 
     @property
     def is_on(self) -> bool | None:
+        """Return True if the light is on, False if off, None if state unknown."""
         value = self.get_dp(_DP_POWER)
         if value is None:
             return None
@@ -83,6 +84,7 @@ class TuyaCloudlessLight(TuyaCloudlessEntity, LightEntity):
 
     @property
     def brightness(self) -> int | None:
+        """Return the current brightness scaled to 0-255, or None if unavailable."""
         raw = self.get_dp(_DP_BRIGHTNESS)
         if raw is None:
             return None
@@ -90,6 +92,7 @@ class TuyaCloudlessLight(TuyaCloudlessEntity, LightEntity):
 
     @property
     def color_temp_kelvin(self) -> int | None:
+        """Return the current colour temperature in Kelvin, or None if unavailable."""
         raw = self.get_dp(_DP_COLOR_TEMP)
         if raw is None:
             return None
@@ -101,6 +104,12 @@ class TuyaCloudlessLight(TuyaCloudlessEntity, LightEntity):
         )
 
     async def async_turn_on(self, **kwargs: Any) -> None:
+        """Turn on the light, optionally setting brightness and colour temperature.
+
+        Args:
+            **kwargs: HA service call attributes — ``ATTR_BRIGHTNESS`` (0-255) and/or
+                ``ATTR_COLOR_TEMP_KELVIN`` (2700-6500).
+        """
         dps: dict[str, Any] = {_DP_POWER: True}
 
         if ATTR_BRIGHTNESS in kwargs:
@@ -117,4 +126,5 @@ class TuyaCloudlessLight(TuyaCloudlessEntity, LightEntity):
         await self.coordinator.async_send_dps(dps)
 
     async def async_turn_off(self, **kwargs: Any) -> None:
+        """Turn off the light."""
         await self.async_send_dp(_DP_POWER, False)
