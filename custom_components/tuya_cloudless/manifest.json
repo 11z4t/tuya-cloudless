@@ -1,12 +1,12 @@
 {
   "domain": "tuya_cloudless",
   "name": "Tuya Cloudless",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "integration_type": "hub",
-  "documentation": "https://github.com/kvista-se/tuya-cloudless/wiki",
-  "issue_tracker": "https://github.com/kvista-se/tuya-cloudless/issues",
+  "documentation": "https://github.com/11z4t/tuya-cloudless/wiki",
+  "issue_tracker": "https://github.com/11z4t/tuya-cloudless/issues",
   "codeowners": [
-    "@kvista-se"
+    "@11z4t"
   ],
   "config_flow": true,
   "iot_class": "local_push",

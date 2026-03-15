@@ -3,7 +3,7 @@ name = "tuya-cloudless"
 version = "0.1.0"
 description = "Cloud-free local control for Tuya WiFi devices via Home Assistant"
 requires-python = ">=3.11"
-license = {text = "MIT"}
+license = "MIT"
 dependencies = [
     "cryptography>=42.0",
     "aiohttp>=3.9",
