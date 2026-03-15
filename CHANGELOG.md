@@ -3,6 +3,12 @@
 All notable changes to Tuya Cloudless are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [0.2.1] — 2026-03-15
+
+### Fixed
+- HACS v2 compatibility: release workflow now builds and uploads `tuya_cloudless.zip`
+  as a release asset so HACS can download the integration correctly
+
 ## [0.2.0] — 2026-03-15
 
 ### Added
