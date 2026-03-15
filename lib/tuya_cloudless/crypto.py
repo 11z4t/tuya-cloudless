@@ -33,6 +33,7 @@ from tuya_cloudless.const import (
     GCM_IV_SIZE,
     GCM_TAG_SIZE,
     MD5_KEY_PREFIX,
+    SUPPORTED_VERSIONS,
     V33_PAYLOAD_HEADER,
     VERSIONS_GCM,
     VERSIONS_WITH_PAYLOAD_HEADER,
@@ -377,6 +378,8 @@ def encrypt_payload(
         CryptoError: On key length or encryption errors.
         ValueError: If version is unsupported.
     """
+    if version not in SUPPORTED_VERSIONS:
+        raise CryptoError(f"Unsupported protocol version: {version}")
     if version in VERSIONS_GCM:
         if session_key is None:
             raise CryptoError("session_key required for v3.4/3.5 encryption")
@@ -408,6 +411,8 @@ def decrypt_payload(
     Raises:
         CryptoError / AuthenticationError: On decryption or tag failure.
     """
+    if version not in SUPPORTED_VERSIONS:
+        raise CryptoError(f"Unsupported protocol version: {version}")
     if version in VERSIONS_GCM:
         if session_key is None:
             raise CryptoError("session_key required for v3.4/3.5 decryption")
