@@ -187,6 +187,99 @@ async def test_coordinator_sends_control_dp() -> None:
 
 
 @pytest.mark.asyncio
+async def test_coordinator_concurrent_send_dps_all_delivered() -> None:
+    """Concurrent async_send_dps calls should all reach the device (PLAT-730)."""
+    key = b"0123456789abcdef"
+    device = FakeTuyaDevice("gw001", key, version="3.3")
+    port = await device.start()
+
+    hass = _make_hass()
+
+    try:
+        coord = await _make_coordinator(hass, local_key=key, port=port)
+        await coord.async_start()
+        await asyncio.sleep(0.2)
+        assert coord.state.available is True
+
+        # Fire 5 send_dps calls concurrently
+        await asyncio.gather(
+            coord.async_send_dps({"1": True}),
+            coord.async_send_dps({"1": False}),
+            coord.async_send_dps({"1": True}),
+            coord.async_send_dps({"1": False}),
+            coord.async_send_dps({"1": True}),
+        )
+        await asyncio.sleep(0.1)
+
+        # All 5 commands should have arrived at the fake device (serialised by the
+        # write lock but none dropped)
+        assert len(device.received_dps) == 5
+
+    finally:
+        await coord.async_stop()
+        await device.stop()
+
+
+@pytest.mark.asyncio
+async def test_coordinator_dps_accumulates_across_pushes() -> None:
+    """DPS state should merge across multiple separate push events."""
+    key = b"0123456789abcdef"
+    device = FakeTuyaDevice("gw001", key, version="3.3")
+    device.dps = {"1": False, "2": 100, "3": 0}
+    port = await device.start()
+
+    hass = _make_hass()
+
+    try:
+        coord = await _make_coordinator(hass, local_key=key, port=port)
+        await coord.async_start()
+        await asyncio.sleep(0.2)
+
+        # Push first update — only changes dp "1"
+        await device.push_dps({"1": True})
+        await asyncio.sleep(0.1)
+        assert coord.state.dps.get("1") is True
+
+        # Push second update — only changes dp "2"
+        await device.push_dps({"2": 500})
+        await asyncio.sleep(0.1)
+        assert coord.state.dps.get("2") == 500
+        # dp "1" should still hold its value from the first push
+        assert coord.state.dps.get("1") is True
+
+    finally:
+        await coord.async_stop()
+        await device.stop()
+
+
+@pytest.mark.asyncio
+async def test_coordinator_available_tracks_connectivity() -> None:
+    """available should be True when connected and False after the device drops."""
+    key = b"0123456789abcdef"
+    device = FakeTuyaDevice("gw001", key, version="3.3")
+    port = await device.start()
+
+    hass = _make_hass()
+    coord = await _make_coordinator(hass, local_key=key, port=port)
+
+    try:
+        assert coord.state.available is False  # not started yet
+
+        await coord.async_start()
+        await asyncio.sleep(0.2)
+        assert coord.state.available is True
+
+        # Forcibly close the device connection
+        await device.stop()
+        await asyncio.sleep(0.2)
+        assert coord.state.available is False
+
+    finally:
+        await coord.async_stop()
+        # device already stopped above
+
+
+@pytest.mark.asyncio
 async def test_coordinator_consecutive_errors_trigger_reconnect() -> None:
     """5+ consecutive decode errors should force a reconnect."""
     key = b"0123456789abcdef"

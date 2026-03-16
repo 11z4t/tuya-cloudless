@@ -374,6 +374,96 @@ class TestMigrateEntry:
         assert result is True
         hass.config_entries.async_update_entry.assert_called_once()
 
+    @pytest.mark.asyncio
+    async def test_migrate_v1_empty_options(self) -> None:
+        """v1 with completely empty options dict still upgrades to v2."""
+        from custom_components.tuya_cloudless import async_migrate_entry
+
+        entry = MagicMock()
+        entry.version = 1
+        entry.options = {}
+        entry.data = {"gw_id": "dev1"}
+
+        hass = MagicMock()
+        result = await async_migrate_entry(hass, entry)
+        assert result is True
+        call_kwargs = hass.config_entries.async_update_entry.call_args[1]
+        assert call_kwargs["version"] == 2
+        assert call_kwargs["options"] == {}
+
+    @pytest.mark.asyncio
+    async def test_migrate_v1_data_preserved(self) -> None:
+        """Existing data fields are preserved during v1 → v2 migration."""
+        from custom_components.tuya_cloudless import async_migrate_entry
+
+        entry = MagicMock()
+        entry.version = 1
+        entry.options = {"ip_address": "192.168.1.5", "protocol_version": "3.5"}
+        entry.data = {"gw_id": "abc", "local_key": "key16byteslong!"}
+
+        hass = MagicMock()
+        result = await async_migrate_entry(hass, entry)
+        assert result is True
+        call_kwargs = hass.config_entries.async_update_entry.call_args[1]
+        new_data = call_kwargs["data"]
+        # Original data fields remain
+        assert new_data["gw_id"] == "abc"
+        assert new_data["local_key"] == "key16byteslong!"
+        # Migrated fields moved in
+        assert new_data["ip_address"] == "192.168.1.5"
+        assert new_data["protocol_version"] == "3.5"
+
+    @pytest.mark.asyncio
+    async def test_migrate_v1_options_only_removes_migrated_keys(self) -> None:
+        """v1 → v2 removes ip_address/protocol_version from options, keeps rest."""
+        from custom_components.tuya_cloudless import async_migrate_entry
+
+        entry = MagicMock()
+        entry.version = 1
+        entry.options = {
+            "ip_address": "10.0.0.5",
+            "protocol_version": "3.3",
+            "command_timeout": 10.0,
+            "reconnect_max_delay": 600,
+        }
+        entry.data = {"gw_id": "gw99"}
+
+        hass = MagicMock()
+        result = await async_migrate_entry(hass, entry)
+        assert result is True
+        call_kwargs = hass.config_entries.async_update_entry.call_args[1]
+        new_opts = call_kwargs["options"]
+        assert "ip_address" not in new_opts
+        assert "protocol_version" not in new_opts
+        assert new_opts["command_timeout"] == 10.0
+        assert new_opts["reconnect_max_delay"] == 600
+
+    @pytest.mark.asyncio
+    async def test_migrate_future_version_returns_false(self) -> None:
+        """Version 99 (far future) returns False — integration cannot downgrade."""
+        from custom_components.tuya_cloudless import async_migrate_entry
+
+        entry = MagicMock()
+        entry.version = 99
+        result = await async_migrate_entry(MagicMock(), entry)
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_migrate_v1_result_is_idempotent_on_second_call(self) -> None:
+        """Calling migrate twice on an already-v2 entry is a no-op."""
+        from custom_components.tuya_cloudless import async_migrate_entry
+
+        entry = MagicMock()
+        entry.version = 2
+        entry.data = {"gw_id": "abc", "ip_address": "1.2.3.4", "protocol_version": "3.3"}
+        entry.options = {}
+
+        hass = MagicMock()
+        result = await async_migrate_entry(hass, entry)
+        assert result is True
+        # Already at v2 — no update should be triggered
+        hass.config_entries.async_update_entry.assert_not_called()
+
 
 # ── async_unload_entry ──────────────────────────────────────────────────────────
 
