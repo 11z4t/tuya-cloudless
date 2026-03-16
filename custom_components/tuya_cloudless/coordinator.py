@@ -407,6 +407,11 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                         self._clear_auth_repair_issue()
                     self._on_frame(frame)
                 except (TuyaCloudlessError, ValueError) as exc:
+                    # ValueError is caught alongside TuyaCloudlessError because
+                    # int(tuya_msg.command) can raise ValueError when the raw
+                    # command byte is not a valid integer — this is a malformed
+                    # frame, not a programming error, so treat it like any other
+                    # decode failure and count toward the reconnect threshold.
                     self._consecutive_decode_errors += 1
                     _LOGGER.debug(
                         "[%s] Frame decode error #%d: %s",
@@ -494,6 +499,7 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         try:
             payload = frame.dps
         except AttributeError:
+            _LOGGER.debug("[%s] Received frame without dps attribute: %s", self._gw_id, frame)
             return
 
         # Tuya frames carry DPS nested under a "dps" key: {"dps": {"1": true}}

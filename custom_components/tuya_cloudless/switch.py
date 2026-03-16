@@ -9,6 +9,7 @@ from homeassistant.components.switch import SwitchEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import STATE_OFF, STATE_ON
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from tuya_cloudless.profiles import EntitySpec
@@ -110,7 +111,7 @@ class TuyaCloudlessSwitch(RestoreStateMixin, TuyaCloudlessEntity, SwitchEntity):
         try:
             dp_id = self._spec.dp_power.id if self._spec.dp_power else "1"
             await self.async_send_dp(dp_id, True)
-        except Exception:
+        except HomeAssistantError:
             self._optimistic_state = None
             self.async_write_ha_state()
             raise
@@ -127,7 +128,7 @@ class TuyaCloudlessSwitch(RestoreStateMixin, TuyaCloudlessEntity, SwitchEntity):
         try:
             dp_id = self._spec.dp_power.id if self._spec.dp_power else "1"
             await self.async_send_dp(dp_id, False)
-        except Exception:
+        except HomeAssistantError:
             self._optimistic_state = None
             self.async_write_ha_state()
             raise

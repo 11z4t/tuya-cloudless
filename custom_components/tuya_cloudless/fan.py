@@ -114,7 +114,9 @@ class TuyaCloudlessFan(TuyaCloudlessEntity, FanEntity):
             return percentage
         min_raw = dp.min_raw if dp.min_raw is not None else 0
         max_raw = dp.max_raw if dp.max_raw is not None else 100
-        return min_raw + round((max_raw - min_raw) * percentage / 100)
+        # Clamp percentage to [0, 100] as defence-in-depth (HA usually validates)
+        pct = max(0, min(100, percentage))
+        return min_raw + round((max_raw - min_raw) * pct / 100)
 
     @property
     def percentage(self) -> int | None:

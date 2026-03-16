@@ -164,7 +164,7 @@ class TuyaCloudlessCover(TuyaCloudlessEntity, CoverEntity):
         """
         if self._spec.dp_position is None:
             return
-        position: int = kwargs[ATTR_POSITION]
+        position: int = max(0, min(100, int(kwargs[ATTR_POSITION])))
         await self.async_send_dp(self._spec.dp_position.id, position)
 
     async def async_set_cover_tilt_position(self, **kwargs: Any) -> None:
@@ -175,5 +175,5 @@ class TuyaCloudlessCover(TuyaCloudlessEntity, CoverEntity):
         """
         if self._spec.dp_tilt is None:
             return
-        tilt: int = kwargs[ATTR_TILT_POSITION]
+        tilt: int = max(0, min(100, int(kwargs[ATTR_TILT_POSITION])))
         await self.async_send_dp(self._spec.dp_tilt.id, tilt)

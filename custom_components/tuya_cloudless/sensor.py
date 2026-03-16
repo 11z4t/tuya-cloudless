@@ -121,8 +121,10 @@ class TuyaCloudlessSensor(TuyaCloudlessEntity, SensorEntity):
         if raw is None:
             return None
         scale = self._spec.dp_value.scale
+        if isinstance(raw, str):
+            return raw
         if scale == 1.0:
-            return raw  # type: ignore[return-value]
+            return float(raw)
         return round(float(raw) * scale, 3)
 
 

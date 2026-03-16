@@ -17,6 +17,7 @@ from homeassistant.components.light import (
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import STATE_OFF, STATE_ON
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from tuya_cloudless.profiles import EntitySpec
@@ -174,8 +175,9 @@ class TuyaCloudlessLight(RestoreStateMixin, TuyaCloudlessEntity, LightEntity):
             return None
         hue_max = hue_spec.max_raw if hue_spec.max_raw is not None else _TUYA_HUE_MAX
         sat_max = sat_spec.max_raw if sat_spec.max_raw is not None else _TUYA_SAT_DEFAULT_MAX
-        hue = round(int(raw_hue) / hue_max * _TUYA_HUE_MAX, 1)
-        sat = _tuya_to_ha_saturation(int(raw_sat), sat_max)
+        # Clamp to valid HA ranges in case the device reports an out-of-range value
+        hue = max(0.0, min(360.0, round(int(raw_hue) / hue_max * _TUYA_HUE_MAX, 1)))
+        sat = max(0.0, min(100.0, _tuya_to_ha_saturation(int(raw_sat), sat_max)))
         return (hue, sat)
 
     @property
@@ -192,8 +194,16 @@ class TuyaCloudlessLight(RestoreStateMixin, TuyaCloudlessEntity, LightEntity):
         if span == 0:
             return _MIN_COLOR_TEMP_KELVIN
         ratio = (int(raw) - min_raw) / span
-        return round(
-            _MIN_COLOR_TEMP_KELVIN + ratio * (_MAX_COLOR_TEMP_KELVIN - _MIN_COLOR_TEMP_KELVIN)
+        # Clamp result in case the device reports an out-of-range raw value
+        return max(
+            _MIN_COLOR_TEMP_KELVIN,
+            min(
+                _MAX_COLOR_TEMP_KELVIN,
+                round(
+                    _MIN_COLOR_TEMP_KELVIN
+                    + ratio * (_MAX_COLOR_TEMP_KELVIN - _MIN_COLOR_TEMP_KELVIN)
+                ),
+            ),
         )
 
     @property
@@ -246,7 +256,7 @@ class TuyaCloudlessLight(RestoreStateMixin, TuyaCloudlessEntity, LightEntity):
                 effect: str = kwargs[ATTR_EFFECT]
                 _LOGGER.debug("Effect requested: %s (not yet mapped to DP)", effect)
             await self.coordinator.async_send_dps(dps)
-        except Exception:
+        except HomeAssistantError:
             self._optimistic_state = None
             self.async_write_ha_state()
             raise
@@ -257,7 +267,7 @@ class TuyaCloudlessLight(RestoreStateMixin, TuyaCloudlessEntity, LightEntity):
         try:
             dp_id = self._spec.dp_power.id if self._spec.dp_power else "1"
             await self.async_send_dp(dp_id, False)
-        except Exception:
+        except HomeAssistantError:
             self._optimistic_state = None
             self.async_write_ha_state()
             raise

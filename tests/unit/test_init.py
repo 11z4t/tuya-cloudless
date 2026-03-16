@@ -281,8 +281,8 @@ class TestRegisterServices:
         coord.async_send_dps.assert_called_once_with({"1": True})
 
     @pytest.mark.asyncio
-    async def test_send_raw_dps_unexpected_exception_wrapped(self) -> None:
-        """Non-HomeAssistantError exceptions are wrapped in HomeAssistantError."""
+    async def test_send_raw_dps_os_error_wrapped(self) -> None:
+        """OSError from coordinator is wrapped in HomeAssistantError."""
         from homeassistant.exceptions import HomeAssistantError
 
         from custom_components.tuya_cloudless import _register_services
@@ -294,7 +294,7 @@ class TestRegisterServices:
         handler = hass.services.async_register.call_args[0][2]
 
         coord = MagicMock()
-        coord.async_send_dps = AsyncMock(side_effect=RuntimeError("unexpected"))
+        coord.async_send_dps = AsyncMock(side_effect=OSError("network down"))
         runtime = MagicMock()
         runtime.coordinator = coord
         entry = MagicMock()
@@ -305,6 +305,31 @@ class TestRegisterServices:
         call.data = {"entry_id": "abc", "dps": {"1": True}}
 
         with pytest.raises(HomeAssistantError):
+            await handler(call)
+
+    @pytest.mark.asyncio
+    async def test_send_raw_dps_unexpected_exception_propagates(self) -> None:
+        """RuntimeError (programming bug) propagates uncaught — not wrapped."""
+        from custom_components.tuya_cloudless import _register_services
+
+        hass = MagicMock()
+        hass.services.has_service.return_value = False
+        _register_services(hass)
+
+        handler = hass.services.async_register.call_args[0][2]
+
+        coord = MagicMock()
+        coord.async_send_dps = AsyncMock(side_effect=RuntimeError("bug"))
+        runtime = MagicMock()
+        runtime.coordinator = coord
+        entry = MagicMock()
+        entry.runtime_data = runtime
+        hass.config_entries.async_get_entry.return_value = entry
+
+        call = MagicMock()
+        call.data = {"entry_id": "abc", "dps": {"1": True}}
+
+        with pytest.raises(RuntimeError):
             await handler(call)
 
 

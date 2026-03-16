@@ -257,8 +257,10 @@ def _register_services(hass: HomeAssistant) -> None:
         try:
             await runtime.coordinator.async_send_dps(dps)
         except HomeAssistantError:
+            # coordinator already wraps errors — let them propagate as-is
             raise
-        except Exception as exc:
+        except (OSError, TimeoutError) as exc:
+            # Low-level network errors not yet wrapped by the coordinator
             raise HomeAssistantError(
                 f"Failed to send DPS to {entry_id}: {exc}",
                 translation_domain=DOMAIN,

@@ -40,3 +40,8 @@ secrets.yaml
 
 # Detect-secrets
 .secrets.baseline
+
+# Claude Code worktrees and temp files
+.claude/worktrees/
+*.tmp.*
+tuya_cloudless.zip

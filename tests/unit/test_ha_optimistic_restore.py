@@ -16,6 +16,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from homeassistant.const import STATE_OFF, STATE_ON
+from homeassistant.exceptions import HomeAssistantError
 from tuya_cloudless.profiles import DPSpec, EntitySpec
 
 from custom_components.tuya_cloudless.coordinator import DeviceState
@@ -157,11 +158,15 @@ class TestSwitchOptimisticUpdates:
 
     @pytest.mark.asyncio
     async def test_optimistic_reverts_on_send_failure(self) -> None:
-        """If the device send fails, optimistic state must revert to None."""
-        e = _make_switch({})
-        e.coordinator.async_send_dps.side_effect = OSError("network error")
+        """If the device send fails, optimistic state must revert to None.
 
-        with pytest.raises(OSError):
+        The real coordinator always wraps network errors in HomeAssistantError
+        before they reach the entity, so we simulate that here.
+        """
+        e = _make_switch({})
+        e.coordinator.async_send_dps.side_effect = HomeAssistantError("send failed")
+
+        with pytest.raises(HomeAssistantError):
             await e.async_turn_on()
 
         # State reverted back to None after failure
@@ -171,12 +176,16 @@ class TestSwitchOptimisticUpdates:
 
     @pytest.mark.asyncio
     async def test_optimistic_turn_off_reverts_on_send_failure(self) -> None:
-        """If turn_off send fails, optimistic state must revert to None."""
+        """If turn_off send fails, optimistic state must revert to None.
+
+        The real coordinator always wraps network errors in HomeAssistantError
+        before they reach the entity, so we simulate that here.
+        """
         e = _make_switch({})
         e._optimistic_state = True
-        e.coordinator.async_send_dps.side_effect = OSError("network error")
+        e.coordinator.async_send_dps.side_effect = HomeAssistantError("send failed")
 
-        with pytest.raises(OSError):
+        with pytest.raises(HomeAssistantError):
             await e.async_turn_off()
 
         assert e._optimistic_state is None
@@ -312,11 +321,15 @@ class TestLightOptimisticUpdates:
 
     @pytest.mark.asyncio
     async def test_optimistic_reverts_on_send_failure(self) -> None:
-        """Light turn-on failure must revert optimistic state to None."""
-        e = _make_light({})
-        e.coordinator.async_send_dps.side_effect = OSError("network error")
+        """Light turn-on failure must revert optimistic state to None.
 
-        with pytest.raises(OSError):
+        The real coordinator always wraps network errors in HomeAssistantError
+        before they reach the entity, so we simulate that here.
+        """
+        e = _make_light({})
+        e.coordinator.async_send_dps.side_effect = HomeAssistantError("send failed")
+
+        with pytest.raises(HomeAssistantError):
             await e.async_turn_on()
 
         assert e._optimistic_state is None
@@ -324,12 +337,16 @@ class TestLightOptimisticUpdates:
 
     @pytest.mark.asyncio
     async def test_optimistic_turn_off_reverts_on_send_failure(self) -> None:
-        """Light turn-off failure must revert optimistic state to None."""
+        """Light turn-off failure must revert optimistic state to None.
+
+        The real coordinator always wraps network errors in HomeAssistantError
+        before they reach the entity, so we simulate that here.
+        """
         e = _make_light({})
         e._optimistic_state = True
-        e.coordinator.async_send_dps.side_effect = OSError("network error")
+        e.coordinator.async_send_dps.side_effect = HomeAssistantError("send failed")
 
-        with pytest.raises(OSError):
+        with pytest.raises(HomeAssistantError):
             await e.async_turn_off()
 
         assert e._optimistic_state is None
