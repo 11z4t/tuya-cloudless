@@ -45,6 +45,8 @@ def _make_light_spec(
     dp_hs_hue_id: str | None = None,
     dp_hs_sat_id: str | None = None,
     dp_color_mode_id: str | None = None,
+    dp_scene_id: str | None = None,
+    dp_colour_data_id: str | None = None,
     effects: tuple[str, ...] = (),
 ) -> EntitySpec:
     return EntitySpec(
@@ -66,6 +68,8 @@ def _make_light_spec(
             DPSpec(id=dp_hs_sat_id, type="int", max_raw=1000) if dp_hs_sat_id else None
         ),
         dp_color_mode=DPSpec(id=dp_color_mode_id, type="enum") if dp_color_mode_id else None,
+        dp_scene=DPSpec(id=dp_scene_id, type="enum") if dp_scene_id else None,
+        dp_colour_data=DPSpec(id=dp_colour_data_id, type="str") if dp_colour_data_id else None,
         effects=effects,
     )
 
@@ -87,7 +91,10 @@ def _make_light(dps: dict[str, Any] | None = None, spec: EntitySpec | None = Non
     # Re-run supported color mode logic from __init__
     from homeassistant.components.light import ColorMode, LightEntityFeature
 
-    has_hs = _spec.dp_hs_hue is not None and _spec.dp_hs_saturation is not None
+    has_hs = (
+        (_spec.dp_hs_hue is not None and _spec.dp_hs_saturation is not None)
+        or _spec.dp_colour_data is not None
+    )
     has_color_temp = _spec.dp_color_temp is not None
     has_brightness = _spec.dp_brightness is not None
 
@@ -534,6 +541,339 @@ class TestLightEdgeCases:
         spec = _make_light_spec(effects=("rainbow",))
         light = TuyaCloudlessLight(coord, spec)
         light.async_write_ha_state = MagicMock()  # stub out HA framework call
-        # Should not raise — just logs
+        # Should not raise — just logs (no dp_scene configured)
         await light.async_turn_on(**{ATTR_EFFECT: "rainbow"})
         coord.async_send_dps.assert_called_once()
+
+
+# ── Effect DP mapping ──────────────────────────────────────────────────────────
+
+
+class TestLightEffectDP:
+    """AC1 + AC2: effect_list and dp_scene DP mapping."""
+
+    def test_effect_list_property(self) -> None:
+        """AC1: effect_list returns list of effect names from spec."""
+        from custom_components.tuya_cloudless.light import TuyaCloudlessLight
+
+        coord = _make_coordinator()
+        spec = _make_light_spec(dp_scene_id="25", effects=("scene_1", "scene_2", "scene_3"))
+        light = TuyaCloudlessLight(coord, spec)
+
+        assert light.effect_list == ["scene_1", "scene_2", "scene_3"]
+
+    def test_effect_property_reads_scene_dp(self) -> None:
+        """AC1: effect property returns current scene DP value."""
+        from custom_components.tuya_cloudless.light import TuyaCloudlessLight
+
+        coord = _make_coordinator({"25": "scene_2"})
+        spec = _make_light_spec(dp_scene_id="25", effects=("scene_1", "scene_2"))
+        light = TuyaCloudlessLight(coord, spec)
+
+        assert light.effect == "scene_2"
+
+    def test_effect_property_none_when_dp_missing(self) -> None:
+        """effect returns None when scene DP not yet reported by device."""
+        from custom_components.tuya_cloudless.light import TuyaCloudlessLight
+
+        coord = _make_coordinator({})
+        spec = _make_light_spec(dp_scene_id="25", effects=("scene_1",))
+        light = TuyaCloudlessLight(coord, spec)
+
+        assert light.effect is None
+
+    def test_effect_property_none_when_no_dp_scene(self) -> None:
+        """effect returns None when no dp_scene is configured in spec."""
+        from custom_components.tuya_cloudless.light import TuyaCloudlessLight
+
+        coord = _make_coordinator({"25": "scene_1"})
+        spec = _make_light_spec(effects=("scene_1",))  # no dp_scene
+        light = TuyaCloudlessLight(coord, spec)
+
+        assert light.effect is None
+
+    @pytest.mark.asyncio
+    async def test_turn_on_with_known_effect_sends_scene_dp(self) -> None:
+        """AC2: async_turn_on(effect=X) sends effect name to dp_scene."""
+        from homeassistant.components.light import ATTR_EFFECT
+
+        from custom_components.tuya_cloudless.light import TuyaCloudlessLight
+
+        coord = _make_coordinator()
+        spec = _make_light_spec(dp_scene_id="25", effects=("scene_1", "scene_2"))
+        light = TuyaCloudlessLight(coord, spec)
+        light.async_write_ha_state = MagicMock()
+
+        await light.async_turn_on(**{ATTR_EFFECT: "scene_1"})
+
+        call_dps = coord.async_send_dps.call_args[0][0]
+        assert call_dps.get("25") == "scene_1"
+
+    @pytest.mark.asyncio
+    async def test_turn_on_second_effect_sends_correct_value(self) -> None:
+        """AC3: each effect correctly mapped — test scene_2."""
+        from homeassistant.components.light import ATTR_EFFECT
+
+        from custom_components.tuya_cloudless.light import TuyaCloudlessLight
+
+        coord = _make_coordinator()
+        spec = _make_light_spec(dp_scene_id="25", effects=("scene_1", "scene_2", "scene_3"))
+        light = TuyaCloudlessLight(coord, spec)
+        light.async_write_ha_state = MagicMock()
+
+        await light.async_turn_on(**{ATTR_EFFECT: "scene_2"})
+
+        call_dps = coord.async_send_dps.call_args[0][0]
+        assert call_dps.get("25") == "scene_2"
+
+    @pytest.mark.asyncio
+    async def test_turn_on_third_effect_sends_correct_value(self) -> None:
+        """AC3: each effect correctly mapped — test scene_3."""
+        from homeassistant.components.light import ATTR_EFFECT
+
+        from custom_components.tuya_cloudless.light import TuyaCloudlessLight
+
+        coord = _make_coordinator()
+        spec = _make_light_spec(dp_scene_id="25", effects=("scene_1", "scene_2", "scene_3"))
+        light = TuyaCloudlessLight(coord, spec)
+        light.async_write_ha_state = MagicMock()
+
+        await light.async_turn_on(**{ATTR_EFFECT: "scene_3"})
+
+        call_dps = coord.async_send_dps.call_args[0][0]
+        assert call_dps.get("25") == "scene_3"
+
+    @pytest.mark.asyncio
+    async def test_turn_on_unknown_effect_not_sent(self) -> None:
+        """Unknown effect name must NOT be sent to the device."""
+        from homeassistant.components.light import ATTR_EFFECT
+
+        from custom_components.tuya_cloudless.light import TuyaCloudlessLight
+
+        coord = _make_coordinator()
+        spec = _make_light_spec(dp_scene_id="25", effects=("scene_1",))
+        light = TuyaCloudlessLight(coord, spec)
+        light.async_write_ha_state = MagicMock()
+
+        await light.async_turn_on(**{ATTR_EFFECT: "unknown_effect"})
+
+        call_dps = coord.async_send_dps.call_args[0][0]
+        assert "25" not in call_dps
+
+    @pytest.mark.asyncio
+    async def test_effect_includes_power_on(self) -> None:
+        """Turning on with an effect also powers the light on."""
+        from homeassistant.components.light import ATTR_EFFECT
+
+        from custom_components.tuya_cloudless.light import TuyaCloudlessLight
+
+        coord = _make_coordinator()
+        spec = _make_light_spec(dp_scene_id="25", effects=("scene_1",))
+        light = TuyaCloudlessLight(coord, spec)
+        light.async_write_ha_state = MagicMock()
+
+        await light.async_turn_on(**{ATTR_EFFECT: "scene_1"})
+
+        call_dps = coord.async_send_dps.call_args[0][0]
+        assert call_dps.get("1") is True
+        assert call_dps.get("25") == "scene_1"
+
+
+# ── colour_data DP (HSV) ───────────────────────────────────────────────────────
+
+
+class TestColourDataHelpers:
+    """Unit tests for _encode_colour_data and _decode_colour_data helpers."""
+
+    def test_encode_full_brightness_red(self) -> None:
+        from custom_components.tuya_cloudless.light import _encode_colour_data
+
+        # Red: hue=0, sat=100%, bri=255
+        result = _encode_colour_data(0.0, 100.0, 255)
+        assert len(result) == 12
+        assert result == "000003e803e8"
+
+    def test_encode_mid_hue(self) -> None:
+        from custom_components.tuya_cloudless.light import _encode_colour_data
+
+        # Hue 180 (cyan), sat=100%, bri=255
+        result = _encode_colour_data(180.0, 100.0, 255)
+        assert result == "00b403e803e8"
+
+    def test_encode_half_brightness(self) -> None:
+        from custom_components.tuya_cloudless.light import _encode_colour_data
+
+        result = _encode_colour_data(180.0, 100.0, 128)
+        assert len(result) == 12
+        # V component should be roughly half of 1000
+        v = int(result[8:12], 16)
+        assert 490 <= v <= 510
+
+    def test_decode_matches_encode(self) -> None:
+        from custom_components.tuya_cloudless.light import _decode_colour_data, _encode_colour_data
+
+        encoded = _encode_colour_data(180.0, 75.0, 200)
+        decoded = _decode_colour_data(encoded)
+        assert decoded is not None
+        hue, sat, bri = decoded
+        assert abs(hue - 180.0) < 1.0
+        assert abs(sat - 75.0) < 1.0
+        assert abs(bri - 200) <= 2  # rounding tolerance
+
+    def test_decode_invalid_length(self) -> None:
+        from custom_components.tuya_cloudless.light import _decode_colour_data
+
+        assert _decode_colour_data("00b4") is None
+        assert _decode_colour_data("") is None
+
+    def test_decode_invalid_hex(self) -> None:
+        from custom_components.tuya_cloudless.light import _decode_colour_data
+
+        assert _decode_colour_data("GGGGSSSSBBBB") is None
+
+    def test_decode_non_string(self) -> None:
+        from custom_components.tuya_cloudless.light import _decode_colour_data
+
+        assert _decode_colour_data(12345) is None  # type: ignore[arg-type]
+
+
+class TestLightColourDataDP:
+    """Integration tests for dp_colour_data in TuyaCloudlessLight."""
+
+    def test_hs_color_reads_from_colour_data_dp(self) -> None:
+        from custom_components.tuya_cloudless.light import TuyaCloudlessLight
+
+        coord = _make_coordinator({"5": "00b403e803e8"})  # hue=180, sat=100%, bri=255
+        spec = _make_light_spec(
+            dp_brightness_id=None,
+            dp_color_temp_id=None,
+            dp_colour_data_id="5",
+        )
+        light = TuyaCloudlessLight(coord, spec)
+
+        hs = light.hs_color
+        assert hs is not None
+        hue, sat = hs
+        assert abs(hue - 180.0) < 1.0
+        assert abs(sat - 100.0) < 1.0
+
+    def test_hs_color_none_when_dp_missing(self) -> None:
+        from custom_components.tuya_cloudless.light import TuyaCloudlessLight
+
+        coord = _make_coordinator({})
+        spec = _make_light_spec(dp_brightness_id=None, dp_color_temp_id=None, dp_colour_data_id="5")
+        light = TuyaCloudlessLight(coord, spec)
+
+        assert light.hs_color is None
+
+    def test_brightness_reads_v_from_colour_data(self) -> None:
+        from custom_components.tuya_cloudless.light import TuyaCloudlessLight
+
+        # "00b403e801f4": hue=180, sat=100%, V=500/1000 → bri≈127
+        coord = _make_coordinator({"5": "00b403e801f4"})
+        spec = _make_light_spec(
+            dp_brightness_id=None,
+            dp_color_temp_id=None,
+            dp_colour_data_id="5",
+        )
+        light = TuyaCloudlessLight(coord, spec)
+
+        bri = light.brightness
+        assert bri is not None
+        assert 120 <= bri <= 135
+
+    def test_colour_data_hs_mode_detected(self) -> None:
+        from homeassistant.components.light import ColorMode
+
+        from custom_components.tuya_cloudless.light import TuyaCloudlessLight
+
+        coord = _make_coordinator({"5": "00b403e803e8"})
+        spec = _make_light_spec(dp_brightness_id=None, dp_color_temp_id=None, dp_colour_data_id="5")
+        light = TuyaCloudlessLight(coord, spec)
+
+        assert ColorMode.HS in light._attr_supported_color_modes
+
+    @pytest.mark.asyncio
+    async def test_turn_on_hs_via_colour_data(self) -> None:
+        from homeassistant.components.light import ATTR_HS_COLOR
+
+        from custom_components.tuya_cloudless.light import TuyaCloudlessLight
+
+        coord = _make_coordinator({"5": "00b403e803e8"})
+        spec = _make_light_spec(dp_brightness_id=None, dp_color_temp_id=None, dp_colour_data_id="5")
+        light = TuyaCloudlessLight(coord, spec)
+        light.async_write_ha_state = MagicMock()
+
+        await light.async_turn_on(**{ATTR_HS_COLOR: (180.0, 100.0)})
+
+        call_dps = coord.async_send_dps.call_args[0][0]
+        assert "5" in call_dps
+        encoded = call_dps["5"]
+        assert len(encoded) == 12
+        assert encoded.startswith("00b4")  # hue=180
+
+    @pytest.mark.asyncio
+    async def test_turn_on_hs_and_brightness_via_colour_data(self) -> None:
+        """When HS + brightness both provided, brightness folded into V component."""
+        from homeassistant.components.light import ATTR_BRIGHTNESS, ATTR_HS_COLOR
+
+        from custom_components.tuya_cloudless.light import TuyaCloudlessLight
+
+        coord = _make_coordinator({})
+        spec = _make_light_spec(dp_brightness_id=None, dp_color_temp_id=None, dp_colour_data_id="5")
+        light = TuyaCloudlessLight(coord, spec)
+        light.async_write_ha_state = MagicMock()
+
+        await light.async_turn_on(**{ATTR_HS_COLOR: (120.0, 80.0), ATTR_BRIGHTNESS: 128})
+
+        call_dps = coord.async_send_dps.call_args[0][0]
+        assert "5" in call_dps
+        encoded = call_dps["5"]
+        # V component ≈ 128/255 * 1000 ≈ 502
+        v = int(encoded[8:12], 16)
+        assert 490 <= v <= 515
+
+    @pytest.mark.asyncio
+    async def test_turn_on_brightness_only_updates_v_in_colour_mode(self) -> None:
+        """Standalone brightness change updates V in colour_data when in HS mode."""
+        from homeassistant.components.light import ATTR_BRIGHTNESS
+
+        from custom_components.tuya_cloudless.light import TuyaCloudlessLight
+
+        # Device currently in colour mode with hue=180, sat=100%
+        coord = _make_coordinator({"5": "00b403e803e8"})
+        spec = _make_light_spec(dp_brightness_id=None, dp_color_temp_id=None, dp_colour_data_id="5")
+        light = TuyaCloudlessLight(coord, spec)
+        light.async_write_ha_state = MagicMock()
+
+        await light.async_turn_on(**{ATTR_BRIGHTNESS: 128})
+
+        call_dps = coord.async_send_dps.call_args[0][0]
+        assert "5" in call_dps
+        encoded = call_dps["5"]
+        # Hue and sat should be preserved from current state
+        assert encoded.startswith("00b4")
+        v = int(encoded[8:12], 16)
+        assert 490 <= v <= 515
+
+    @pytest.mark.asyncio
+    async def test_colour_data_sets_color_mode_dp(self) -> None:
+        """When dp_color_mode is present, setting HS via colour_data sends 'colour'."""
+        from homeassistant.components.light import ATTR_HS_COLOR
+
+        from custom_components.tuya_cloudless.light import TuyaCloudlessLight
+
+        coord = _make_coordinator({})
+        spec = _make_light_spec(
+            dp_brightness_id=None,
+            dp_color_temp_id=None,
+            dp_colour_data_id="5",
+            dp_color_mode_id="2",
+        )
+        light = TuyaCloudlessLight(coord, spec)
+        light.async_write_ha_state = MagicMock()
+
+        await light.async_turn_on(**{ATTR_HS_COLOR: (180.0, 100.0)})
+
+        call_dps = coord.async_send_dps.call_args[0][0]
+        assert call_dps.get("2") == "colour"

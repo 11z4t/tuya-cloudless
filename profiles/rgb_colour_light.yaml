@@ -1,0 +1,16 @@
+name: "RGB Colour Light"
+model: "*colour*"
+entities:
+  - platform: light
+    name: main_light
+    dp_power:      {id: "1", type: bool}
+    dp_color_mode: {id: "2", type: enum}   # "white" | "colour" | "scene"
+    dp_brightness: {id: "3", type: int, min_raw: 10, max_raw: 1000}
+    dp_color_temp: {id: "4", type: int, min_raw: 0, max_raw: 1000}
+    dp_colour_data: {id: "5", type: str}   # 12-char hex HHHHSSSSBBBB
+    dp_scene:      {id: "25", type: str}   # scene name → sent as-is
+    effects:
+      - "scene_1"
+      - "scene_2"
+      - "scene_3"
+      - "scene_4"

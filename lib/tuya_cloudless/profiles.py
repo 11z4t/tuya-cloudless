@@ -82,6 +82,8 @@ class EntitySpec:
         dp_hs_saturation: Saturation DP (light; 0-1000 raw typical).
         dp_color_mode:    Color mode DP (light; enum "white"/"colour").
         dp_stop:          Stop-movement DP (cover; sends True to halt motor).
+        dp_scene:         Scene/effect DP (light; enum or str — value = effect name).
+        dp_colour_data:   Compound HSV colour DP (light; 12-char hex "HHHHSSSSBBBB").
         effects:          Supported effect names for the light.
         device_class:     HA device class string (e.g. "power", "current").
         state_class:      HA state class string (e.g. "measurement").
@@ -102,6 +104,8 @@ class EntitySpec:
     dp_hs_hue: DPSpec | None = None
     dp_hs_saturation: DPSpec | None = None
     dp_color_mode: DPSpec | None = None
+    dp_scene: DPSpec | None = None
+    dp_colour_data: DPSpec | None = None
     effects: tuple[str, ...] = ()
     device_class: str | None = None
     state_class: str | None = None
@@ -191,6 +195,8 @@ def _parse_entity_spec(data: dict[str, Any]) -> EntitySpec:
         dp_hs_hue=_parse_dp_spec(data.get("dp_hs_hue")),
         dp_hs_saturation=_parse_dp_spec(data.get("dp_hs_saturation")),
         dp_color_mode=_parse_dp_spec(data.get("dp_color_mode")),
+        dp_scene=_parse_dp_spec(data.get("dp_scene")),
+        dp_colour_data=_parse_dp_spec(data.get("dp_colour_data")),
         effects=tuple(data.get("effects", [])),
         device_class=str(data["device_class"]) if "device_class" in data else None,
         state_class=str(data["state_class"]) if "state_class" in data else None,
