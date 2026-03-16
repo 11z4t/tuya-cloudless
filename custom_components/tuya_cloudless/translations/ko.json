@@ -124,7 +124,7 @@
       }
     },
     "sensor": {
-      "rssi": {
+      "reconnects": {
         "name": "재연결 횟수"
       },
       "last_seen": {

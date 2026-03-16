@@ -124,7 +124,7 @@
       }
     },
     "sensor": {
-      "rssi": {
+      "reconnects": {
         "name": "Reconexões"
       },
       "last_seen": {

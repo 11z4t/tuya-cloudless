@@ -244,6 +244,28 @@ class TestSensorSetupEntry:
         assert "TuyaLastSeenSensor" in types
         assert "TuyaReconnectSensor" in types
 
+    def test_all_sensor_translation_keys_are_unique(self) -> None:
+        """AC4: all sensor entities have unique translation_keys (no duplicates)."""
+        from custom_components.tuya_cloudless.sensor import TuyaLastSeenSensor, TuyaReconnectSensor
+
+        coord = _make_coordinator()
+
+        last_seen = TuyaLastSeenSensor.__new__(TuyaLastSeenSensor)
+        last_seen.coordinator = coord
+        last_seen._dp_id = None
+        last_seen._attr_unique_id = f"{coord.gw_id}_last_seen"
+
+        reconnect = TuyaReconnectSensor.__new__(TuyaReconnectSensor)
+        reconnect.coordinator = coord
+        reconnect._dp_id = None
+        reconnect._attr_unique_id = f"{coord.gw_id}_reconnects"
+
+        keys = [last_seen.translation_key, reconnect.translation_key]
+        assert len(keys) == len(set(keys)), f"Duplicate translation_keys: {keys}"
+        # AC1: verify reconnect sensor uses correct key (not rssi)
+        assert reconnect.translation_key == "reconnects"
+        assert last_seen.translation_key == "last_seen"
+
     @pytest.mark.asyncio
     async def test_setup_no_profile_sensors_still_creates_diagnostics(self) -> None:
         from custom_components.tuya_cloudless import TuyaCloudlessRuntimeData

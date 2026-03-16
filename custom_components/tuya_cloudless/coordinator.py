@@ -337,16 +337,16 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 writer.write(query)
                 await writer.drain()
                 _LOGGER.debug(
-                    "[%s] DP_QUERY (0x0a) skickat vid connect (försök %d/%d)",
+                    "[%s] DP_QUERY (0x0a) sent at connect (attempt %d/%d)",
                     self._gw_id,
                     attempt + 1,
                     _DP_QUERY_MAX_RETRIES,
                 )
-                return  # Lyckades — inget mer att göra
+                return
             except OSError as exc:
                 last_exc = exc
                 _LOGGER.debug(
-                    "[%s] DP_QUERY misslyckades (försök %d/%d): %s",
+                    "[%s] DP_QUERY failed (attempt %d/%d): %s",
                     self._gw_id,
                     attempt + 1,
                     _DP_QUERY_MAX_RETRIES,
@@ -354,8 +354,8 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 )
 
         _LOGGER.warning(
-            "[%s] Kunde inte skicka initial DP_QUERY efter %d försök: %s — "
-            "entiteter visar 'unknown' tills enheten skickar en uppdatering",
+            "[%s] Failed to send initial DP_QUERY after %d attempts: %s — "
+            "entities will show 'unknown' until the device pushes an update",
             self._gw_id,
             _DP_QUERY_MAX_RETRIES,
             last_exc,
