@@ -38,5 +38,13 @@
   "warn_scan_cancelled": "⚠ Bluetooth scan cancelled.",
   "label_device_id": "Device ID",
   "label_ip": "IP address",
-  "label_local_key": "Local key"
+  "label_local_key": "Local key",
+  "btn_next": "Next →",
+  "step_x_of_y": "Step {x} of {y}",
+  "step1_desc": "Your device will connect to this network after pairing.",
+  "step2_desc": "Make sure your device is flashing rapidly (pairing mode).",
+  "help_text": "Need help?",
+  "help_link_label": "Open guide →",
+  "wifi_scan_none": "No networks found",
+  "debug_title": "Debug log"
 }

@@ -38,5 +38,13 @@
   "warn_scan_cancelled": "⚠ Bluetooth-sökning avbruten.",
   "label_device_id": "Enhets-ID",
   "label_ip": "IP-adress",
-  "label_local_key": "Lokal nyckel"
+  "label_local_key": "Lokal nyckel",
+  "btn_next": "Nästa →",
+  "step_x_of_y": "Steg {x} av {y}",
+  "step1_desc": "Enheten ansluter till det här nätverket efter parkopplingen.",
+  "step2_desc": "Se till att enheten blinkar snabbt (parkopplingsläge).",
+  "help_text": "Behöver du hjälp?",
+  "help_link_label": "Öppna guide →",
+  "wifi_scan_none": "Inga nätverk hittades",
+  "debug_title": "Felsökningslogg"
 }

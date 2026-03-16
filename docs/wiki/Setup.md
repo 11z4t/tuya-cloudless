@@ -36,6 +36,8 @@ När du väljer BLE Parkoppla öppnar Home Assistant automatiskt en webbsida med
 
 Fyll i ditt WiFi-nätverksnamn (SSID) och lösenord. Det är WiFi:t som enheten ska ansluta till — vanligtvis ditt hemnätverk.
 
+> **Tips:** Klicka 📡-knappen bredvid SSID-fältet för att skanna efter nearby nätverk och klicka på rätt i listan — då fylls fältet i automatiskt.
+
 > Enheten måste vara på **samma nätverk** som Home Assistant för att fungera efter parkopplingen.
 
 **Steg 3 — Skanna och parkoppla**
@@ -130,6 +132,8 @@ When you choose BLE Pairing, Home Assistant automatically opens the pairing tool
 **Step 2 — Enter WiFi credentials**
 
 Enter the name (SSID) and password of the WiFi network the device should join — usually your home network.
+
+> **Tip:** Click the 📡 button next to the SSID field to scan for nearby networks and select one from the list.
 
 > The device must be on the **same network** as Home Assistant to work after pairing.
 

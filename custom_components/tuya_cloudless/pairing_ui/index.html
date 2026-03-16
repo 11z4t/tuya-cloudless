@@ -8,17 +8,17 @@
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     :root {
-      --bg:       #0f172a;
-      --surface:  #1e293b;
-      --border:   #334155;
-      --accent:   #38bdf8;
-      --accent2:  #818cf8;
-      --text:     #e2e8f0;
-      --muted:    #94a3b8;
-      --success:  #34d399;
-      --warn:     #fbbf24;
-      --error:    #f87171;
-      --radius:   12px;
+      --bg:      #0f172a;
+      --surface: #1e293b;
+      --border:  #2d3f58;
+      --accent:  #f97316;
+      --accent-h:#ea6a00;
+      --text:    #f1f5f9;
+      --muted:   #94a3b8;
+      --success: #34d399;
+      --warn:    #fbbf24;
+      --error:   #f87171;
+      --radius:  12px;
     }
 
     body {
@@ -41,7 +41,7 @@
       max-width: 480px;
       display: flex;
       flex-direction: column;
-      gap: 20px;
+      gap: 18px;
     }
 
     .header-row {
@@ -73,41 +73,15 @@
     }
     .lang-select:focus { border-color: var(--accent); }
 
-    /* Progress indicator */
-    .progress {
-      display: flex;
-      gap: 0;
-      align-items: center;
-    }
-    .progress-step {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      font-size: 0.78rem;
-      color: var(--muted);
-    }
-    .progress-step.active  { color: var(--accent); font-weight: 600; }
-    .progress-step.done    { color: var(--success); }
-    .progress-dot {
-      width: 22px; height: 22px;
-      border-radius: 50%;
-      display: flex; align-items: center; justify-content: center;
-      font-size: 0.72rem; font-weight: 700;
-      background: var(--border);
-      color: var(--muted);
-      flex-shrink: 0;
-    }
-    .progress-step.active .progress-dot  { background: var(--accent); color: #0f172a; }
-    .progress-step.done   .progress-dot  { background: var(--success); color: #0f172a; }
-    .progress-sep {
-      flex: 1;
-      height: 2px;
-      background: var(--border);
-      margin: 0 6px;
-      min-width: 16px;
+    .step-counter {
+      font-size: 0.75rem;
+      font-weight: 700;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      color: var(--accent);
+      padding: 2px 0;
     }
 
-    /* Steps */
     .step-panel {
       border: 1px solid var(--border);
       border-radius: var(--radius);
@@ -118,9 +92,15 @@
     }
     .step-panel.hidden { display: none !important; }
 
-    .step-header {
-      font-weight: 600;
-      font-size: 0.95rem;
+    .step-title {
+      font-weight: 700;
+      font-size: 1.05rem;
+    }
+
+    .step-desc {
+      font-size: 0.85rem;
+      color: var(--muted);
+      line-height: 1.5;
     }
 
     label {
@@ -145,6 +125,48 @@
     }
     input:focus { border-color: var(--accent); }
 
+    .ssid-row {
+      display: flex;
+      gap: 8px;
+      align-items: stretch;
+    }
+    .ssid-row input { flex: 1; }
+
+    .wifi-scan-btn {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      padding: 0 14px;
+      font-size: 1rem;
+      cursor: pointer;
+      white-space: nowrap;
+      flex-shrink: 0;
+      transition: border-color .15s;
+    }
+    .wifi-scan-btn:hover { border-color: var(--accent); }
+    .wifi-scan-btn:disabled { opacity: .4; cursor: not-allowed; }
+
+    .wifi-dropdown {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      margin-top: 4px;
+      overflow: hidden;
+    }
+    .wifi-dropdown.hidden { display: none !important; }
+    .wifi-option {
+      padding: 10px 14px;
+      font-size: 0.9rem;
+      cursor: pointer;
+      border-bottom: 1px solid var(--border);
+      transition: background .1s;
+    }
+    .wifi-option:last-child { border-bottom: none; }
+    .wifi-option:hover { background: var(--surface); }
+    .wifi-option.muted { color: var(--muted); cursor: default; }
+    .wifi-option.muted:hover { background: transparent; }
+
     .btn {
       display: inline-flex;
       align-items: center;
@@ -152,12 +174,12 @@
       gap: 8px;
       border: none;
       border-radius: 10px;
-      padding: 14px 20px;
-      min-height: 48px;
-      font-size: 0.95rem;
+      padding: 16px 20px;
+      min-height: 52px;
+      font-size: 0.98rem;
       font-weight: 600;
       cursor: pointer;
-      transition: opacity .15s, transform .1s;
+      transition: background .15s, transform .1s;
       text-decoration: none;
       width: 100%;
       -webkit-tap-highlight-color: transparent;
@@ -165,8 +187,9 @@
     .btn:active { transform: scale(.97); }
     .btn:disabled { opacity: .4; cursor: not-allowed; transform: none; }
     .btn-primary { background: var(--accent); color: #0f172a; }
+    .btn-primary:hover:not(:disabled) { background: var(--accent-h); }
     .btn-success { background: var(--success); color: #0f172a; }
-    .btn-ha      { background: var(--accent2); color: #0f172a; }
+    .btn-ha      { background: #6366f1; color: #fff; }
     .btn-sm {
       padding: 10px 14px;
       font-size: 0.85rem;
@@ -178,24 +201,52 @@
       border-radius: 8px;
       padding: 12px 14px;
       font-size: 0.88rem;
-      line-height: 1.45;
-      display: none;
+      line-height: 1.5;
     }
-    .status-box.visible { display: block; }
-    .status-info    { background: #0c2340; border: 1px solid #1d4ed8; color: #93c5fd; }
-    .status-success { background: #052e16; border: 1px solid #166534; color: var(--success); }
-    .status-warn    { background: #2d1a00; border: 1px solid #92400e; color: var(--warn); }
-    .status-error   { background: #2d0000; border: 1px solid #7f1d1d; color: var(--error); }
+    .status-box.hidden { display: none !important; }
+    .status-info    { background: #0c2340; border: 1px solid #1d4ed8; color: #93c5fd; display: block; }
+    .status-success { background: #052e16; border: 1px solid #166534; color: var(--success); display: block; }
+    .status-warn    { background: #2d1a00; border: 1px solid #92400e; color: var(--warn); display: block; }
+    .status-error   { background: #2d0000; border: 1px solid #7f1d1d; color: var(--error); display: block; }
+
+    .help-banner {
+      background: rgba(249, 115, 22, 0.1);
+      border: 1px solid rgba(249, 115, 22, 0.3);
+      border-radius: 8px;
+      padding: 10px 14px;
+      font-size: 0.85rem;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .help-banner a {
+      color: var(--accent);
+      text-decoration: none;
+      font-weight: 600;
+    }
+    .help-banner a:hover { text-decoration: underline; }
+    .help-banner span { color: var(--muted); }
 
     .result-grid {
       display: grid;
       grid-template-columns: auto 1fr;
       gap: 8px 14px;
       font-size: 0.88rem;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 14px;
     }
     .result-label { color: var(--muted); }
     .result-value { font-family: monospace; word-break: break-all; }
     .key-value    { color: var(--success); font-weight: 700; letter-spacing: .05em; }
+
+    .done-check {
+      text-align: center;
+      font-size: 3rem;
+      line-height: 1;
+    }
 
     .hidden { display: none !important; }
 
@@ -221,35 +272,8 @@
     .step-hint {
       font-size: 0.83rem;
       color: var(--muted);
-      line-height: 1.45;
+      line-height: 1.5;
     }
-
-    footer {
-      text-align: center;
-      font-size: 0.78rem;
-      color: var(--muted);
-    }
-    footer a { color: var(--accent); text-decoration: none; }
-
-    .qr-wrap {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 10px;
-    }
-    .qr-wrap img {
-      width: 160px;
-      height: 160px;
-      border-radius: 8px;
-      background: #fff;
-      padding: 6px;
-    }
-    .url-row {
-      display: flex;
-      gap: 8px;
-      width: 100%;
-    }
-    .url-row input { flex: 1; }
 
     .ha-flow-notice {
       text-align: center;
@@ -258,6 +282,60 @@
       padding: 8px 0;
       line-height: 1.5;
     }
+
+    .qr-wrap {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+    }
+    .qr-wrap img {
+      width: 160px; height: 160px;
+      border-radius: 8px;
+      background: #fff;
+      padding: 6px;
+    }
+    .url-row { display: flex; gap: 8px; width: 100%; }
+    .url-row input { flex: 1; }
+
+    details.debug-details {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    details.debug-details summary {
+      padding: 10px 14px;
+      font-size: 0.8rem;
+      color: var(--muted);
+      cursor: pointer;
+      user-select: none;
+      list-style: none;
+    }
+    details.debug-details summary::-webkit-details-marker { display: none; }
+    details.debug-details summary::before {
+      content: "▸ ";
+      color: var(--accent);
+    }
+    details.debug-details[open] summary::before { content: "▾ "; }
+    .debug-log {
+      padding: 10px 14px;
+      font-family: monospace;
+      font-size: 0.78rem;
+      color: var(--muted);
+      background: var(--bg);
+      max-height: 180px;
+      overflow-y: auto;
+      border-top: 1px solid var(--border);
+      line-height: 1.6;
+    }
+
+    footer {
+      text-align: center;
+      font-size: 0.78rem;
+      color: var(--muted);
+    }
+    footer a { color: var(--accent); text-decoration: none; }
+    footer a:hover { text-decoration: underline; }
 
     @media (max-width: 360px) {
       .card { padding: 16px 12px; }
@@ -271,98 +349,124 @@
   <!-- Header -->
   <div class="header-row">
     <h1>
-      <svg width="26" height="26" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-        <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"
-              stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      <svg width="30" height="30" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+        <polygon points="16,2 28,9 28,23 16,30 4,23 4,9" fill="#f97316"/>
+        <path d="M8.5 18c4.1-4.1 10.9-4.1 15 0" stroke="white" stroke-width="2" stroke-linecap="round"/>
+        <path d="M11 20.5c2.7-2.7 7.2-2.7 10 0" stroke="white" stroke-width="2" stroke-linecap="round"/>
+        <circle cx="16" cy="23" r="1.8" fill="white"/>
       </svg>
       Tuya Cloudless
     </h1>
     <select id="lang-select" class="lang-select" onchange="changeLang(this.value)" aria-label="Language">
       <option value="en">🇬🇧 English</option>
       <option value="sv">🇸🇪 Svenska</option>
+      <option value="de">🇩🇪 Deutsch</option>
+      <option value="fr">🇫🇷 Français</option>
+      <option value="es">🇪🇸 Español</option>
+      <option value="nl">🇳🇱 Nederlands</option>
+      <option value="no">🇳🇴 Norsk</option>
+      <option value="da">🇩🇰 Dansk</option>
+      <option value="fi">🇫🇮 Suomi</option>
+      <option value="pl">🇵🇱 Polski</option>
+      <option value="it">🇮🇹 Italiano</option>
+      <option value="pt">🇵🇹 Português</option>
+      <option value="cs">🇨🇿 Čeština</option>
+      <option value="ru">🇷🇺 Русский</option>
+      <option value="tr">🇹🇷 Türkçe</option>
+      <option value="zh">🇨🇳 中文</option>
+      <option value="ja">🇯🇵 日本語</option>
+      <option value="ko">🇰🇷 한국어</option>
     </select>
   </div>
 
-  <!-- Progress bar -->
-  <div class="progress" id="progress" aria-label="Progress">
-    <div class="progress-step active" id="prog-1">
-      <div class="progress-dot">1</div>
-      <span id="prog-1-label">WiFi</span>
-    </div>
-    <div class="progress-sep"></div>
-    <div class="progress-step" id="prog-2">
-      <div class="progress-dot">2</div>
-      <span id="prog-2-label">Device</span>
-    </div>
-    <div class="progress-sep"></div>
-    <div class="progress-step" id="prog-3">
-      <div class="progress-dot">3</div>
-      <span id="prog-3-label">Done</span>
-    </div>
-  </div>
-
-  <!-- Error: HTTPS required -->
-  <div id="error-https" class="status-box status-error hidden">
-    <strong id="err-https-title">HTTPS required</strong><br>
-    <span id="err-https-body">Web Bluetooth requires a secure context (HTTPS or localhost).</span><br>
-    <a id="err-https-link" href="https://github.com/11z4t/tuya-cloudless/wiki/HTTPS-Setup"
-       target="_blank" style="color:var(--error);margin-top:6px;display:inline-block;">
-      HTTPS setup guide →
-    </a>
-  </div>
-
-  <!-- Error: Unsupported browser -->
-  <div id="error-browser" class="status-box status-warn hidden">
-    <strong id="err-browser-title">Browser not supported</strong><br>
-    <span id="err-browser-body">Web Bluetooth requires Chrome or Edge on desktop or Android.</span>
-  </div>
-
-  <!-- QR / share fallback (shown when BLE unavailable but page is secure) -->
-  <div id="qr-section" class="step-panel hidden">
-    <div class="step-header" id="qr-title">Open on Android Chrome</div>
-    <p class="step-hint" id="qr-body">Scan the QR code with your Android phone to open this page in Chrome.</p>
-    <div class="qr-wrap">
-      <img id="qr-img" src="/api/provision/qr.svg" alt="QR code"
-           onerror="this.style.display='none';document.getElementById('qr-unavail').style.display='block'">
-      <p id="qr-unavail" style="display:none;font-size:.78rem;color:var(--muted);text-align:center;"></p>
-    </div>
-    <div>
-      <label id="qr-copy-label">Or copy this URL and open on Chrome / Edge:</label>
-      <div class="url-row">
-        <input type="text" id="share-url" readonly>
-        <button class="btn btn-primary btn-sm" onclick="copyShareUrl()" id="btn-copy">Copy</button>
-      </div>
-    </div>
-  </div>
+  <!-- Step counter (hidden on done screen) -->
+  <div id="step-counter" class="step-counter"></div>
 
   <!-- Step 1 — WiFi credentials -->
   <div id="panel-wifi" class="step-panel">
-    <div class="step-header" id="step1-title">WiFi credentials</div>
+    <div class="step-title" id="step1-title">WiFi credentials</div>
+    <p class="step-desc" id="step1-desc">Your device will connect to this network after pairing.</p>
+
     <div>
       <label for="ssid" id="ssid-label">Network name (SSID)</label>
-      <input type="text" id="ssid" autocomplete="off" spellcheck="false"
-             inputmode="text" placeholder="My Home WiFi">
+      <div class="ssid-row">
+        <input type="text" id="ssid" autocomplete="off" spellcheck="false"
+               inputmode="text" placeholder="My Home WiFi">
+        <button class="wifi-scan-btn" id="btn-wifi-scan" onclick="scanWifi()" type="button"
+                aria-label="Scan for networks">📡</button>
+      </div>
+      <div id="wifi-dropdown" class="wifi-dropdown hidden"></div>
     </div>
+
     <div>
       <label for="password" id="password-label">Password</label>
       <input type="password" id="password" autocomplete="off" placeholder="WiFi password">
     </div>
-    <button class="btn btn-primary" id="btn-next" onclick="goToStep2()">
+
+    <!-- Dedicated error div — never moved from here -->
+    <div id="s1-error" class="status-box hidden"></div>
+
+    <button class="btn btn-primary" id="btn-next" onclick="goToStep2()" type="button">
       <span id="btn-next-label">Next →</span>
     </button>
+
+    <div class="help-banner">
+      <span>❓</span>
+      <span id="help-text-1">Need help?</span>
+      <a href="https://github.com/11z4t/tuya-cloudless/wiki/HTTPS-Setup"
+         target="_blank" rel="noopener" id="help-link-1">Open guide →</a>
+    </div>
   </div>
 
   <!-- Step 2 — BLE pairing -->
   <div id="panel-ble" class="step-panel hidden">
-    <div class="step-header">
+    <div class="step-title">
       <span id="step2-title">Pair device via Bluetooth</span>
       <span class="badge" id="step2-badge">Chrome / Edge</span>
     </div>
+    <p class="step-desc" id="step2-desc">Make sure your device is flashing rapidly (pairing mode).</p>
     <p class="step-hint" id="step2-hint">
       Put your Tuya device in pairing mode (factory reset or hold the pair button until
       the indicator flashes rapidly), then click Scan &amp; Pair.
     </p>
-    <button id="btn-pair" class="btn btn-primary" onclick="startPairing()">
+
+    <!-- HTTPS warning — only shown when !isSecureContext -->
+    <div id="warn-https" class="status-box status-warn hidden">
+      <strong id="err-https-title">HTTPS required</strong><br>
+      <span id="err-https-body">Web Bluetooth requires a secure context (HTTPS or localhost).</span><br>
+      <a id="err-https-link"
+         href="https://github.com/11z4t/tuya-cloudless/wiki/HTTPS-Setup"
+         target="_blank" rel="noopener"
+         style="color:var(--warn);margin-top:6px;display:inline-block;">
+        HTTPS setup guide →
+      </a>
+    </div>
+
+    <!-- Browser warning — only shown when !navigator.bluetooth -->
+    <div id="warn-browser" class="status-box status-warn hidden">
+      <strong id="err-browser-title">Browser not supported</strong><br>
+      <span id="err-browser-body">Web Bluetooth requires Chrome or Edge on desktop or Android.</span>
+    </div>
+
+    <!-- QR / share fallback (shown when BLE unavailable but page is secure) -->
+    <div id="qr-section" class="step-panel hidden" style="border:none;padding:0;gap:10px">
+      <div class="step-hint" id="qr-title">Open on Android Chrome</div>
+      <p class="step-hint" id="qr-body">Scan the QR code with your Android phone to open this page in Chrome.</p>
+      <div class="qr-wrap">
+        <img id="qr-img" src="/api/provision/qr.svg" alt="QR code"
+             onerror="this.style.display='none';document.getElementById('qr-unavail').style.display='block'">
+        <p id="qr-unavail" style="display:none;font-size:.78rem;color:var(--muted);text-align:center;"></p>
+      </div>
+      <div>
+        <label id="qr-copy-label">Or copy this URL and open on Chrome / Edge:</label>
+        <div class="url-row">
+          <input type="text" id="share-url" readonly>
+          <button class="btn btn-primary btn-sm" onclick="copyShareUrl()" id="btn-copy" type="button">Copy</button>
+        </div>
+      </div>
+    </div>
+
+    <button id="btn-pair" class="btn btn-primary" onclick="startPairing()" type="button">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
         <path d="M5 8.5A6.5 6.5 0 0 1 18.5 12M19 15.5A6.5 6.5 0 0 1 5.5 12"
               stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
@@ -370,18 +474,25 @@
       </svg>
       <span id="btn-pair-label">Scan &amp; Pair</span>
     </button>
-    <div id="pair-status" class="status-box"></div>
+
+    <div id="pair-status" class="status-box hidden"></div>
+
+    <div class="help-banner">
+      <span>❓</span>
+      <span id="help-text-2">Need help?</span>
+      <a href="https://github.com/11z4t/tuya-cloudless/wiki/HTTPS-Setup"
+         target="_blank" rel="noopener" id="help-link-2">Open guide →</a>
+    </div>
   </div>
 
   <!-- Step 3 — Done -->
   <div id="panel-done" class="step-panel hidden">
-    <div class="step-header" id="step3-title">Device activated ✓</div>
+    <div class="done-check">✅</div>
+    <div class="step-title" id="step3-title" style="text-align:center">Your device is ready!</div>
     <div id="result-grid" class="result-grid"></div>
-    <!-- Shown when launched from HA config flow -->
-    <div id="ha-flow-msg" class="ha-flow-notice hidden" id="step3-ha-flow">
+    <div id="ha-flow-msg" class="ha-flow-notice hidden">
       Home Assistant is setting up your device. You can close this window and continue in the Home Assistant UI.
     </div>
-    <!-- Shown in standalone mode (no flow_id) -->
     <a id="btn-add-ha" href="#" class="btn btn-ha hidden" target="_top">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
         <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"
@@ -393,13 +504,15 @@
     </a>
   </div>
 
+  <!-- Debug log (visible on all screens) -->
+  <details class="debug-details" id="debug-details">
+    <summary id="debug-summary-label">Debug log</summary>
+    <div id="debug-log" class="debug-log"></div>
+  </details>
+
   <footer>
     Tuya Cloudless &bull;
     <a href="https://github.com/11z4t/tuya-cloudless" target="_blank" id="footer-github">GitHub</a>
-    &bull;
-    <a href="https://github.com/11z4t/tuya-cloudless/wiki/HTTPS-Setup" target="_blank" id="footer-wiki">
-      Help / HTTPS setup
-    </a>
     &bull; <span id="footer-no-cloud">No cloud account required</span>
   </footer>
 </div>
@@ -417,25 +530,53 @@ const CMD_HANDSHAKE   = 0x00;
 const CMD_WIFI_CONFIG = 0x01;
 const CMD_PAIR_FAIL   = 0x05;
 const WIKI_URL        = "https://github.com/11z4t/tuya-cloudless/wiki/HTTPS-Setup";
+const SUPPORTED_LANGS = ["en","sv","de","fr","es","nl","no","da","fi","pl","it","pt","cs","ru","tr","zh","ja","ko"];
+
+// ── Debug log ─────────────────────────────────────────────────────────────────
+function dbg(msg) {
+  const ts = new Date().toLocaleTimeString();
+  const el = document.getElementById("debug-log");
+  if (el) {
+    const line = document.createElement("div");
+    line.textContent = "[" + ts + "] " + msg;
+    el.appendChild(line);
+    el.scrollTop = el.scrollHeight;
+  }
+}
 
 // ── i18n ─────────────────────────────────────────────────────────────────────
 let _strings = {};
 let _currentLang = "en";
-const _supportedLangs = ["en", "sv"];
 
 async function loadLang(lang) {
   try {
-    const r = await fetch(`/static/i18n/${lang}.json`);
+    const r = await fetch("/static/i18n/" + lang + ".json");
     if (!r.ok) throw new Error("not found");
     _strings = await r.json();
     _currentLang = lang;
+    dbg("Language: " + lang + " \u2713");
   } catch (_) {
-    if (lang !== "en") await loadLang("en");
+    if (lang !== "en") {
+      dbg("Language " + lang + " not found, falling back to en");
+      await loadLang("en");
+    }
   }
 }
 
 function t(key, vars) {
-  let s = _strings[key] || key;
+  let s = _strings[key];
+  if (s === undefined) {
+    // Provide built-in fallbacks for critical keys so UI never shows raw key names
+    const fallbacks = {
+      btn_next: "Next \u2192",
+      step_x_of_y: "Step {x} of {y}",
+      wifi_scan_none: "No networks found",
+      debug_title: "Debug log",
+      help_text: "Need help?",
+      help_link_label: "Open guide \u2192",
+    };
+    s = fallbacks[key] !== undefined ? fallbacks[key] : key;
+  }
   if (vars) {
     for (const [k, v] of Object.entries(vars)) {
       s = s.replaceAll("{" + k + "}", v);
@@ -446,39 +587,42 @@ function t(key, vars) {
 
 function applyStrings() {
   const el = (id) => document.getElementById(id);
-  document.title        = t("title");
-  el("step1-title").textContent   = t("step1_title");
-  el("ssid-label").textContent    = t("ssid_label");
-  el("ssid").placeholder          = t("ssid_placeholder");
+  document.title = t("title");
+  el("step1-title").textContent    = t("step1_title");
+  el("step1-desc").textContent     = t("step1_desc");
+  el("ssid-label").textContent     = t("ssid_label");
+  el("ssid").placeholder           = t("ssid_placeholder");
   el("password-label").textContent = t("password_label");
-  el("password").placeholder      = t("password_placeholder");
-  el("btn-next-label").textContent = t("btn_next", {}) || "Next →";
-  el("step2-title").textContent   = t("step2_title");
-  el("step2-badge").textContent   = t("step2_badge");
-  el("step2-hint").textContent    = t("step2_hint");
-  el("btn-pair-label").innerHTML  = t("btn_scan");
-  el("step3-title").textContent   = t("step3_title");
-  el("ha-flow-msg").textContent   = t("step3_ha_flow");
+  el("password").placeholder       = t("password_placeholder");
+  el("btn-next-label").textContent = t("btn_next");
+  el("step2-title").textContent    = t("step2_title");
+  el("step2-badge").textContent    = t("step2_badge");
+  el("step2-desc").textContent     = t("step2_desc");
+  el("step2-hint").textContent     = t("step2_hint");
+  el("btn-pair-label").innerHTML   = t("btn_scan");
+  el("step3-title").textContent    = t("step3_title");
+  el("ha-flow-msg").textContent    = t("step3_ha_flow");
   el("btn-add-ha-label").textContent = t("btn_add_ha");
-  el("footer-github").textContent = t("footer_github");
-  el("footer-wiki").textContent   = t("wiki_help");
+  el("footer-github").textContent  = t("footer_github");
   el("footer-no-cloud").textContent = t("footer_no_cloud");
-  el("qr-title").textContent      = t("qr_title");
-  el("qr-body").textContent       = t("qr_body");
-  el("qr-unavail").textContent    = t("qr_unavail");
-  el("qr-copy-label").textContent = t("qr_copy_label");
-  el("btn-copy").textContent      = t("qr_copy_btn");
-  el("err-https-title").textContent = t("error_https_required_title");
-  el("err-https-body").textContent  = t("error_https_required_body");
-  el("err-https-link").textContent  = t("error_https_link") + " →";
+  el("qr-title").textContent       = t("qr_title");
+  el("qr-body").textContent        = t("qr_body");
+  el("qr-unavail").textContent     = t("qr_unavail");
+  el("qr-copy-label").textContent  = t("qr_copy_label");
+  el("btn-copy").textContent       = t("qr_copy_btn");
+  el("err-https-title").textContent  = t("error_https_required_title");
+  el("err-https-body").textContent   = t("error_https_required_body");
+  el("err-https-link").textContent   = t("error_https_link") + " \u2192";
   el("err-browser-title").textContent = t("error_browser_title");
   el("err-browser-body").textContent  = t("error_browser_body");
-  // Progress labels
-  el("prog-1-label").textContent  = t("step1_title");
-  el("prog-2-label").textContent  = t("step2_title");
-  el("prog-3-label").textContent  = t("step3_title");
-  // Lang picker aria-label
+  el("help-text-1").textContent    = t("help_text");
+  el("help-link-1").textContent    = t("help_link_label");
+  el("help-text-2").textContent    = t("help_text");
+  el("help-link-2").textContent    = t("help_link_label");
+  el("debug-summary-label").textContent = t("debug_title");
   el("lang-select").setAttribute("aria-label", t("lang_picker_label"));
+  // Re-apply step counter with new language
+  updateStepCounter(_currentStep);
 }
 
 function changeLang(lang) {
@@ -489,18 +633,32 @@ function changeLang(lang) {
 
 function detectLang() {
   const stored = localStorage.getItem("tc-lang");
-  if (stored && _supportedLangs.includes(stored)) return stored;
+  if (stored && SUPPORTED_LANGS.includes(stored)) return stored;
   const nav = (navigator.language || "en").substring(0, 2).toLowerCase();
-  return _supportedLangs.includes(nav) ? nav : "en";
+  return SUPPORTED_LANGS.includes(nav) ? nav : "en";
+}
+
+// ── Step counter ──────────────────────────────────────────────────────────────
+let _currentStep = 1;
+const _TOTAL_STEPS = 2;
+
+function updateStepCounter(step) {
+  _currentStep = step;
+  const el = document.getElementById("step-counter");
+  if (step > _TOTAL_STEPS) {
+    el.classList.add("hidden");
+    return;
+  }
+  el.classList.remove("hidden");
+  el.textContent = t("step_x_of_y", { x: step, y: _TOTAL_STEPS }).toUpperCase();
 }
 
 // ── Server config ─────────────────────────────────────────────────────────────
 let ACTIVATOR_URL = window.location.origin;
 let EVENTS_URL    = ACTIVATOR_URL + "/api/provision/events";
 
-// Detect flow_id from URL query params (set by HA when launched via async_external_step)
-const _urlParams  = new URLSearchParams(window.location.search);
-const _haFlowId   = _urlParams.get("flow_id") || null;
+const _urlParams = new URLSearchParams(window.location.search);
+const _haFlowId  = _urlParams.get("flow_id") || null;
 
 async function loadServerConfig() {
   try {
@@ -509,21 +667,67 @@ async function loadServerConfig() {
       const cfg = await r.json();
       if (cfg.activator_url) ACTIVATOR_URL = cfg.activator_url;
       if (cfg.events_url)    EVENTS_URL    = cfg.events_url;
+      dbg("Server: " + ACTIVATOR_URL + " \u2713");
     }
   } catch (_) { /* keep defaults */ }
 }
 
-// ── Progress ──────────────────────────────────────────────────────────────────
-function setProgress(step) {
-  for (let i = 1; i <= 3; i++) {
-    const el = document.getElementById("prog-" + i);
-    el.classList.remove("active", "done");
-    if (i < step)  el.classList.add("done");
-    if (i === step) el.classList.add("active");
-    // Update dot content: show checkmark for done steps
-    el.querySelector(".progress-dot").textContent = i < step ? "✓" : String(i);
+// ── WiFi scan ─────────────────────────────────────────────────────────────────
+async function scanWifi() {
+  const btn = document.getElementById("btn-wifi-scan");
+  btn.disabled = true;
+  dbg("WiFi scan started\u2026");
+  // Close dropdown if already open
+  document.getElementById("wifi-dropdown").classList.add("hidden");
+  try {
+    const r = await fetch("/api/provision/wifi-scan");
+    if (!r.ok) throw new Error("scan HTTP " + r.status);
+    const data = await r.json();
+    const ssids = data.ssids || [];
+    dbg("WiFi scan: " + ssids.length + " networks found");
+    showWifiDropdown(ssids);
+  } catch (err) {
+    dbg("WiFi scan error: " + err.message);
+    showWifiDropdown([]);
+  } finally {
+    btn.disabled = false;
   }
 }
+
+function showWifiDropdown(ssids) {
+  const dd = document.getElementById("wifi-dropdown");
+  dd.innerHTML = "";
+  if (ssids.length === 0) {
+    const item = document.createElement("div");
+    item.className = "wifi-option muted";
+    item.textContent = t("wifi_scan_none");
+    dd.appendChild(item);
+  } else {
+    for (const ssid of ssids) {
+      const item = document.createElement("div");
+      item.className = "wifi-option";
+      item.textContent = ssid;
+      item.onclick = () => selectWifi(ssid);
+      dd.appendChild(item);
+    }
+  }
+  dd.classList.remove("hidden");
+}
+
+function selectWifi(ssid) {
+  document.getElementById("ssid").value = ssid;
+  document.getElementById("wifi-dropdown").classList.add("hidden");
+}
+
+// Close dropdown when clicking outside
+document.addEventListener("click", (e) => {
+  const dd = document.getElementById("wifi-dropdown");
+  const ssidInput = document.getElementById("ssid");
+  const scanBtn = document.getElementById("btn-wifi-scan");
+  if (!dd.contains(e.target) && e.target !== ssidInput && e.target !== scanBtn) {
+    dd.classList.add("hidden");
+  }
+});
 
 // ── Step navigation ───────────────────────────────────────────────────────────
 let _ssid = "";
@@ -531,39 +735,40 @@ let _pwd  = "";
 
 function goToStep2() {
   _ssid = document.getElementById("ssid").value.trim();
-  _pwd  = document.getElementById("password").value;
+  const errEl = document.getElementById("s1-error");
   if (!_ssid) {
-    setStatus("pair-status", "status-warn", t("warn_no_ssid"));
-    // Show pair-status inside wifi panel temporarily
-    const box = document.getElementById("pair-status");
-    document.getElementById("panel-wifi").appendChild(box);
-    box.classList.add("visible");
+    errEl.className = "status-box status-warn";
+    errEl.textContent = t("warn_no_ssid");
     return;
   }
+  errEl.className = "status-box hidden";
+  _pwd = document.getElementById("password").value;
+
   document.getElementById("panel-wifi").classList.add("hidden");
   document.getElementById("panel-ble").classList.remove("hidden");
-  setProgress(2);
+  updateStepCounter(2);
+  dbg("Step 2: BLE pairing");
 }
 
 function showDone(gw_id, local_key, ip_address) {
   document.getElementById("panel-ble").classList.add("hidden");
-  const panel = document.getElementById("panel-done");
-  panel.classList.remove("hidden");
-  setProgress(3);
+  document.getElementById("panel-done").classList.remove("hidden");
+  updateStepCounter(3);  // hides counter
 
   const grid = document.getElementById("result-grid");
   grid.innerHTML =
-    `<span class="result-label">${esc(t("label_device_id"))}</span><span class="result-value">${esc(gw_id)}</span>` +
-    `<span class="result-label">${esc(t("label_ip"))}</span><span class="result-value">${esc(ip_address)}</span>` +
-    `<span class="result-label">${esc(t("label_local_key"))}</span><span class="result-value key-value">${esc(local_key)}</span>`;
+    "<span class=\"result-label\">" + esc(t("label_device_id")) + "</span>" +
+    "<span class=\"result-value\">" + esc(gw_id) + "</span>" +
+    "<span class=\"result-label\">" + esc(t("label_ip")) + "</span>" +
+    "<span class=\"result-value\">" + esc(ip_address) + "</span>" +
+    "<span class=\"result-label\">" + esc(t("label_local_key")) + "</span>" +
+    "<span class=\"result-value key-value\">" + esc(local_key) + "</span>";
 
   if (_haFlowId) {
-    // Launched from HA config flow — no need for "Add to HA" button
     document.getElementById("ha-flow-msg").classList.remove("hidden");
   } else {
-    // Standalone mode — show deep-link button
     const params = new URLSearchParams({ domain: "tuya_cloudless", gw_id, local_key, ip_address });
-    document.getElementById("btn-add-ha").href = `/config/integrations/add?${params}`;
+    document.getElementById("btn-add-ha").href = "/config/integrations/add?" + params;
     document.getElementById("btn-add-ha").classList.remove("hidden");
   }
 }
@@ -636,7 +841,8 @@ function onNotify(event) {
   }
 }
 
-function waitForResponse(timeoutMs = 10000) {
+function waitForResponse(timeoutMs) {
+  if (timeoutMs === undefined) timeoutMs = 10000;
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
       _recvResolve = null;
@@ -674,15 +880,15 @@ function randomToken() {
 }
 
 // ── UI helpers ────────────────────────────────────────────────────────────────
-function setStatus(id, cls, html) {
-  const el = document.getElementById(id);
-  el.className = `status-box ${cls} visible`;
+function setPairStatus(cls, html) {
+  const el = document.getElementById("pair-status");
+  el.className = "status-box " + cls;
   el.innerHTML = html;
 }
 
-function showSpinner(id, msg) {
-  setStatus(id, "status-info",
-    `<span style="display:flex;align-items:center;gap:8px"><span class="spinner"></span>${esc(msg)}</span>`);
+function showSpinner(msg) {
+  setPairStatus("status-info",
+    "<span style=\"display:flex;align-items:center;gap:8px\"><span class=\"spinner\"></span>" + esc(msg) + "</span>");
 }
 
 function esc(s) {
@@ -699,14 +905,15 @@ function listenForActivation(token) {
       const d = JSON.parse(e.data);
       if (!token || d.token === token || !d.token) {
         es.close();
-        setStatus("pair-status", "status-success", t("success_activated"));
+        setPairStatus("status-success", t("success_activated"));
+        dbg("Device activated: " + d.gw_id + " \u2713");
         showDone(d.gw_id, d.local_key, d.ip_address);
         document.getElementById("btn-pair").disabled = false;
       }
     } catch (_) {}
   });
   es.onerror = () => es.close();
-  setTimeout(() => es.close(), 120_000);
+  setTimeout(() => es.close(), 120000);
   return es;
 }
 
@@ -722,13 +929,16 @@ async function startPairing() {
   let server;
 
   try {
-    showSpinner("pair-status", t("spin_scanning"));
+    dbg(t("spin_scanning"));
+    showSpinner(t("spin_scanning"));
     const device = await navigator.bluetooth.requestDevice({
       filters: [{ services: [BLE_SERVICE] }],
       optionalServices: [BLE_SERVICE],
     });
 
-    showSpinner("pair-status", t("spin_connecting", { name: device.name || device.id }));
+    const connMsg = t("spin_connecting", { name: device.name || device.id });
+    dbg(connMsg);
+    showSpinner(connMsg);
     server = await device.gatt.connect();
     const service    = await server.getPrimaryService(BLE_SERVICE);
     const writeChar  = await service.getCharacteristic(WRITE_CHAR);
@@ -737,7 +947,8 @@ async function startPairing() {
     await notifyChar.startNotifications();
     notifyChar.addEventListener("characteristicvaluechanged", onNotify);
 
-    showSpinner("pair-status", t("spin_handshake"));
+    dbg(t("spin_handshake"));
+    showSpinner(t("spin_handshake"));
     const controllerNonce = new Uint8Array(16);
     crypto.getRandomValues(controllerNonce);
 
@@ -746,11 +957,12 @@ async function startPairing() {
       await writeChar.writeValueWithoutResponse(chunk);
     }
 
-    const hsChunks = await waitForResponse(10_000);
+    const hsChunks = await waitForResponse(10000);
     const hsResp = parseFrame(hsChunks);
     if (hsResp.payload.length < 16) throw new Error("Bad handshake nonce");
 
-    showSpinner("pair-status", t("spin_sending"));
+    dbg(t("spin_sending"));
+    showSpinner(t("spin_sending"));
     const wifiPayload = JSON.stringify({
       s: _ssid, p: _pwd, t: token, r: "az", activator: activator,
     });
@@ -760,20 +972,23 @@ async function startPairing() {
       await writeChar.writeValueWithoutResponse(chunk);
     }
 
-    const ackChunks = await waitForResponse(15_000);
+    const ackChunks = await waitForResponse(15000);
     const ack = parseFrame(ackChunks);
     if (ack.cmd === CMD_PAIR_FAIL) throw new Error("Device rejected WiFi config");
 
-    showSpinner("pair-status", t("spin_waiting"));
+    dbg(t("spin_waiting"));
+    showSpinner(t("spin_waiting"));
 
     if (server.connected) server.disconnect();
 
   } catch (err) {
     es.close();
     if (err.name === "NotFoundError" || err.name === "AbortError") {
-      setStatus("pair-status", "status-warn", t("warn_scan_cancelled"));
+      setPairStatus("status-warn", t("warn_scan_cancelled"));
+      dbg("BLE scan cancelled");
     } else {
-      setStatus("pair-status", "status-error", `❌ ${esc(err.message)}`);
+      setPairStatus("status-error", "\u274C " + esc(err.message));
+      dbg("BLE error: " + err.message);
     }
     btn.disabled = false;
   }
@@ -794,32 +1009,36 @@ function copyShareUrl() {
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 (async function init() {
+  dbg("Initializing\u2026");
+
   // 1. Detect and load language
   const lang = detectLang();
   document.getElementById("lang-select").value = lang;
   document.documentElement.lang = lang;
   await loadLang(lang);
   applyStrings();
+  updateStepCounter(1);
 
   // 2. Load server config (activator URL)
   await loadServerConfig();
 
-  // 3. Secure context check
+  // 3. Secure context check — show warning in BLE panel but keep WiFi form working
   if (!window.isSecureContext) {
-    document.getElementById("error-https").classList.remove("hidden");
-    document.getElementById("panel-wifi").classList.add("hidden");
-    // Don't bother checking for BLE — it won't work without secure context
-    return;
+    dbg("WARNING: Not a secure context (HTTP). BLE requires HTTPS.");
+    document.getElementById("warn-https").classList.remove("hidden");
+    document.getElementById("btn-pair").disabled = true;
   }
 
   // 4. Web Bluetooth availability check
   if (!navigator.bluetooth) {
-    document.getElementById("error-browser").classList.remove("hidden");
+    dbg("WARNING: Web Bluetooth not available in this browser.");
+    document.getElementById("warn-browser").classList.remove("hidden");
     document.getElementById("btn-pair").disabled = true;
     // Show QR/share section so user can open on a supported device
-    document.getElementById("qr-section").classList.remove("hidden");
-    document.getElementById("share-url").value = window.location.href;
-    return;
+    if (window.isSecureContext) {
+      document.getElementById("qr-section").classList.remove("hidden");
+      document.getElementById("share-url").value = window.location.href;
+    }
   }
 })();
 </script>

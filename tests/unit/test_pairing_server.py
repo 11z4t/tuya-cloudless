@@ -310,3 +310,26 @@ class TestCsrfProtection:
             headers={"Content-Type": "application/x-www-form-urlencoded"},
         )
         assert resp.status == 415
+
+
+# ── /api/provision/wifi-scan ──────────────────────────────────────────────────
+
+
+class TestWifiScan:
+    """Tests for GET /api/provision/wifi-scan."""
+
+    async def test_returns_ssids_key(self, client: TestClient) -> None:
+        resp = await client.get("/api/provision/wifi-scan")
+        assert resp.status == 200
+        data = await resp.json()
+        assert "ssids" in data
+        assert isinstance(data["ssids"], list)
+
+    async def test_graceful_when_nmcli_missing(self, client: TestClient) -> None:
+        from unittest.mock import patch
+
+        with patch("asyncio.create_subprocess_exec", side_effect=FileNotFoundError):
+            resp = await client.get("/api/provision/wifi-scan")
+        assert resp.status == 200
+        data = await resp.json()
+        assert data["ssids"] == []

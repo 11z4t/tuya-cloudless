@@ -254,6 +254,7 @@ class PairingServer:
         app.router.add_post("/api/tuya/device/active", self._handle_activate)
         # Also accept the Tuya cloud API path format some firmware uses
         app.router.add_post("/api.json", self._handle_activate)
+        app.router.add_get("/api/provision/wifi-scan", self._handle_wifi_scan)
         # Serve static assets from pairing_ui/
         if _UI_DIR.is_dir():
             app.router.add_static("/static", _UI_DIR, show_index=False)
@@ -537,6 +538,42 @@ class PairingServer:
                 self._sse_queues.remove(queue)
 
         return response
+
+    async def _handle_wifi_scan(self, request: web.Request) -> web.Response:
+        """Return nearby WiFi SSIDs via nmcli. Returns empty list if unavailable.
+
+        Args:
+            request: Incoming HTTP request.
+
+        Returns:
+            JSON: ``{"ssids": [...]}`` — empty list if nmcli is unavailable.
+        """
+        ssids: list[str] = []
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                "nmcli",
+                "--terse",
+                "--fields",
+                "SSID",
+                "device",
+                "wifi",
+                "list",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.DEVNULL,
+            )
+            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=8.0)
+            seen: set[str] = set()
+            for line in stdout.decode(errors="replace").splitlines():
+                ssid = line.strip()
+                if ssid and ssid not in seen and ssid != "--":
+                    seen.add(ssid)
+                    ssids.append(ssid)
+        except (FileNotFoundError, TimeoutError, OSError) as exc:
+            _LOGGER.debug("WiFi scan unavailable: %s", exc)
+        return web.json_response(
+            {"ssids": ssids},
+            headers={"Access-Control-Allow-Origin": "*"},
+        )
 
     # ── Private helpers ────────────────────────────────────────────────────
 

@@ -52,6 +52,25 @@ The file contains connection state, DP values, and error information — useful 
 
 ---
 
+## Pairing tool — debug log
+
+If something goes wrong during BLE pairing, open the **Debug log** at the bottom of the pairing page. It shows a timestamped trace of every step:
+
+```
+[10:14:23] Initializing…
+[10:14:23] Language: sv ✓
+[10:14:24] Server: http://homeassistant.local:8099 ✓
+[10:14:25] WiFi scan: 3 networks found
+[10:14:31] Connecting to Tuya-BLE-1234…
+[10:14:33] Handshake OK
+[10:14:34] Credentials sent. Waiting for activation…
+[10:14:38] Device activated: bf123abc ✓
+```
+
+Copy the log contents when reporting a pairing issue — it greatly helps with diagnosis.
+
+---
+
 ## Reporting an issue
 
 Please include:
