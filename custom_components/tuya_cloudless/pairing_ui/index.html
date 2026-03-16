@@ -133,23 +133,24 @@
     .ssid-row input { flex: 1; }
 
     .wifi-scan-btn {
-      background: var(--bg);
-      border: 1px solid var(--border);
+      background: var(--accent);
+      border: none;
       border-radius: 8px;
-      color: var(--text);
+      color: #0f172a;
       padding: 0 14px;
       font-size: 1rem;
+      font-weight: 700;
       cursor: pointer;
       white-space: nowrap;
       flex-shrink: 0;
-      transition: border-color .15s;
+      transition: background .15s;
     }
-    .wifi-scan-btn:hover { border-color: var(--accent); }
+    .wifi-scan-btn:hover:not(:disabled) { background: var(--accent-h); }
     .wifi-scan-btn:disabled { opacity: .4; cursor: not-allowed; }
 
     .wifi-dropdown {
       background: var(--bg);
-      border: 1px solid var(--border);
+      border: 1px solid var(--accent);
       border-radius: 8px;
       margin-top: 4px;
       overflow: hidden;
@@ -160,12 +161,12 @@
       font-size: 0.9rem;
       cursor: pointer;
       border-bottom: 1px solid var(--border);
-      transition: background .1s;
+      transition: background .1s, color .1s;
     }
     .wifi-option:last-child { border-bottom: none; }
-    .wifi-option:hover { background: var(--surface); }
+    .wifi-option:hover { background: var(--accent); color: #0f172a; }
     .wifi-option.muted { color: var(--muted); cursor: default; }
-    .wifi-option.muted:hover { background: transparent; }
+    .wifi-option.muted:hover { background: transparent; color: var(--muted); }
 
     .btn {
       display: inline-flex;
