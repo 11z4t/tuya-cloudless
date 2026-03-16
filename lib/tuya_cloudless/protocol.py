@@ -24,7 +24,6 @@ from __future__ import annotations
 
 import json
 import struct
-from dataclasses import dataclass, field
 from typing import Any
 
 from tuya_cloudless.const import (
@@ -48,9 +47,13 @@ from tuya_cloudless.crypto import (
 )
 from tuya_cloudless.exceptions import (
     MalformedPacketError,
-    ProtocolError,
     UnsupportedVersionError,
 )
+from tuya_cloudless.message import TuyaMessage
+
+# TuyaFrame is the canonical name for TuyaMessage in the protocol layer.
+# Both names refer to the same class; import from either module.
+TuyaFrame = TuyaMessage
 
 __all__ = [
     "TuyaFrame",
@@ -70,48 +73,6 @@ __all__ = [
 _STRUCT_HEADER = struct.Struct(">4sIII")  # prefix(4) + seq(4) + cmd(4) + length(4)
 _STRUCT_SUFFIX = struct.Struct(">4s")
 _MIN_FRAME_SIZE = _STRUCT_HEADER.size + 4 + 4  # header + CRC + suffix
-
-
-# ── Frame dataclass ───────────────────────────────────────────────────────────
-
-
-@dataclass
-class TuyaFrame:
-    """A decoded Tuya LAN protocol frame.
-
-    Attributes:
-        sequence:   Monotonically increasing counter from device or controller.
-        command:    Command code (see ``CMD_*`` constants in :mod:`.const`).
-        version:    Protocol version string used for this frame.
-        payload:    Raw (decrypted) payload bytes. Usually JSON-encoded DPS.
-        raw:        Original raw bytes (set when decoding; empty when encoding).
-    """
-
-    sequence: int
-    command: int
-    version: str
-    payload: bytes
-    raw: bytes = field(default=b"", repr=False)
-
-    @property
-    def dps(self) -> dict[str, Any]:
-        """Decode ``payload`` as a JSON DPS dictionary.
-
-        Returns:
-            DPS dict (may be empty if payload is empty or non-JSON).
-
-        Raises:
-            ProtocolError: If the payload is not valid JSON.
-        """
-        if not self.payload:
-            return {}
-        try:
-            data = json.loads(self.payload.decode("utf-8", errors="replace"))
-        except json.JSONDecodeError as exc:
-            raise ProtocolError(f"Payload is not valid JSON: {exc}") from exc
-        if not isinstance(data, dict):
-            raise ProtocolError("DPS payload is not a JSON object")
-        return data
 
 
 # ── Encoding ──────────────────────────────────────────────────────────────────

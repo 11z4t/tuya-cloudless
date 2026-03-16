@@ -25,10 +25,12 @@ Network I/O is handled by ``protocol.py`` (Rule S2).
 from __future__ import annotations
 
 import hmac as _hmac_mod
+import json
 import logging
 import struct
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import IntEnum
+from typing import Any
 
 from .crypto import (
     ProtocolVersion,
@@ -153,20 +155,57 @@ class CommandType(IntEnum):
 class TuyaMessage:
     """A single decoded Tuya 0x55AA protocol message.
 
+    This is the unified frame/message model for the Tuya LAN protocol.
+    :class:`~tuya_cloudless.protocol.TuyaFrame` is a backward-compatible
+    alias for this class.
+
     Attributes:
         sequence: Message sequence number (monotonically increasing).
-        command: Command type enum.
-        payload: Raw payload bytes (may be encrypted depending on version).
+        command: Command type (use :class:`CommandType` constants).
+        payload: Payload bytes. Raw/encrypted when returned by
+            :func:`decode_message`; decrypted when returned by
+            :func:`~tuya_cloudless.protocol.decode_frame`.
+        version: Protocol version string (e.g. ``"3.3"``). Empty string
+            when not applicable.
+        raw: Original wire-format bytes. Set by decode functions; empty
+            when constructing outbound messages.
     """
 
     sequence: int
-    command: CommandType
+    command: int  # CommandType (IntEnum) values are accepted
     payload: bytes
+    version: str = ""
+    raw: bytes = field(default=b"", repr=False)
 
     @property
     def payload_length(self) -> int:
         """Length of the payload in bytes."""
         return len(self.payload)
+
+    @property
+    def dps(self) -> dict[str, Any]:
+        """Decode ``payload`` as a JSON DPS dictionary.
+
+        Returns:
+            DPS dict (may be empty if payload is empty).
+
+        Raises:
+            ProtocolError: If the payload is not valid JSON.
+        """
+        if not self.payload:
+            return {}
+        try:
+            data = json.loads(self.payload.decode("utf-8", errors="replace"))
+        except json.JSONDecodeError as exc:
+            raise ProtocolError(f"Payload is not valid JSON: {exc}") from exc
+        if not isinstance(data, dict):
+            raise ProtocolError("DPS payload is not a JSON object")
+        return data
+
+
+# Backward-compatible alias: TuyaFrame is the same class as TuyaMessage.
+# Import from tuya_cloudless.protocol for the canonical name.
+TuyaFrame = TuyaMessage
 
 
 # ---------------------------------------------------------------------------
@@ -340,6 +379,8 @@ def decode_message(
         sequence=seq,
         command=command,
         payload=payload,
+        version=version,
+        raw=data,
     )
 
 
@@ -553,8 +594,6 @@ def build_dp_query(sequence: int, dps_ids: list[int] | None = None) -> TuyaMessa
     Returns:
         TuyaMessage with JSON-encoded DPS query payload.
     """
-    import json
-
     if dps_ids is not None:
         payload_dict = {"dps": {str(dp): None for dp in dps_ids}}
     else:
@@ -573,8 +612,6 @@ def build_control(sequence: int, dps: dict[str, object]) -> TuyaMessage:
     Returns:
         TuyaMessage with JSON-encoded DPS control payload.
     """
-    import json
-
     payload_dict = {"dps": dps}
     payload = json.dumps(payload_dict, separators=(",", ":")).encode("utf-8")
     return TuyaMessage(sequence=sequence, command=CommandType.CONTROL, payload=payload)
@@ -602,6 +639,7 @@ __all__ = [
     "SUFFIX",
     "CommandType",
     "MessageBuffer",
+    "TuyaFrame",
     "TuyaMessage",
     "build_control",
     "build_dp_query",
