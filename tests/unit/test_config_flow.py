@@ -1161,3 +1161,64 @@ class TestOptionsFlowFormDisplay:
         result = await flow.async_step_init(None)
         assert result["type"] == "form"
         flow.async_show_form.assert_called_once()
+
+
+# ── _suggest_profile ───────────────────────────────────────────────────────────
+
+
+class TestSuggestProfile:
+    def test_returns_matched_profile_name(self) -> None:
+        from custom_components.tuya_cloudless.config_flow import _suggest_profile
+
+        mock_profile = MagicMock()
+        mock_profile.name = "Smart Plug"
+        # _suggest_profile uses a lazy import: patch the source module
+        with patch(
+            "tuya_cloudless.profiles.find_profile_by_product_key",
+            return_value=mock_profile,
+        ):
+            result = _suggest_profile("pkey123")
+        assert result == "Smart Plug"
+
+    def test_returns_first_option_when_no_match(self) -> None:
+        from custom_components.tuya_cloudless.config_flow import _suggest_profile
+
+        with (
+            patch(
+                "tuya_cloudless.profiles.find_profile_by_product_key",
+                return_value=None,
+            ),
+            patch(
+                "custom_components.tuya_cloudless.config_flow._get_profile_options",
+                return_value=[{"value": "Generic Switch", "label": "Generic Switch"}],
+            ),
+        ):
+            result = _suggest_profile("unknownkey")
+        assert result == "Generic Switch"
+
+    def test_returns_fallback_when_no_product_key(self) -> None:
+        from custom_components.tuya_cloudless.config_flow import _suggest_profile
+
+        with patch(
+            "custom_components.tuya_cloudless.config_flow._get_profile_options",
+            return_value=[{"value": "Generic Light", "label": "Generic Light"}],
+        ):
+            result = _suggest_profile(None)
+        assert result == "Generic Light"
+
+    def test_falls_back_gracefully_when_no_match(self) -> None:
+        """No match from profiles returns first available option."""
+        from custom_components.tuya_cloudless.config_flow import _suggest_profile
+
+        with (
+            patch(
+                "tuya_cloudless.profiles.find_profile_by_product_key",
+                return_value=None,
+            ),
+            patch(
+                "custom_components.tuya_cloudless.config_flow._get_profile_options",
+                return_value=[{"value": "Generic Switch", "label": "Generic Switch"}],
+            ),
+        ):
+            result = _suggest_profile("somekey")
+        assert result == "Generic Switch"

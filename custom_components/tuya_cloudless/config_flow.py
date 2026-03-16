@@ -87,6 +87,32 @@ def _get_profile_options() -> list[SelectOptionDict]:
     return [SelectOptionDict(value=p.name, label=p.name) for p in profiles]
 
 
+def _suggest_profile(product_key: str | None) -> str:
+    """Return the best-matching profile name for a discovered product key (PLAT-724).
+
+    Uses glob-pattern matching against the ``model`` field in each YAML profile.
+    Falls back to the first available profile, then to ``"Generic Switch"``.
+
+    Args:
+        product_key: Product key from UDP device discovery, or ``None``.
+
+    Returns:
+        Profile name string to use as the form default.
+    """
+    if product_key:
+        try:
+            from tuya_cloudless.profiles import find_profile_by_product_key
+
+            match = find_profile_by_product_key(product_key)
+            if match is not None:
+                return match.name
+        except ImportError:
+            pass
+
+    options = _get_profile_options()
+    return options[0]["value"] if options else "Generic Switch"
+
+
 class TuyaCloudlessConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle a Tuya Cloudless config flow.
 
@@ -279,7 +305,7 @@ class TuyaCloudlessConfigFlow(ConfigFlow, domain=DOMAIN):
                 return await self.async_step_confirm()
 
         profile_options = _get_profile_options()
-        default_profile = profile_options[0]["value"] if profile_options else "Generic Switch"
+        default_profile = _suggest_profile(self._device.get("product_key"))
 
         schema = vol.Schema(
             {
@@ -413,7 +439,7 @@ class TuyaCloudlessConfigFlow(ConfigFlow, domain=DOMAIN):
                 )
 
         profile_options = _get_profile_options()
-        default_profile = profile_options[0]["value"] if profile_options else "Generic Switch"
+        default_profile = _suggest_profile(self._device.get("product_key"))
 
         schema = vol.Schema(
             {
@@ -478,7 +504,7 @@ class TuyaCloudlessConfigFlow(ConfigFlow, domain=DOMAIN):
                 return await self.async_step_confirm()
 
         profile_options = _get_profile_options()
-        default_profile = profile_options[0]["value"] if profile_options else "Generic Switch"
+        default_profile = _suggest_profile(self._device.get("product_key"))
 
         schema = vol.Schema(
             {
