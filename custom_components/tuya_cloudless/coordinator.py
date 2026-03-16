@@ -55,6 +55,12 @@ _MAX_BUFFER_BYTES = 65_536  # 64 KB
 _DP_QUERY_MAX_RETRIES: int = 3
 _DP_QUERY_RETRY_DELAY: float = 2.0
 
+#: PLAT-767 — IP auto-recovery via UDP discovery
+#: Trigger a UDP broadcast scan after this many consecutive connection failures.
+_IP_REDISCOVER_THRESHOLD: int = 3
+#: Seconds to listen on UDP 6666/6667 for the device to announce itself.
+_IP_REDISCOVER_TIMEOUT: float = 15.0
+
 
 @dataclass
 class DeviceState:
@@ -250,6 +256,13 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 if self._consecutive_connection_failures >= CONNECTIVITY_ISSUE_THRESHOLD:
                     self._raise_connectivity_repair_issue()
                 self.async_update_listeners()
+                # PLAT-767: After _IP_REDISCOVER_THRESHOLD consecutive failures,
+                # scan UDP to find the device at its new DHCP-assigned IP.
+                if (
+                    self._consecutive_connection_failures > 0
+                    and self._consecutive_connection_failures % _IP_REDISCOVER_THRESHOLD == 0
+                ):
+                    await self._try_rediscover_ip()
                 await asyncio.sleep(delay)
                 delay = min(delay * 2, self._reconnect_max_delay)
 
@@ -677,6 +690,90 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         _LOGGER.debug("[%s] Session key negotiated (key length=%d)", self._gw_id, len(session_key))
         return session_key
+
+    # ── IP auto-recovery (PLAT-767) ───────────────────────────────────────────
+
+    def async_update_ip(self, new_ip: str) -> None:
+        """Update the device IP in-place and persist it to the config entry.
+
+        Called automatically when UDP discovery finds the device at a new address
+        (e.g. after a DHCP lease renewal).  The next connection attempt in
+        ``_connection_loop`` will use the updated ``self._ip``.
+
+        Args:
+            new_ip: The newly discovered IPv4 address of the device.
+        """
+        old_ip = self._ip
+        self._ip = new_ip
+        _LOGGER.info(
+            "[%s] IP address changed: %s → %s — will reconnect to new address",
+            self._gw_id,
+            old_ip,
+            new_ip,
+        )
+        # Persist so the new IP survives an HA restart
+        entry = self.hass.config_entries.async_get_entry(self._entry_id)
+        if entry is not None:
+            self.hass.config_entries.async_update_entry(
+                entry,
+                data={**entry.data, CONF_IP_ADDRESS: new_ip},
+            )
+        else:
+            _LOGGER.warning(
+                "[%s] Config entry %s not found — IP update not persisted to storage",
+                self._gw_id,
+                self._entry_id,
+            )
+
+    async def _try_rediscover_ip(self) -> None:
+        """Scan UDP 6666/6667 to find the device's new IP after a DHCP change.
+
+        Listens for up to ``_IP_REDISCOVER_TIMEOUT`` seconds.  If the device
+        is found at a different address, calls :meth:`async_update_ip` to
+        update the in-memory IP and persist to the config entry.
+
+        Errors binding the UDP socket (e.g. permission denied) are logged and
+        swallowed so that the normal reconnect loop continues unaffected.
+        """
+        from tuya_cloudless.discovery import DiscoveryListener
+        from tuya_cloudless.exceptions import DiscoveryError
+
+        _LOGGER.debug(
+            "[%s] Starting UDP rediscovery (timeout=%.0fs) to locate new IP",
+            self._gw_id,
+            _IP_REDISCOVER_TIMEOUT,
+        )
+        local_key_hex = self._local_key.hex()
+        listener = DiscoveryListener(known_devices={self._gw_id: local_key_hex})
+
+        try:
+            await listener.start()
+        except DiscoveryError as exc:
+            _LOGGER.debug(
+                "[%s] UDP rediscovery: could not open socket — %s", self._gw_id, exc
+            )
+            return
+
+        try:
+            device = await listener.wait_for_device(
+                self._gw_id, timeout=_IP_REDISCOVER_TIMEOUT
+            )
+            if device.ip != self._ip:
+                self.async_update_ip(device.ip)
+            else:
+                _LOGGER.debug(
+                    "[%s] UDP rediscovery: device still at %s — no IP change",
+                    self._gw_id,
+                    device.ip,
+                )
+        except TimeoutError:
+            _LOGGER.debug(
+                "[%s] UDP rediscovery: device not heard within %.0fs",
+                self._gw_id,
+                _IP_REDISCOVER_TIMEOUT,
+            )
+        finally:
+            await listener.stop()
 
     # ── Public accessors ──────────────────────────────────────────────────────
 

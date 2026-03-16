@@ -302,6 +302,7 @@ class TestConnectivityRepair:
             patch("asyncio.sleep", new_callable=AsyncMock),
             patch.object(coord, "_raise_connectivity_repair_issue") as mock_raise,
             patch.object(coord, "_clear_connectivity_repair_issue"),
+            patch.object(coord, "_try_rediscover_ip", new_callable=AsyncMock),
         ):
             await coord._connection_loop()
 
@@ -328,6 +329,7 @@ class TestConnectivityRepair:
             patch("asyncio.sleep", new_callable=AsyncMock),
             patch.object(coord, "_raise_connectivity_repair_issue") as mock_raise,
             patch.object(coord, "_clear_connectivity_repair_issue"),
+            patch.object(coord, "_try_rediscover_ip", new_callable=AsyncMock),
         ):
             await coord._connection_loop()
 
@@ -1267,3 +1269,221 @@ class TestSendInitialDpQuery:
 
         # _send_initial_dp_query must have been awaited exactly once
         coord._send_initial_dp_query.assert_awaited_once_with(writer)
+
+
+# ── TestIpAutoRecovery (PLAT-767) ─────────────────────────────────────────────
+
+
+class TestIpAutoRecovery:
+    """Unit tests for IP auto-recovery via UDP rediscovery (PLAT-767)."""
+
+    # AC1 + AC4 — async_update_ip updates in-memory IP, config entry, and logs
+    def test_async_update_ip_updates_in_memory_ip(self) -> None:
+        """async_update_ip must update self._ip immediately."""
+        coord = _make_coordinator(ip="192.168.1.10")
+        assert coord._ip == "192.168.1.10"
+
+        coord.async_update_ip("192.168.1.99")
+
+        assert coord._ip == "192.168.1.99"
+
+    def test_async_update_ip_persists_to_config_entry(self) -> None:
+        """async_update_ip must call async_update_entry with the new IP."""
+        hass = _make_hass()
+        coord = _make_coordinator(hass=hass, ip="192.168.1.10")
+
+        # Simulate a config entry with the original IP
+        mock_entry = MagicMock()
+        mock_entry.data = {"ip_address": "192.168.1.10", "gw_id": "gw001"}
+        hass.config_entries.async_get_entry = MagicMock(return_value=mock_entry)
+        hass.config_entries.async_update_entry = MagicMock()
+
+        coord.async_update_ip("10.0.0.55")
+
+        hass.config_entries.async_update_entry.assert_called_once()
+        call_kwargs = hass.config_entries.async_update_entry.call_args
+        updated_data = call_kwargs[1]["data"]
+        assert updated_data["ip_address"] == "10.0.0.55"
+
+    def test_async_update_ip_handles_missing_config_entry(self) -> None:
+        """async_update_ip must not raise if the config entry is no longer found."""
+        hass = _make_hass()
+        coord = _make_coordinator(hass=hass, ip="192.168.1.10")
+        hass.config_entries.async_get_entry = MagicMock(return_value=None)
+        hass.config_entries.async_update_entry = MagicMock()
+
+        # Must not raise
+        coord.async_update_ip("10.0.0.55")
+
+        hass.config_entries.async_update_entry.assert_not_called()
+        # IP still updated in memory
+        assert coord._ip == "10.0.0.55"
+
+    # AC3 — _try_rediscover_ip calls async_update_ip when device found at new IP
+    @pytest.mark.asyncio
+    async def test_rediscover_ip_calls_update_on_new_ip(self) -> None:
+        """_try_rediscover_ip must call async_update_ip when device found at different IP."""
+        from tuya_cloudless.discovery import DiscoveredDevice
+
+        coord = _make_coordinator(ip="192.168.1.10")
+
+        discovered = MagicMock(spec=DiscoveredDevice)
+        discovered.ip = "192.168.1.99"
+
+        mock_listener = AsyncMock()
+        mock_listener.start = AsyncMock()
+        mock_listener.stop = AsyncMock()
+        mock_listener.wait_for_device = AsyncMock(return_value=discovered)
+
+        coord.async_update_ip = MagicMock()
+
+        # DiscoveryListener is a lazy import inside _try_rediscover_ip — patch at source
+        with patch(
+            "tuya_cloudless.discovery.DiscoveryListener",
+            return_value=mock_listener,
+        ):
+            await coord._try_rediscover_ip()
+
+        coord.async_update_ip.assert_called_once_with("192.168.1.99")
+
+    @pytest.mark.asyncio
+    async def test_rediscover_ip_no_update_when_ip_unchanged(self) -> None:
+        """_try_rediscover_ip must NOT call async_update_ip if IP is the same."""
+        from tuya_cloudless.discovery import DiscoveredDevice
+
+        coord = _make_coordinator(ip="192.168.1.10")
+
+        discovered = MagicMock(spec=DiscoveredDevice)
+        discovered.ip = "192.168.1.10"  # Same IP
+
+        mock_listener = AsyncMock()
+        mock_listener.start = AsyncMock()
+        mock_listener.stop = AsyncMock()
+        mock_listener.wait_for_device = AsyncMock(return_value=discovered)
+
+        coord.async_update_ip = MagicMock()
+
+        with patch(
+            "tuya_cloudless.discovery.DiscoveryListener",
+            return_value=mock_listener,
+        ):
+            await coord._try_rediscover_ip()
+
+        coord.async_update_ip.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_rediscover_ip_graceful_on_timeout(self) -> None:
+        """_try_rediscover_ip must not raise when device is not found within timeout."""
+        coord = _make_coordinator(ip="192.168.1.10")
+
+        mock_listener = AsyncMock()
+        mock_listener.start = AsyncMock()
+        mock_listener.stop = AsyncMock()
+        mock_listener.wait_for_device = AsyncMock(side_effect=TimeoutError)
+
+        coord.async_update_ip = MagicMock()
+
+        with patch(
+            "tuya_cloudless.discovery.DiscoveryListener",
+            return_value=mock_listener,
+        ):
+            await coord._try_rediscover_ip()  # Must not raise
+
+        coord.async_update_ip.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_rediscover_ip_graceful_on_socket_bind_error(self) -> None:
+        """_try_rediscover_ip must not raise if UDP socket cannot be bound."""
+        from tuya_cloudless.exceptions import DiscoveryError
+
+        coord = _make_coordinator(ip="192.168.1.10")
+
+        mock_listener = AsyncMock()
+        mock_listener.start = AsyncMock(side_effect=DiscoveryError("Permission denied"))
+        mock_listener.stop = AsyncMock()
+
+        coord.async_update_ip = MagicMock()
+
+        with patch(
+            "tuya_cloudless.discovery.DiscoveryListener",
+            return_value=mock_listener,
+        ):
+            await coord._try_rediscover_ip()  # Must not raise
+
+        coord.async_update_ip.assert_not_called()
+
+    # AC3 — connection loop triggers rediscovery after threshold failures
+    @pytest.mark.asyncio
+    async def test_connection_loop_triggers_rediscovery_at_threshold(self) -> None:
+        """_connection_loop must call _try_rediscover_ip after _IP_REDISCOVER_THRESHOLD failures."""
+        from custom_components.tuya_cloudless.coordinator import _IP_REDISCOVER_THRESHOLD
+
+        coord = _make_coordinator()
+        call_count = 0
+
+        async def mock_connect() -> None:
+            nonlocal call_count
+            call_count += 1
+            if call_count <= _IP_REDISCOVER_THRESHOLD:
+                raise OSError("Connection refused")
+            raise asyncio.CancelledError
+
+        coord._connect = mock_connect
+
+        rediscover_calls = 0
+
+        async def mock_rediscover() -> None:
+            nonlocal rediscover_calls
+            rediscover_calls += 1
+
+        coord._try_rediscover_ip = mock_rediscover
+
+        with (
+            patch("asyncio.sleep", new_callable=AsyncMock),
+            patch.object(coord, "_raise_connectivity_repair_issue"),
+            patch.object(coord, "_clear_connectivity_repair_issue"),
+        ):
+            await coord._connection_loop()
+
+        assert rediscover_calls >= 1
+
+    @pytest.mark.asyncio
+    async def test_connection_loop_reconnects_to_new_ip(self) -> None:
+        """AC2: After IP update, the next _connect uses the new IP (self._ip updated)."""
+        from custom_components.tuya_cloudless.coordinator import _IP_REDISCOVER_THRESHOLD
+
+        coord = _make_coordinator(ip="192.168.1.10")
+        call_count = 0
+        ips_tried: list[str] = []
+
+        async def mock_connect() -> None:
+            nonlocal call_count
+            call_count += 1
+            ips_tried.append(coord._ip)
+            if call_count <= _IP_REDISCOVER_THRESHOLD:
+                raise OSError("Connection refused")
+            raise asyncio.CancelledError
+
+        coord._connect = mock_connect
+
+        async def mock_rediscover() -> None:
+            # Simulate discovering device at new IP
+            coord._ip = "192.168.1.99"
+
+        coord._try_rediscover_ip = mock_rediscover
+
+        with (
+            patch("asyncio.sleep", new_callable=AsyncMock),
+            patch.object(coord, "_raise_connectivity_repair_issue"),
+            patch.object(coord, "_clear_connectivity_repair_issue"),
+        ):
+            await coord._connection_loop()
+
+        # The attempt after rediscovery should use the new IP
+        assert "192.168.1.99" in ips_tried
+
+    def test_ip_rediscover_threshold_constant(self) -> None:
+        """_IP_REDISCOVER_THRESHOLD should equal 3."""
+        from custom_components.tuya_cloudless.coordinator import _IP_REDISCOVER_THRESHOLD
+
+        assert _IP_REDISCOVER_THRESHOLD == 3
