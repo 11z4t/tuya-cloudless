@@ -32,6 +32,7 @@ test = [
 [tool.ruff]
 target-version = "py311"
 line-length = 100
+exclude = [".claude"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP", "B", "SIM", "RUF"]

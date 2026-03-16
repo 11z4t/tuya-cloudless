@@ -268,6 +268,27 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         _LOGGER.info("[%s] Connected to %s", self._gw_id, self._ip)
         self.async_update_listeners()
 
+        # Send initial DPS status query so entities get populated immediately
+        # without waiting for the device to push an unsolicited update (PLAT-707).
+        try:
+            from tuya_cloudless.protocol import encode_status_query
+
+            query = encode_status_query(
+                sequence=self._next_sequence(),
+                version=self._version,
+                local_key=self._local_key,
+                session_key=self._session_key,
+            )
+            writer.write(query)
+            await writer.drain()
+            _LOGGER.debug("[%s] Initial DPS status query sent", self._gw_id)
+        except OSError as exc:
+            _LOGGER.warning("[%s] Failed to send initial status query: %s", self._gw_id, exc)
+            writer.close()
+            with contextlib.suppress(OSError):
+                await writer.wait_closed()
+            raise
+
         # Start heartbeat
         self._heartbeat_task = self.hass.async_create_task(
             self._heartbeat_loop(), name=f"tuya-cloudless-hb:{self._gw_id}"
@@ -311,7 +332,9 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 await self._writer.drain()
                 _LOGGER.debug("[%s] Heartbeat sent", self._gw_id)
             except OSError as exc:
-                _LOGGER.warning("[%s] Heartbeat failed: %s", self._gw_id, exc)
+                _LOGGER.warning("[%s] Heartbeat failed: %s — closing connection", self._gw_id, exc)
+                if self._writer is not None:
+                    self._writer.close()
                 break
 
     async def _receive_loop(self, reader: asyncio.StreamReader) -> None:

@@ -452,6 +452,7 @@ class TestConnect:
         writer = MagicMock()
         writer.close = MagicMock()
         writer.wait_closed = AsyncMock()
+        writer.drain = AsyncMock()
 
         async def mock_receive_loop(r: Any) -> None:
             pass  # Return immediately
@@ -475,6 +476,7 @@ class TestConnect:
         writer = MagicMock()
         writer.close = MagicMock()
         writer.wait_closed = AsyncMock()
+        writer.drain = AsyncMock()
 
         async def mock_receive_loop(r: Any) -> None:
             pass

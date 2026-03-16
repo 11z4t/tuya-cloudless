@@ -22,13 +22,16 @@ from typing import TypeAlias
 # Ensure bundled lib/tuya_cloudless is importable both in production (lib/ symlinked
 # inside custom_components) and in development (lib/ at repo root).
 # Track the inserted path so we can clean it up when the last entry unloads.
+# Idempotent: we check sys.path before inserting so HA reloads do not accumulate
+# duplicate entries (PLAT-712).
 _INSERTED_LIB_PATH: str | None = None
 _BUNDLED_LIB = str(Path(__file__).resolve().parent / "lib")
 _DEV_LIB = str(Path(__file__).resolve().parent.parent.parent / "lib")
 for _lib_dir in (_BUNDLED_LIB, _DEV_LIB):
-    if Path(_lib_dir).is_dir() and _lib_dir not in sys.path:
-        sys.path.insert(0, _lib_dir)
-        _INSERTED_LIB_PATH = _lib_dir
+    if Path(_lib_dir).is_dir():
+        if _lib_dir not in sys.path:
+            sys.path.insert(0, _lib_dir)
+            _INSERTED_LIB_PATH = _lib_dir
         break
 
 from homeassistant.config_entries import ConfigEntry
