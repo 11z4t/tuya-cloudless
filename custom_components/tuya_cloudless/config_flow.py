@@ -11,6 +11,8 @@ Manual fallback:
 
 HA-initiated discovery:
   async_step_discovery     — Called when HA auto-detects a Tuya device.
+  async_step_zeroconf      — Called when HA sees a _tuya._tcp.local. mDNS record.
+  async_step_dhcp          — Called when HA sees a DHCP lease from a known Tuya MAC OUI.
 
 Re-authentication:
   async_step_reauth        — Triggered when the security key is rejected.
@@ -22,7 +24,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from urllib.parse import urlparse
 
 import voluptuous as vol
@@ -34,6 +36,10 @@ from homeassistant.helpers.selector import (
     SelectSelectorConfig,
     SelectSelectorMode,
 )
+
+if TYPE_CHECKING:
+    from homeassistant.components.dhcp import DhcpServiceInfo
+    from homeassistant.components.zeroconf import ZeroconfServiceInfo
 
 from .const import (
     CONF_DEVICE_NAME,
@@ -658,6 +664,91 @@ class TuyaCloudlessConfigFlow(ConfigFlow, domain=DOMAIN):
                 "pairing_tool_url": self._pairing_tool_url(),
             },
         )
+
+    # ── Zeroconf / DHCP auto-discovery (PLAT-766) ─────────────────────────────
+
+    async def async_step_zeroconf(
+        self, discovery_info: ZeroconfServiceInfo
+    ) -> ConfigFlowResult:
+        """Handle mDNS/zeroconf discovery of a ``_tuya._tcp.local.`` service.
+
+        Home Assistant calls this automatically when a device advertises the
+        ``_tuya._tcp.local.`` mDNS service type.  The device gateway ID is
+        extracted from the TXT record ``gwId``/``deviceId`` field, or falls
+        back to the first label of the service name (e.g.
+        ``<gwId>._tuya._tcp.local.``).
+
+        The user still needs to provide the security key, so this step
+        forwards to :meth:`async_step_discovery` after populating
+        ``self._device``.
+
+        Args:
+            discovery_info: mDNS service info provided by HA.
+
+        Returns:
+            Config flow result.
+        """
+        host = discovery_info.host
+        props = discovery_info.properties
+
+        gw_id: str | None = props.get("gwId") or props.get("deviceId")
+        if not gw_id:
+            name_part = discovery_info.name.split(".")[0]
+            gw_id = name_part if name_part else None
+        if not gw_id:
+            return self.async_abort(reason="no_device_id")
+
+        await self.async_set_unique_id(gw_id)
+        self._abort_if_unique_id_configured(updates={CONF_IP_ADDRESS: host})
+
+        self._device = {
+            CONF_GW_ID: gw_id,
+            CONF_IP_ADDRESS: host,
+            CONF_PROTOCOL_VERSION: props.get("version", DEFAULT_PROTOCOL_VERSION),
+            "product_key": props.get("productKey") or props.get("product_key"),
+        }
+        self.context["title_placeholders"] = {"name": gw_id}
+        return await self.async_step_discovery()
+
+    async def async_step_dhcp(
+        self, discovery_info: DhcpServiceInfo
+    ) -> ConfigFlowResult:
+        """Handle DHCP discovery of a device with a known Tuya MAC OUI.
+
+        Home Assistant calls this when a DHCP lease is seen for a MAC address
+        matching one of the OUI prefixes listed in ``manifest.json``.  The IP
+        address is known but the gateway ID is not, so a UDP broadcast scan is
+        run to identify the device.
+
+        Args:
+            discovery_info: DHCP service info (ip, hostname, macaddress).
+
+        Returns:
+            Config flow result.
+        """
+        host = discovery_info.ip
+        try:
+            discovered = await asyncio.wait_for(
+                self._run_discovery(),
+                timeout=_DISCOVERY_TIMEOUT,
+            )
+        except (TimeoutError, OSError):
+            return self.async_abort(reason="no_device_id")
+
+        device = next(
+            (d for d in discovered if d[CONF_IP_ADDRESS] == host),
+            None,
+        )
+        if device is None:
+            return self.async_abort(reason="no_device_id")
+
+        gw_id = device[CONF_GW_ID]
+        await self.async_set_unique_id(gw_id)
+        self._abort_if_unique_id_configured(updates={CONF_IP_ADDRESS: host})
+
+        self._device = device
+        self.context["title_placeholders"] = {"name": gw_id}
+        return await self.async_step_discovery()
 
     # ── Re-authentication ──────────────────────────────────────────────────────
 

@@ -135,7 +135,8 @@
       "pairing_server_unavailable": "Det gick inte att starta BLE-parkopplingsservern på port 8099 — porten kan redan användas. Försök igen eller använd Sök/Manuell inmatning.",
       "https_required": "BLE-parkoppling kräver HTTPS. Se [HTTPS-installationsguiden](https://github.com/11z4t/tuya-cloudless/wiki/HTTPS-Setup) för att konfigurera ett certifikat, och försök sedan igen.",
       "reauth_successful": "Säkerhetsnyckeln uppdaterades — enheten är ansluten igen",
-      "reconfigure_successful": "Inställningarna uppdaterades — enheten laddas om"
+      "reconfigure_successful": "Inställningarna uppdaterades — enheten laddas om",
+      "no_device_id": "Det gick inte att identifiera enheten — kontrollera att den är påslagen och ansluten till nätverket"
     }
   },
   "exceptions": {

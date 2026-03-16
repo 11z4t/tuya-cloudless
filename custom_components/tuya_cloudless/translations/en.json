@@ -135,7 +135,8 @@
       "pairing_server_unavailable": "Could not start the BLE pairing server on port 8099 — the port may be in use. Try again or use Search / Manual setup instead.",
       "https_required": "BLE Pairing requires HTTPS. See the [HTTPS setup guide](https://github.com/11z4t/tuya-cloudless/wiki/HTTPS-Setup) to configure a certificate, then try again.",
       "reauth_successful": "Security key updated — the device is connected again",
-      "reconfigure_successful": "Settings updated — the device is reloading"
+      "reconfigure_successful": "Settings updated — the device is reloading",
+      "no_device_id": "Could not identify the device — make sure it is powered on and connected to the network"
     }
   },
   "exceptions": {
