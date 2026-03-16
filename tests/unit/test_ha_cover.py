@@ -262,7 +262,7 @@ class TestCoverSetupEntry:
 
 
 class TestCoverStop:
-    """PLAT-714: Cover STOP support — tests for async_stop_cover and STOP feature flag."""
+    """PLAT-774: Cover STOP support — tests for async_stop_cover and STOP feature flag."""
 
     def _make_cover_with_stop(self) -> TuyaCloudlessCover:
         """Return a cover entity that has dp_stop configured on DP 7."""
