@@ -101,6 +101,10 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         port: TCP port (default 6668; overridable for tests).
     """
 
+    # Class-level default so test helpers that create instances via ``__new__``
+    # (bypassing ``__init__``) still find the attribute on the object.
+    detected_dp_ids: frozenset[str] = frozenset()
+
     def __init__(
         self,
         hass: HomeAssistant,
@@ -144,6 +148,10 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._session_key: bytes | None = None
         self._consecutive_decode_errors: int = 0
         self._consecutive_connection_failures: int = 0
+
+        #: DP IDs observed in the first DP_QUERY response — populated once on
+        #: first successful data frame.  Used by diagnostics and auto-detection.
+        self.detected_dp_ids: frozenset[str] = frozenset()
 
         self._send_lock: asyncio.Lock = asyncio.Lock()
 
@@ -568,6 +576,14 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # Tuya frames carry DPS nested under a "dps" key: {"dps": {"1": true}}
         dps: dict[str, Any] = payload.get("dps", {}) if isinstance(payload, dict) else {}
         if dps:
+            # Capture the DP IDs from the first response for auto-detection (PLAT-778).
+            if not self.detected_dp_ids:
+                self.detected_dp_ids = frozenset(dps.keys())
+                _LOGGER.debug(
+                    "[%s] Auto-detected DP IDs: %s",
+                    self._gw_id,
+                    sorted(self.detected_dp_ids),
+                )
             self.state.dps.update(dps)
             self.state.last_seen = datetime.now(UTC)
             _LOGGER.debug("[%s] DPS update: %s", self._gw_id, list(dps.keys()))

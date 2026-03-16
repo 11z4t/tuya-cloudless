@@ -62,8 +62,10 @@ class TestGetProfileOptions:
             return_value=[mock_profile],
         ):
             options = _get_profile_options()
-        assert len(options) == 1
-        assert options[0]["value"] == "Test Profile"
+        # Auto-detect sentinel is always prepended (PLAT-778)
+        assert len(options) == 2
+        assert options[0]["value"] == "__auto_detect__"
+        assert options[1]["value"] == "Test Profile"
 
     def test_fallback_when_no_profiles(self) -> None:
         call_count = 0
@@ -78,8 +80,10 @@ class TestGetProfileOptions:
             patch("tuya_cloudless.profiles.init_profiles"),
         ):
             options = _get_profile_options()
-        assert len(options) == 1
-        assert options[0]["value"] == "Generic Switch"
+        # Auto-detect sentinel is always prepended (PLAT-778)
+        assert len(options) == 2
+        assert options[0]["value"] == "__auto_detect__"
+        assert options[1]["value"] == "Generic Switch"
 
 
 # ── Step: user ─────────────────────────────────────────────────────────────────

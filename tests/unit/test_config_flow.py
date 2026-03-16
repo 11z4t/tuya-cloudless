@@ -37,10 +37,13 @@ class TestGetProfileOptions:
         with patch("tuya_cloudless.profiles.list_profiles", return_value=profiles):
             options = _get_profile_options()
 
-        assert len(options) == 2
-        names = [o["value"] for o in options]
-        assert "Smart Plug" in names
-        assert "Generic Switch" in names
+        # Two profiles + the new Auto-detect sentinel = 3 options (PLAT-778)
+        assert len(options) == 3
+        values = [o["value"] for o in options]
+        assert "__auto_detect__" in values  # Auto-detect always first
+        assert "Smart Plug" in values
+        assert "Generic Switch" in values
+        assert options[0]["value"] == "__auto_detect__"  # Auto-detect is first
 
     def test_returns_fallback_when_no_profiles(self) -> None:
         from custom_components.tuya_cloudless.config_flow import _get_profile_options
@@ -51,8 +54,11 @@ class TestGetProfileOptions:
         ):
             options = _get_profile_options()
 
-        assert len(options) == 1
-        assert options[0]["value"] == "Generic Switch"
+        # Auto-detect + Generic Switch fallback = 2 options (PLAT-778)
+        assert len(options) == 2
+        values = [o["value"] for o in options]
+        assert "__auto_detect__" in values
+        assert "Generic Switch" in values
 
     def test_loads_profiles_when_empty(self) -> None:
         from custom_components.tuya_cloudless.config_flow import _get_profile_options
@@ -77,7 +83,9 @@ class TestGetProfileOptions:
             options = _get_profile_options()
 
         assert init_called  # init_profiles was called
-        assert options[0]["value"] == "Roller Blind"
+        # Auto-detect is always first; loaded profile is second (PLAT-778)
+        assert options[0]["value"] == "__auto_detect__"
+        assert options[1]["value"] == "Roller Blind"
 
     def test_returns_empty_when_import_fails(self) -> None:
         """When profiles module can't be imported, return the generic fallback."""
@@ -1183,42 +1191,28 @@ class TestSuggestProfile:
     def test_returns_first_option_when_no_match(self) -> None:
         from custom_components.tuya_cloudless.config_flow import _suggest_profile
 
-        with (
-            patch(
-                "tuya_cloudless.profiles.find_profile_by_product_key",
-                return_value=None,
-            ),
-            patch(
-                "custom_components.tuya_cloudless.config_flow._get_profile_options",
-                return_value=[{"value": "Generic Switch", "label": "Generic Switch"}],
-            ),
+        with patch(
+            "tuya_cloudless.profiles.find_profile_by_product_key",
+            return_value=None,
         ):
             result = _suggest_profile("unknownkey")
-        assert result == "Generic Switch"
+        # No product-key match → fall back to auto-detect sentinel (PLAT-778)
+        assert result == "__auto_detect__"
 
     def test_returns_fallback_when_no_product_key(self) -> None:
         from custom_components.tuya_cloudless.config_flow import _suggest_profile
 
-        with patch(
-            "custom_components.tuya_cloudless.config_flow._get_profile_options",
-            return_value=[{"value": "Generic Light", "label": "Generic Light"}],
-        ):
-            result = _suggest_profile(None)
-        assert result == "Generic Light"
+        result = _suggest_profile(None)
+        # No product key provided → fall back to auto-detect sentinel (PLAT-778)
+        assert result == "__auto_detect__"
 
     def test_falls_back_gracefully_when_no_match(self) -> None:
-        """No match from profiles returns first available option."""
+        """No product-key match returns auto-detect sentinel (PLAT-778)."""
         from custom_components.tuya_cloudless.config_flow import _suggest_profile
 
-        with (
-            patch(
-                "tuya_cloudless.profiles.find_profile_by_product_key",
-                return_value=None,
-            ),
-            patch(
-                "custom_components.tuya_cloudless.config_flow._get_profile_options",
-                return_value=[{"value": "Generic Switch", "label": "Generic Switch"}],
-            ),
+        with patch(
+            "tuya_cloudless.profiles.find_profile_by_product_key",
+            return_value=None,
         ):
             result = _suggest_profile("somekey")
-        assert result == "Generic Switch"
+        assert result == "__auto_detect__"

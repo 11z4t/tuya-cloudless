@@ -70,9 +70,15 @@ _DISCOVERY_TIMEOUT = _DISCOVERY_LISTEN_SECS + 1.0
 _CONNECTION_TIMEOUT = 3.0
 _KEY_VALIDATION_TIMEOUT = 4.0
 
+#: Sentinel profile name meaning "detect automatically from device DP_QUERY response"
+_PROFILE_AUTO = "__auto_detect__"
+
 
 def _get_profile_options() -> list[SelectOptionDict]:
     """Return profile select options, loading profiles if needed.
+
+    The "Auto-detect" option is always first so users who don't know their
+    device type can let the integration detect it automatically (PLAT-778).
 
     Returns:
         List of :class:`SelectOptionDict` with profile names as values.
@@ -87,17 +93,23 @@ def _get_profile_options() -> list[SelectOptionDict]:
     except ImportError:
         profiles = []
 
+    options: list[SelectOptionDict] = [
+        SelectOptionDict(value=_PROFILE_AUTO, label="Auto-detect (recommended)"),
+    ]
     if not profiles:
-        return [SelectOptionDict(value="Generic Switch", label="Generic Switch")]
-
-    return [SelectOptionDict(value=p.name, label=p.name) for p in profiles]
+        options.append(SelectOptionDict(value="Generic Switch", label="Generic Switch"))
+    else:
+        options.extend(SelectOptionDict(value=p.name, label=p.name) for p in profiles)
+    return options
 
 
 def _suggest_profile(product_key: str | None) -> str:
     """Return the best-matching profile name for a discovered product key (PLAT-724).
 
-    Uses glob-pattern matching against the ``model`` field in each YAML profile.
-    Falls back to the first available profile, then to ``"Generic Switch"``.
+    If a specific (non-wildcard) profile matches the product key, suggest it
+    so the user sees their device pre-selected.  Otherwise default to the
+    ``__auto_detect__`` sentinel so the integration detects the profile
+    automatically at confirm time (PLAT-778).
 
     Args:
         product_key: Product key from UDP device discovery, or ``None``.
@@ -110,13 +122,14 @@ def _suggest_profile(product_key: str | None) -> str:
             from tuya_cloudless.profiles import find_profile_by_product_key
 
             match = find_profile_by_product_key(product_key)
-            if match is not None:
+            # Only suggest a specific profile when it has a non-wildcard model
+            # pattern (i.e. it's a known device, not just a generic fallback).
+            if match is not None and match.model != "*":
                 return match.name
         except ImportError:
             pass
 
-    options = _get_profile_options()
-    return options[0]["value"] if options else "Generic Switch"
+    return _PROFILE_AUTO
 
 
 class TuyaCloudlessConfigFlow(ConfigFlow, domain=DOMAIN):
@@ -496,6 +509,16 @@ class TuyaCloudlessConfigFlow(ConfigFlow, domain=DOMAIN):
             )
 
             if not errors:
+                # Auto-detect profile from device DP_QUERY response (PLAT-778).
+                profile = self._device.get(CONF_PROFILE, "Generic Switch")
+                if profile == _PROFILE_AUTO:
+                    profile = await self._auto_detect_profile(
+                        ip_address,
+                        local_key=dev_local_key,
+                        version=dev_version,
+                    )
+                    self._device[CONF_PROFILE] = profile
+
                 await self.async_set_unique_id(gw_id)
                 self._abort_if_unique_id_configured()
                 title = self._device.get(CONF_DEVICE_NAME) or ip_address
@@ -506,7 +529,7 @@ class TuyaCloudlessConfigFlow(ConfigFlow, domain=DOMAIN):
                         CONF_LOCAL_KEY: self._device[CONF_LOCAL_KEY],
                         CONF_IP_ADDRESS: ip_address,
                         CONF_PROTOCOL_VERSION: dev_version,
-                        CONF_PROFILE: self._device.get(CONF_PROFILE, "Generic Switch"),
+                        CONF_PROFILE: profile,
                         CONF_DEVICE_NAME: title,
                     },
                 )
@@ -941,6 +964,115 @@ class TuyaCloudlessConfigFlow(ConfigFlow, domain=DOMAIN):
         return "http://homeassistant.local:8099"
 
     # ── Private helpers ────────────────────────────────────────────────────────
+
+    async def _auto_detect_profile(
+        self,
+        ip_address: str,
+        *,
+        local_key: str,
+        version: str,
+    ) -> str:
+        """Send a DP_QUERY to the device and infer its profile from the response.
+
+        Opens a fresh TCP connection, sends CMD_DP_QUERY (0x0a), reads the
+        response, and matches the observed DP IDs against loaded profiles
+        using :func:`~tuya_cloudless.profiles.detect_profile_from_dps`.
+
+        Falls back to ``"Generic Switch"`` on any error or when no profile
+        matches the observed DP set (PLAT-778).
+
+        Args:
+            ip_address: Device IP address.
+            local_key:  16-character device security key.
+            version:    Protocol version string (e.g. ``"3.3"``).
+
+        Returns:
+            Detected profile name, or ``"Generic Switch"`` if detection fails.
+        """
+        try:
+            from tuya_cloudless.crypto import CryptoError
+            from tuya_cloudless.exceptions import MalformedPacketError
+            from tuya_cloudless.profiles import detect_profile_from_dps, init_profiles, list_profiles
+            from tuya_cloudless.protocol import decode_frame, encode_status_query, split_frames
+        except ImportError:
+            return "Generic Switch"
+
+        key_bytes = local_key.encode("utf-8")
+
+        try:
+            reader, writer = await asyncio.wait_for(
+                asyncio.open_connection(ip_address, DEFAULT_TCP_PORT),
+                timeout=_CONNECTION_TIMEOUT,
+            )
+        except (TimeoutError, OSError):
+            return "Generic Switch"
+
+        try:
+            try:
+                query = encode_status_query(
+                    sequence=1,
+                    version=version,
+                    local_key=key_bytes,
+                    session_key=None,
+                )
+                writer.write(query)
+                await writer.drain()
+            except OSError:
+                return "Generic Switch"
+
+            try:
+                raw = await asyncio.wait_for(
+                    reader.read(4096), timeout=_KEY_VALIDATION_TIMEOUT
+                )
+            except (TimeoutError, OSError):
+                return "Generic Switch"
+
+            if not raw:
+                return "Generic Switch"
+
+            frames, _ = split_frames(raw)
+            if not frames:
+                return "Generic Switch"
+
+            try:
+                frame = decode_frame(frames[0], version=version, local_key=key_bytes)
+            except (CryptoError, MalformedPacketError, ValueError):
+                return "Generic Switch"
+
+            try:
+                dps_payload = frame.dps
+                if isinstance(dps_payload, dict):
+                    raw_dps = dps_payload.get("dps", dps_payload)
+                    dp_ids: set[str] = set(raw_dps.keys()) if isinstance(raw_dps, dict) else set()
+                else:
+                    dp_ids = set()
+            except Exception:
+                return "Generic Switch"
+
+            if not dp_ids:
+                return "Generic Switch"
+
+            # Load profiles if not yet loaded
+            profiles = list_profiles()
+            if not profiles:
+                init_profiles(PROFILES_DIR)
+                profiles = list_profiles()
+
+            match = detect_profile_from_dps(dp_ids)
+            if match is not None:
+                _LOGGER.info(
+                    "Auto-detected profile '%s' from DP IDs: %s",
+                    match.name,
+                    sorted(dp_ids),
+                )
+                return match.name
+
+            return "Generic Switch"
+
+        finally:
+            writer.close()
+            with contextlib.suppress(OSError):
+                await writer.wait_closed()
 
     async def _run_discovery(self) -> list[dict[str, Any]]:
         """Run UDP device discovery and return a list of found device dicts.

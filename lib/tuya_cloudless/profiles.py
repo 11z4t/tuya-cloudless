@@ -17,6 +17,7 @@ __all__ = [
     "DeviceProfile",
     "EntitySpec",
     "ProfileRegistry",
+    "detect_profile_from_dps",
     "find_profile",
     "find_profile_by_product_key",
     "init_profiles",
@@ -272,6 +273,86 @@ def load_profiles_from_dir(profiles_dir: Path) -> list[DeviceProfile]:
     return profiles
 
 
+# ── DP-based profile detection (PLAT-778) ────────────────────────────────────
+
+
+def _get_spec_dp_ids(spec: EntitySpec) -> set[str]:
+    """Return the set of DP IDs referenced by a single EntitySpec.
+
+    Iterates over all ``dp_*`` attributes of *spec* and collects their ``.id``
+    values so that callers can compare a live DP snapshot against a profile.
+
+    Args:
+        spec: Entity specification from a loaded device profile.
+
+    Returns:
+        Set of DP ID strings (e.g. ``{"1", "19"}``).
+    """
+    ids: set[str] = set()
+    for attr_name in (
+        "dp_power", "dp_value", "dp_brightness", "dp_color_temp",
+        "dp_open", "dp_position", "dp_tilt", "dp_stop", "dp_direction",
+        "dp_hs_hue", "dp_hs_saturation", "dp_color_mode", "dp_scene",
+        "dp_colour_data", "dp_mode", "dp_temp_set", "dp_temp_current",
+        "dp_oscillate",
+    ):
+        val = getattr(spec, attr_name, None)
+        if isinstance(val, DPSpec):
+            ids.add(val.id)
+    return ids
+
+
+def _detect_profile_from_dps_core(
+    dp_ids: set[str],
+    profiles: list[DeviceProfile],
+) -> DeviceProfile | None:
+    """Core implementation: find best-matching profile for observed DP IDs.
+
+    Scores each profile by the fraction of its expected DPs that appear in
+    *dp_ids*.  A wildcard-model (``"*"``) profile is only returned as a
+    last-resort fallback when no specific profile has any overlap.
+
+    Args:
+        dp_ids:   Set of DP IDs observed in the device's DP_QUERY response.
+        profiles: List of candidate profiles to score.
+
+    Returns:
+        Best-matching :class:`DeviceProfile`, or ``None`` if *dp_ids* is empty.
+    """
+    if not dp_ids or not profiles:
+        return None
+
+    best_profile: DeviceProfile | None = None
+    best_score: float = 0.0
+    wildcard_fallback: DeviceProfile | None = None
+
+    for profile in profiles:
+        if profile.model == "*":
+            if wildcard_fallback is None:
+                wildcard_fallback = profile
+            continue
+
+        expected: set[str] = set()
+        for spec in profile.entities:
+            expected.update(_get_spec_dp_ids(spec))
+
+        if not expected:
+            continue
+
+        overlap = len(dp_ids & expected)
+        if overlap == 0:
+            continue
+
+        # Score = fraction of profile's expected DPs found on this device.
+        # Higher score → profile is a better fit for the observed DP set.
+        score = overlap / len(expected)
+        if score > best_score:
+            best_score = score
+            best_profile = profile
+
+    return best_profile or wildcard_fallback
+
+
 # ── Per-instance profile registry ────────────────────────────────────────────
 
 
@@ -327,6 +408,19 @@ class ProfileRegistry:
             if profile.name == name:
                 return profile
         return None
+
+    def detect_profile_from_dps(self, dp_ids: set[str]) -> DeviceProfile | None:
+        """Find the best-matching profile for a set of observed device DP IDs.
+
+        Delegates to the module-level :func:`detect_profile_from_dps`.
+
+        Args:
+            dp_ids: Set of DP IDs observed from the device's DP_QUERY response.
+
+        Returns:
+            Best-matching :class:`DeviceProfile`, or ``None`` if no match.
+        """
+        return _detect_profile_from_dps_core(dp_ids, self._profiles)
 
     def find_profile_by_product_key(self, product_key: str) -> DeviceProfile | None:
         """Find the best-matching profile for a device product key.
@@ -388,3 +482,15 @@ def find_profile(name: str) -> DeviceProfile | None:
 def find_profile_by_product_key(product_key: str) -> DeviceProfile | None:
     """Find the best-matching profile in the module-level compatibility registry."""
     return _COMPAT_REGISTRY.find_profile_by_product_key(product_key)
+
+
+def detect_profile_from_dps(dp_ids: set[str]) -> DeviceProfile | None:
+    """Find the best-matching profile in the module-level compatibility registry.
+
+    Args:
+        dp_ids: Set of DP IDs observed from the device's DP_QUERY response.
+
+    Returns:
+        Best-matching :class:`DeviceProfile`, or ``None`` if no match.
+    """
+    return _COMPAT_REGISTRY.detect_profile_from_dps(dp_ids)
