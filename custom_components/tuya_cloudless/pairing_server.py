@@ -194,6 +194,7 @@ class PairingServer:
         """Build and return the aiohttp Application with all routes registered."""
         app = web.Application()
         app.router.add_get("/", self._handle_index)
+        app.router.add_get("/api/provision/config", self._handle_config)
         app.router.add_get("/api/provision/events", self._handle_sse)
         app.router.add_get("/api/provision/result/{token}", self._handle_get_result)
         app.router.add_post("/api/tuya/device/active", self._handle_activate)
@@ -223,6 +224,35 @@ class PairingServer:
             body=index_path.read_bytes(),
             content_type="text/html",
             charset="utf-8",
+        )
+
+    async def _handle_config(self, request: web.Request) -> web.Response:
+        """Return pairing server configuration for the browser UI.
+
+        The UI fetches this on load so it always uses the correct
+        ``activator_url`` regardless of whether the page was served over
+        HTTP (desktop) or HTTPS (mobile via reverse proxy).
+
+        The ``activator_url`` is always an **HTTP** LAN URL because:
+          - The Tuya device on LAN cannot verify TLS certificates.
+          - The device activation POST must reach this server directly,
+            not via a cloud proxy.
+
+        Args:
+            request: Incoming HTTP request from the browser.
+
+        Returns:
+            JSON: ``{"activator_url": "http://<LAN-IP>:8099",
+                     "events_url": "...", "result_url_template": "..."}``
+        """
+        base = self.ha_local_url()
+        return web.json_response(
+            {
+                "activator_url": base,
+                "events_url": f"{base}/api/provision/events",
+                "result_url_template": f"{base}/api/provision/result/{{token}}",
+            },
+            headers={"Access-Control-Allow-Origin": "*"},
         )
 
     async def _handle_activate(self, request: web.Request) -> web.Response:

@@ -267,9 +267,23 @@ const CMD_HANDSHAKE    = 0x00;
 const CMD_WIFI_CONFIG  = 0x01;
 const CMD_PAIR_FAIL    = 0x05;
 
-// ── Activation server (this page's origin) ───────────────────────────────────
-const ACTIVATOR_URL = window.location.origin;
-const EVENTS_URL    = ACTIVATOR_URL + "/api/provision/events";
+// ── Server config (fetched from /api/provision/config) ───────────────────────
+// activator_url is always HTTP (LAN) so the Tuya device can reach it.
+// This matters when the UI is served over HTTPS (mobile via reverse proxy)
+// but the device activation still goes directly to the LAN HTTP server.
+let ACTIVATOR_URL = window.location.origin;
+let EVENTS_URL    = ACTIVATOR_URL + "/api/provision/events";
+
+async function loadServerConfig() {
+  try {
+    const r = await fetch("/api/provision/config");
+    if (r.ok) {
+      const cfg = await r.json();
+      if (cfg.activator_url) ACTIVATOR_URL = cfg.activator_url;
+      if (cfg.events_url)    EVENTS_URL    = cfg.events_url;
+    }
+  } catch (_) { /* keep defaults */ }
+}
 
 // ── CRC-16/MODBUS ─────────────────────────────────────────────────────────────
 function crc16Modbus(data) {
@@ -530,7 +544,8 @@ async function startPairing() {
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────────
-(function init() {
+(async function init() {
+  await loadServerConfig();
   if (!navigator.bluetooth) {
     document.getElementById("no-ble-warning").classList.remove("hidden");
     document.getElementById("btn-pair").disabled = true;
