@@ -2,5 +2,6 @@
   "name": "Tuya Cloudless",
   "homeassistant": "2024.4.0",
   "render_readme": true,
-  "content_in_root": false
+  "content_in_root": false,
+  "icon": "https://raw.githubusercontent.com/11z4t/tuya-cloudless/main/custom_components/tuya_cloudless/brand/icon.png"
 }
