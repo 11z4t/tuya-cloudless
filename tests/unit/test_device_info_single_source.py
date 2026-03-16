@@ -21,6 +21,7 @@ Tuya Cloudless (score 10/10):
 
 from __future__ import annotations
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -139,7 +140,7 @@ class TestDeviceInfoSingleSource:
         """coordinator.device_info is a proper typed attribute, not dynamic."""
         # Verify the attribute is present after __init__ (not injected externally)
         hass = MagicMock()
-        hass.loop = __import__("asyncio").get_event_loop()
+        hass.loop = asyncio.get_event_loop()
         hass.async_create_task = MagicMock()
 
         device_info = _canonical_device_info()

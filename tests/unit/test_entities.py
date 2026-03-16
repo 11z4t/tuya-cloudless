@@ -388,14 +388,9 @@ class TestSensorNativeValue:
             dp_value=DPSpec(id="5", type="int", scale=1.0),
         )
         coord = _make_coordinator({"5": 42})
-        entity = __import__(
-            "custom_components.tuya_cloudless.sensor", fromlist=["TuyaCloudlessSensor"]
-        ).TuyaCloudlessSensor.__new__(
-            __import__(
-                "custom_components.tuya_cloudless.sensor",
-                fromlist=["TuyaCloudlessSensor"],
-            ).TuyaCloudlessSensor
-        )
+        from custom_components.tuya_cloudless.sensor import TuyaCloudlessSensor
+
+        entity = TuyaCloudlessSensor.__new__(TuyaCloudlessSensor)
         entity.coordinator = coord
         entity._dp_id = "5"
         entity._spec = spec
