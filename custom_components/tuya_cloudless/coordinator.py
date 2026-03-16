@@ -426,6 +426,28 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                             self._writer.close()
                         return
 
+            # Also count frame-level decode errors from MessageBuffer (e.g. CRC
+            # mismatches detected before decryption) — PLAT-727
+            buf_errors = msg_buf.pop_error_count()
+            if buf_errors > 0:
+                self._consecutive_decode_errors += buf_errors
+                _LOGGER.debug(
+                    "[%s] %d buffer-level frame error(s) (total consecutive: %d)",
+                    self._gw_id,
+                    buf_errors,
+                    self._consecutive_decode_errors,
+                )
+                if self._consecutive_decode_errors >= _MAX_CONSECUTIVE_ERRORS:
+                    _LOGGER.warning(
+                        "[%s] %d consecutive decode errors — forcing reconnect",
+                        self._gw_id,
+                        self._consecutive_decode_errors,
+                    )
+                    self._raise_auth_repair_issue()
+                    if self._writer is not None:
+                        self._writer.close()
+                    return
+
     def _raise_auth_repair_issue(self) -> None:
         """Create an HA repair issue directing the user to re-authenticate."""
         from homeassistant.helpers.issue_registry import IssueSeverity, async_create_issue

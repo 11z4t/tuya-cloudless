@@ -404,6 +404,7 @@ class MessageBuffer:
         self._local_key = local_key
         self._chk_size = _checksum_size(version)
         self._min_msg = HEADER_SIZE + self._chk_size + SUFFIX_SIZE
+        self._error_count: int = 0
 
     def feed(self, data: bytes) -> None:
         """Append received bytes to the internal buffer.
@@ -476,28 +477,41 @@ class MessageBuffer:
         msg_bytes = bytes(self._buffer[:total_size])
         del self._buffer[:total_size]
 
-        try:
-            return decode_message(msg_bytes, self._version, self._local_key)
-        except (InvalidMessageError, ProtocolError) as exc:
-            _LOGGER.warning("Failed to decode message: %s", exc)
-            # On decode failure, the bytes are already consumed.
-            # The next call will try from the new buffer position.
-            return None
+        # Let decode errors propagate — callers decide whether to count/reconnect.
+        return decode_message(msg_bytes, self._version, self._local_key)
 
     def messages(self) -> list[TuyaMessage]:
         """Extract all complete messages currently in the buffer.
 
+        Decode errors for individual frames are counted (see :meth:`pop_error_count`)
+        but do not abort extraction — subsequent frames are still processed.
+
         Returns:
-            List of decoded messages (may be empty if no complete
-            messages are available yet).
+            List of successfully decoded messages (may be empty).
         """
         result: list[TuyaMessage] = []
         while True:
-            msg = self._try_extract()
+            try:
+                msg = self._try_extract()
+            except (InvalidMessageError, ProtocolError) as exc:
+                _LOGGER.warning("Failed to decode message: %s", exc)
+                self._error_count += 1
+                # The bad frame bytes were consumed; try the next frame.
+                continue
             if msg is None:
                 break
             result.append(msg)
         return result
+
+    def pop_error_count(self) -> int:
+        """Return and reset the number of frame-decode errors since the last call.
+
+        The coordinator uses this to increment its consecutive-error counter and
+        decide whether to force a reconnect.
+        """
+        n = self._error_count
+        self._error_count = 0
+        return n
 
     def clear(self) -> None:
         """Discard all buffered data.
