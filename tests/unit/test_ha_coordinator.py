@@ -913,6 +913,9 @@ class TestNegotiateSessionKeyOnce:
         mock_keypair = MagicMock()
         mock_keypair.public_key_bytes = b"\x42" * 32
 
+        # Simulate device closing connection before sending a full frame header.
+        reader.readexactly.side_effect = asyncio.IncompleteReadError(b"", 16)
+
         with (
             patch(
                 "tuya_cloudless.crypto.generate_ecdh_keypair",
@@ -922,17 +925,14 @@ class TestNegotiateSessionKeyOnce:
                 "tuya_cloudless.protocol.encode_session_key_start",
                 return_value=b"start_frame",
             ),
-            patch(
-                "asyncio.wait_for",
-                new_callable=AsyncMock,
-                return_value=b"",
-            ),
             pytest.raises(TuyaCloudlessError, match="closed connection"),
         ):
             await coord._negotiate_session_key_once(reader, writer)
 
     @pytest.mark.asyncio
     async def test_no_frames_in_response(self) -> None:
+        import struct
+
         from tuya_cloudless.exceptions import TuyaCloudlessError
 
         coord = _make_coordinator(version="3.4")
@@ -944,6 +944,12 @@ class TestNegotiateSessionKeyOnce:
         mock_keypair = MagicMock()
         mock_keypair.public_key_bytes = b"\x42" * 32
 
+        # Provide a valid 16-byte header (payload_len=4) followed by 4-byte payload.
+        # split_frames is then mocked to return no frames to trigger the "parse" error.
+        _header = b"\x00" * 12 + struct.pack(">I", 4)
+        _payload = b"\x00\x00\x00\x00"
+        reader.readexactly.side_effect = [_header, _payload]
+
         with (
             patch(
                 "tuya_cloudless.crypto.generate_ecdh_keypair",
@@ -952,11 +958,6 @@ class TestNegotiateSessionKeyOnce:
             patch(
                 "tuya_cloudless.protocol.encode_session_key_start",
                 return_value=b"start_frame",
-            ),
-            patch(
-                "asyncio.wait_for",
-                new_callable=AsyncMock,
-                return_value=b"some_data",
             ),
             patch(
                 "tuya_cloudless.protocol.split_frames",
@@ -968,6 +969,8 @@ class TestNegotiateSessionKeyOnce:
 
     @pytest.mark.asyncio
     async def test_short_device_pubkey(self) -> None:
+        import struct
+
         from tuya_cloudless.exceptions import TuyaCloudlessError
 
         coord = _make_coordinator(version="3.4")
@@ -983,6 +986,11 @@ class TestNegotiateSessionKeyOnce:
         mock_frame = MagicMock()
         mock_frame.payload = b"\x00" * 10  # Too short
 
+        # Provide a valid 16-byte header (payload_len=4) followed by 4-byte payload.
+        _header = b"\x00" * 12 + struct.pack(">I", 4)
+        _payload = b"\x00\x00\x00\x00"
+        reader.readexactly.side_effect = [_header, _payload]
+
         with (
             patch(
                 "tuya_cloudless.crypto.generate_ecdh_keypair",
@@ -991,11 +999,6 @@ class TestNegotiateSessionKeyOnce:
             patch(
                 "tuya_cloudless.protocol.encode_session_key_start",
                 return_value=b"start_frame",
-            ),
-            patch(
-                "asyncio.wait_for",
-                new_callable=AsyncMock,
-                return_value=b"some_data",
             ),
             patch(
                 "tuya_cloudless.protocol.split_frames",

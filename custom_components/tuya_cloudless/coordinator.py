@@ -658,21 +658,36 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         writer.write(start_frame)
         await writer.drain()
 
-        # Step 2 — read device public key
+        # Step 2 — read device public key.
+        # Read the exact number of bytes in the response frame by first reading the
+        # 16-byte header, parsing the ``length`` field, then reading the remainder.
+        # This replaces the former hardcoded ``reader.read(256)`` (PLAT-779).
+        import struct as _struct
+
+        from tuya_cloudless.const import FRAME_HEADER_SIZE, MAX_PAYLOAD_SIZE
+        from tuya_cloudless.protocol import decode_frame, split_frames
+
         try:
-            raw = await asyncio.wait_for(reader.read(256), timeout=5.0)
+            header_bytes = await asyncio.wait_for(
+                reader.readexactly(FRAME_HEADER_SIZE), timeout=5.0
+            )
+            frame_payload_len = _struct.unpack(">I", header_bytes[12:16])[0]
+            if frame_payload_len > MAX_PAYLOAD_SIZE:
+                raise TuyaCloudlessError(
+                    f"Session key response frame too large ({frame_payload_len} bytes)"
+                )
+            rest_bytes = await asyncio.wait_for(
+                reader.readexactly(frame_payload_len), timeout=5.0
+            )
+            raw = header_bytes + rest_bytes
+        except asyncio.IncompleteReadError as exc:
+            raise TuyaCloudlessError(
+                "Session key negotiation: closed connection before response completed"
+            ) from exc
         except TimeoutError as exc:
             raise TuyaCloudlessError(
                 "Session key negotiation timed out waiting for device response"
             ) from exc
-
-        if not raw:
-            raise TuyaCloudlessError("Session key negotiation failed: device closed connection")
-
-        # Extract device public key from response payload
-        # The response frame carries the device's 32-byte X25519 public key
-        # We use the raw bytes after the 16-byte frame header
-        from tuya_cloudless.protocol import decode_frame, split_frames
 
         frames, _ = split_frames(raw)
         if not frames:
