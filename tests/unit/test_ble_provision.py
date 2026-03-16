@@ -19,7 +19,6 @@ import json
 import struct
 
 import pytest
-
 from tuya_cloudless.ble_provision import (
     BLE_FRAME_MAGIC,
     BLE_MAX_FRAME_SIZE,
@@ -376,6 +375,7 @@ class TestBuildHandshakeFrame:
 
     def test_random_nonce_used_when_none(self) -> None:
         """Two calls with no nonce must produce different nonces."""
+
         def get_nonce() -> bytes:
             chunks = build_handshake_frame()
             return BleFrame.decode(_reassemble_chunks(chunks)).payload

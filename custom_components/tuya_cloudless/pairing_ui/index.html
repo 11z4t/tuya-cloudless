@@ -172,6 +172,26 @@
       color: var(--muted);
     }
     footer a { color: var(--accent); text-decoration: none; }
+
+    .qr-wrap {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+    }
+    .qr-wrap img {
+      width: 180px;
+      height: 180px;
+      border-radius: 8px;
+      background: #fff;
+      padding: 8px;
+    }
+    .url-row {
+      display: flex;
+      gap: 8px;
+      width: 100%;
+    }
+    .url-row input { flex: 1; }
   </style>
 </head>
 <body>
@@ -191,6 +211,39 @@
     ⚠️ <strong>Web Bluetooth not supported.</strong>
     Use <strong>Chrome</strong> or <strong>Edge</strong> on desktop or Android.
     Safari and Firefox do not support Web Bluetooth.
+  </div>
+
+  <!-- Mobile / QR fallback (shown when Web Bluetooth unavailable) -->
+  <div id="qr-section" class="step hidden">
+    <div class="step-header">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <rect x="2" y="2" width="8" height="8" rx="1" stroke="var(--accent)" stroke-width="2"/>
+        <rect x="14" y="2" width="8" height="8" rx="1" stroke="var(--accent)" stroke-width="2"/>
+        <rect x="2" y="14" width="8" height="8" rx="1" stroke="var(--accent)" stroke-width="2"/>
+        <path d="M14 14h2v2h-2zM18 14h2v2h-2zM14 18h2v2h-2zM18 18h2v2h-2z"
+              fill="var(--accent)"/>
+      </svg>
+      Open on Android Chrome
+    </div>
+    <p style="font-size:.85rem;color:var(--muted);">
+      Web Bluetooth requires <strong>Chrome</strong> or <strong>Edge</strong>.
+      Scan the QR code with your Android phone to open this page there.
+    </p>
+    <div class="qr-wrap">
+      <img id="qr-img" src="/api/provision/qr.svg" alt="QR code for pairing URL"
+           onerror="this.style.display='none';document.getElementById('qr-unavail').style.display='block'">
+      <p id="qr-unavail" style="display:none;font-size:.8rem;color:var(--muted);text-align:center;">
+        QR image unavailable.<br>
+        Install: <code style="font-size:.8rem;">pip install 'tuya-cloudless[qr]'</code>
+      </p>
+    </div>
+    <div>
+      <label>Or copy this URL and open on Chrome / Edge:</label>
+      <div class="url-row">
+        <input type="text" id="share-url" readonly>
+        <button class="btn btn-primary btn-sm" onclick="copyShareUrl()" id="btn-copy">Copy</button>
+      </div>
+    </div>
   </div>
 
   <!-- Step 1 — WiFi credentials -->
@@ -543,12 +596,28 @@ async function startPairing() {
   }
 }
 
+// ── Copy share URL ────────────────────────────────────────────────────────────
+function copyShareUrl() {
+  const val = document.getElementById("share-url").value;
+  const btn = document.getElementById("btn-copy");
+  (navigator.clipboard
+    ? navigator.clipboard.writeText(val)
+    : Promise.resolve(document.execCommand("copy"))
+  ).then(() => {
+    btn.textContent = "Copied!";
+    setTimeout(() => { btn.textContent = "Copy"; }, 2000);
+  }).catch(() => {});
+}
+
 // ── Init ──────────────────────────────────────────────────────────────────────
 (async function init() {
   await loadServerConfig();
   if (!navigator.bluetooth) {
     document.getElementById("no-ble-warning").classList.remove("hidden");
     document.getElementById("btn-pair").disabled = true;
+    // Show QR / share section for non-BLE browsers
+    document.getElementById("qr-section").classList.remove("hidden");
+    document.getElementById("share-url").value = window.location.href;
   }
 })();
 </script>

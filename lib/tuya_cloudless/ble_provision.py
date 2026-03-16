@@ -106,6 +106,7 @@ CMD_PAIR_FAIL: Final[int] = 0x05
 
 # ── CRC ─────────────────────────────────────────────────────────────────────
 
+
 def crc16_modbus(data: bytes) -> int:
     """Compute CRC-16/MODBUS checksum.
 
@@ -131,6 +132,7 @@ def crc16_modbus(data: bytes) -> int:
 
 
 # ── Frame dataclass ──────────────────────────────────────────────────────────
+
 
 @dataclass(frozen=True)
 class BleFrame:
@@ -190,25 +192,17 @@ class BleFrame:
         """
         min_size = _FRAME_HEADER_SIZE + 2  # header + crc
         if len(data) < min_size:
-            raise PairingError(
-                f"BLE frame too short: {len(data)} bytes (minimum {min_size})"
-            )
+            raise PairingError(f"BLE frame too short: {len(data)} bytes (minimum {min_size})")
 
         magic = data[:2]
         if magic != BLE_FRAME_MAGIC:
-            raise PairingError(
-                f"BLE frame bad magic: expected 0x55AA, got 0x{magic.hex().upper()}"
-            )
+            raise PairingError(f"BLE frame bad magic: expected 0x55AA, got 0x{magic.hex().upper()}")
 
-        _magic, _version, cmd, seq, payload_len = struct.unpack_from(
-            _FRAME_HEADER_FMT, data
-        )
+        _magic, _version, cmd, seq, payload_len = struct.unpack_from(_FRAME_HEADER_FMT, data)
 
         frame_end = _FRAME_HEADER_SIZE + payload_len
         if len(data) < frame_end + 2:
-            raise PairingError(
-                f"BLE frame truncated: need {frame_end + 2} bytes, got {len(data)}"
-            )
+            raise PairingError(f"BLE frame truncated: need {frame_end + 2} bytes, got {len(data)}")
 
         payload = data[_FRAME_HEADER_SIZE:frame_end]
         received_crc = struct.unpack_from("<H", data, frame_end)[0]
@@ -216,14 +210,14 @@ class BleFrame:
 
         if received_crc != computed_crc:
             raise PairingError(
-                f"BLE frame CRC mismatch: expected 0x{computed_crc:04X}, "
-                f"got 0x{received_crc:04X}"
+                f"BLE frame CRC mismatch: expected 0x{computed_crc:04X}, got 0x{received_crc:04X}"
             )
 
         return cls(seq=seq, cmd=cmd, payload=payload)
 
 
 # ── Chunking ─────────────────────────────────────────────────────────────────
+
 
 def _chunk_frame(frame_bytes: bytes) -> list[bytes]:
     """Split an encoded frame into BLE transport chunks.
@@ -242,14 +236,11 @@ def _chunk_frame(frame_bytes: bytes) -> list[bytes]:
     """
     transport_payload_size = BLE_MAX_FRAME_SIZE - 2  # 2 bytes for chunk header
     chunks_data = [
-        frame_bytes[i: i + transport_payload_size]
+        frame_bytes[i : i + transport_payload_size]
         for i in range(0, len(frame_bytes), transport_payload_size)
     ]
     total = len(chunks_data)
-    return [
-        bytes([idx, total]) + chunk
-        for idx, chunk in enumerate(chunks_data)
-    ]
+    return [bytes([idx, total]) + chunk for idx, chunk in enumerate(chunks_data)]
 
 
 def _reassemble_chunks(chunks: list[bytes]) -> bytes:
@@ -271,21 +262,18 @@ def _reassemble_chunks(chunks: list[bytes]) -> bytes:
 
     total = chunks[0][1]
     if len(chunks) != total:
-        raise PairingError(
-            f"Incomplete BLE frame: expected {total} chunks, got {len(chunks)}"
-        )
+        raise PairingError(f"Incomplete BLE frame: expected {total} chunks, got {len(chunks)}")
 
     ordered = sorted(chunks, key=lambda c: c[0])
     for idx, chunk in enumerate(ordered):
         if chunk[0] != idx:
-            raise PairingError(
-                f"BLE chunk sequence gap: expected index {idx}, got {chunk[0]}"
-            )
+            raise PairingError(f"BLE chunk sequence gap: expected index {idx}, got {chunk[0]}")
 
     return b"".join(c[2:] for c in ordered)
 
 
 # ── ProvisionPayload ──────────────────────────────────────────────────────────
+
 
 @dataclass(frozen=True)
 class ProvisionPayload:
@@ -339,6 +327,7 @@ class ProvisionPayload:
 
 # ── High-level frame builders ─────────────────────────────────────────────────
 
+
 def build_provision_frames(payload: ProvisionPayload, seq: int = 1) -> list[bytes]:
     """Build the BLE chunk list for a complete WiFi provisioning exchange.
 
@@ -380,8 +369,7 @@ def build_handshake_frame(controller_nonce: bytes | None = None) -> list[bytes]:
 
     if len(controller_nonce) != BLE_NONCE_SIZE:
         raise PairingError(
-            f"Controller nonce must be {BLE_NONCE_SIZE} bytes, "
-            f"got {len(controller_nonce)}"
+            f"Controller nonce must be {BLE_NONCE_SIZE} bytes, got {len(controller_nonce)}"
         )
 
     frame = BleFrame(seq=0, cmd=CMD_HANDSHAKE, payload=controller_nonce)
@@ -407,13 +395,9 @@ def derive_session_key(controller_nonce: bytes, device_nonce: bytes) -> bytes:
             is not exactly 16 bytes.
     """
     if len(controller_nonce) != BLE_SESSION_KEY_SIZE:
-        raise PairingError(
-            f"Controller nonce must be {BLE_SESSION_KEY_SIZE} bytes"
-        )
+        raise PairingError(f"Controller nonce must be {BLE_SESSION_KEY_SIZE} bytes")
     if len(device_nonce) != BLE_SESSION_KEY_SIZE:
-        raise PairingError(
-            f"Device nonce must be {BLE_SESSION_KEY_SIZE} bytes"
-        )
+        raise PairingError(f"Device nonce must be {BLE_SESSION_KEY_SIZE} bytes")
     return bytes(a ^ b for a, b in zip(controller_nonce, device_nonce, strict=True))
 
 
@@ -439,6 +423,7 @@ def parse_ble_response(chunks: list[bytes]) -> BleFrame:
 
 # ── BleProvisioner ────────────────────────────────────────────────────────────
 
+
 class BleProvisioner:
     """Provision a Tuya WiFi+BLE device over Bluetooth LE.
 
@@ -461,7 +446,7 @@ class BleProvisioner:
             addr = await p.scan(timeout=10.0)
             payload = ProvisionPayload(
                 ssid="MyWiFi",
-                password="secret",
+                password="secret",  # pragma: allowlist secret
                 token=ProvisionPayload.generate_token(),
                 activator_url="http://192.168.1.10:8099",
             )
@@ -507,17 +492,16 @@ class BleProvisioner:
                 not installed or no device is found within *timeout*.
         """
         try:
-            from bleak import BleakScanner  # type: ignore[import]
+            from bleak import BleakScanner
         except ImportError as exc:
             raise PairingError(
-                "bleak is required for BLE provisioning — install it with "
-                "'pip install bleak'"
+                "bleak is required for BLE provisioning — install it with 'pip install bleak'"
             ) from exc
 
         scan_time = timeout if timeout is not None else self._scan_timeout
         device = await BleakScanner.find_device_by_filter(
-            lambda d, _adv: BLE_SERVICE_UUID in (
-                str(s).lower() for s in (_adv.service_uuids or [])
+            lambda d, _adv: (
+                BLE_SERVICE_UUID in (str(s).lower() for s in (_adv.service_uuids or []))
             ),
             timeout=scan_time,
         )
@@ -560,17 +544,17 @@ class BleProvisioner:
         import asyncio
 
         try:
-            from bleak import BleakClient  # type: ignore[import]
+            from bleak import BleakClient
+            from bleak.backends.characteristic import BleakGATTCharacteristic
         except ImportError as exc:
             raise PairingError(
-                "bleak is required for BLE provisioning — install it with "
-                "'pip install bleak'"
+                "bleak is required for BLE provisioning — install it with 'pip install bleak'"
             ) from exc
 
         recv_chunks: list[bytes] = []
         notify_event: asyncio.Event = asyncio.Event()
 
-        def _on_notify(_handle: int, data: bytearray) -> None:
+        def _on_notify(_char: BleakGATTCharacteristic, data: bytearray) -> None:
             recv_chunks.append(bytes(data))
             if data[0] + 1 == data[1]:  # last chunk (chunk_no + 1 == total)
                 notify_event.set()
@@ -584,9 +568,7 @@ class BleProvisioner:
                 # Step 1: Handshake — send controller nonce
                 controller_nonce = os.urandom(BLE_NONCE_SIZE)
                 for chunk in build_handshake_frame(controller_nonce):
-                    await client.write_gatt_char(
-                        BLE_WRITE_CHAR_UUID, chunk, response=False
-                    )
+                    await client.write_gatt_char(BLE_WRITE_CHAR_UUID, chunk, response=False)
 
                 # Wait for device nonce response
                 try:
@@ -608,9 +590,7 @@ class BleProvisioner:
 
                 # Step 2: Send WiFi config
                 for chunk in build_provision_frames(payload, seq=1):
-                    await client.write_gatt_char(
-                        BLE_WRITE_CHAR_UUID, chunk, response=False
-                    )
+                    await client.write_gatt_char(BLE_WRITE_CHAR_UUID, chunk, response=False)
 
                 # Wait for ACK
                 try:
@@ -622,13 +602,9 @@ class BleProvisioner:
 
                 ack = parse_ble_response(recv_chunks)
                 if ack.cmd == CMD_PAIR_FAIL:
-                    raise PairingError(
-                        "Device rejected WiFi config — check SSID and password"
-                    )
+                    raise PairingError("Device rejected WiFi config — check SSID and password")
                 if ack.cmd not in (CMD_WIFI_CONFIG_RESP, CMD_PAIR_SUCCESS):
-                    raise PairingError(
-                        f"Unexpected ACK command: 0x{ack.cmd:02X}"
-                    )
+                    raise PairingError(f"Unexpected ACK command: 0x{ack.cmd:02X}")
 
         except PairingError:
             raise
@@ -646,7 +622,7 @@ class BleProvisioner:
         client = self._client
         if client is not None:
             with contextlib.suppress(OSError, RuntimeError):
-                from bleak import BleakClient  # type: ignore[import]
+                from bleak import BleakClient
 
                 if isinstance(client, BleakClient) and client.is_connected:
                     await client.disconnect()

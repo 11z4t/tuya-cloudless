@@ -69,6 +69,7 @@ _LOCAL_KEY_BYTES: Final[int] = 16
 
 # ── Data classes ────────────────────────────────────────────────────────────
 
+
 @dataclass
 class ActivationResult:
     """Result stored when a device successfully activates via fake-cloud.
@@ -91,6 +92,7 @@ class ActivationResult:
 
 
 # ── PairingServer ─────────────────────────────────────────────────────────────
+
 
 class PairingServer:
     """Lightweight aiohttp HTTP server for Tuya BLE device provisioning.
@@ -195,6 +197,7 @@ class PairingServer:
         app = web.Application()
         app.router.add_get("/", self._handle_index)
         app.router.add_get("/api/provision/config", self._handle_config)
+        app.router.add_get("/api/provision/qr.svg", self._handle_qr)
         app.router.add_get("/api/provision/events", self._handle_sse)
         app.router.add_get("/api/provision/result/{token}", self._handle_get_result)
         app.router.add_post("/api/tuya/device/active", self._handle_activate)
@@ -253,6 +256,51 @@ class PairingServer:
                 "result_url_template": f"{base}/api/provision/result/{{token}}",
             },
             headers={"Access-Control-Allow-Origin": "*"},
+        )
+
+    async def _handle_qr(self, request: web.Request) -> web.Response:
+        """Serve a QR code SVG encoding the pairing server LAN URL.
+
+        Useful for mobile users who want to open the pairing page on an Android
+        device with Chrome (which supports Web Bluetooth).  Requires the
+        optional ``qrcode[svg]`` package — returns 503 if not installed.
+
+        Args:
+            request: Incoming HTTP request.
+
+        Returns:
+            SVG image response encoding ``ha_local_url()``, or 503 if the
+            ``qrcode`` library is not installed.
+        """
+        try:
+            import io
+
+            import qrcode  # type: ignore[import-untyped]
+            import qrcode.image.svg  # type: ignore[import-untyped]
+        except ImportError:
+            return web.Response(
+                status=503,
+                text=(
+                    "QR code requires the qrcode library.\n"
+                    "Install with: pip install 'tuya-cloudless[qr]'"
+                ),
+            )
+
+        url = self.ha_local_url()
+        factory = qrcode.image.svg.SvgPathImage
+        qr_img = qrcode.make(  # type: ignore[call-overload]
+            url, image_factory=factory, box_size=10, border=2
+        )
+        buf = io.BytesIO()
+        qr_img.save(buf)
+        svg_data = buf.getvalue()
+        return web.Response(
+            body=svg_data,
+            content_type="image/svg+xml",
+            headers={
+                "Cache-Control": "no-cache",
+                "Access-Control-Allow-Origin": "*",
+            },
         )
 
     async def _handle_activate(self, request: web.Request) -> web.Response:

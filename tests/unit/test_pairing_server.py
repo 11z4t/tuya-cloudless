@@ -6,16 +6,13 @@ and helper utilities — without needing a real HA instance or Tuya device.
 
 from __future__ import annotations
 
-import asyncio
-import json
+import sys
 import time
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
 from aiohttp.test_utils import TestClient, TestServer
-
-import sys
-from pathlib import Path
 
 # Add lib/ and custom_components parent to import path for test environment
 _REPO = Path(__file__).parent.parent.parent
@@ -23,11 +20,10 @@ for _p in [str(_REPO / "lib"), str(_REPO)]:
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
-from custom_components.tuya_cloudless.pairing_server import (
+from custom_components.tuya_cloudless.pairing_server import (  # noqa: E402
     ActivationResult,
     PairingServer,
 )
-
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -60,9 +56,7 @@ async def client(server: PairingServer) -> TestClient:
 
 class TestActivationResult:
     def test_fields(self) -> None:
-        r = ActivationResult(
-            gw_id="abc", product_key="pk", local_key="lk", ip_address="1.2.3.4"
-        )
+        r = ActivationResult(gw_id="abc", product_key="pk", local_key="lk", ip_address="1.2.3.4")
         assert r.gw_id == "abc"
         assert r.product_key == "pk"
         assert r.local_key == "lk"
@@ -146,9 +140,7 @@ class TestActivateEndpoint:
             "/api/tuya/device/active",
             json={"gw_id": "stored_gw", "token": "test_token"},
         )
-        # Access the underlying server from the test client
-        server: PairingServer = client.server.app._router._resources[0]  # type: ignore
-        # Instead, verify via the result endpoint
+        # Verify via the result endpoint
         resp = await client.get("/api/provision/result/test_token")
         assert resp.status == 200
 
@@ -157,12 +149,8 @@ class TestActivateEndpoint:
         assert resp.status == 200
 
     async def test_each_activation_generates_unique_key(self, client: TestClient) -> None:
-        resp1 = await client.post(
-            "/api/tuya/device/active", json={"gw_id": "gw1", "token": "t1"}
-        )
-        resp2 = await client.post(
-            "/api/tuya/device/active", json={"gw_id": "gw2", "token": "t2"}
-        )
+        resp1 = await client.post("/api/tuya/device/active", json={"gw_id": "gw1", "token": "t1"})
+        resp2 = await client.post("/api/tuya/device/active", json={"gw_id": "gw2", "token": "t2"})
         body1 = await resp1.json()
         body2 = await resp2.json()
         assert body1["result"]["localKey"] != body2["result"]["localKey"]
