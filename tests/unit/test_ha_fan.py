@@ -319,3 +319,39 @@ class TestFanInit:
     def test_translation_key(self) -> None:
         entity = self._make()
         assert entity._attr_translation_key == "main_fan"
+
+
+class TestFanPercentageRangeMapping:
+    """PLAT-713: Ceiling fan percentage range mapping for raw speed values 1-6."""
+
+    def _spec(self) -> EntitySpec:
+        """EntitySpec matching ceiling_fan.yaml: dp_value id=3, min_raw=1, max_raw=6."""
+        return EntitySpec(
+            platform="fan",
+            name="ceiling_fan",
+            dp_power=DPSpec(id="1", type="bool"),
+            dp_value=DPSpec(id="3", type="int", min_raw=1, max_raw=6),
+        )
+
+    def test_percentage_maps_1_to_0(self) -> None:
+        """Raw speed 1 (min_raw) must map to exactly 0 percent."""
+        fan = _make_fan(dps={"3": 1}, spec=self._spec())
+        assert fan.percentage == 0
+
+    def test_percentage_maps_6_to_100(self) -> None:
+        """Raw speed 6 (max_raw) must map to exactly 100 percent."""
+        fan = _make_fan(dps={"3": 6}, spec=self._spec())
+        assert fan.percentage == 100
+
+    @pytest.mark.asyncio
+    async def test_set_percentage_maps_50_to_3(self) -> None:
+        """50 percent must map to raw speed 3 for the 1-6 range.
+
+        Formula: min_raw + round(pct / 100 * (max_raw - min_raw))
+               = 1 + round(50 / 100 * 5)
+               = 1 + round(2.5)   # Python banker's rounding: round(2.5) == 2
+               = 3
+        """
+        fan = _make_fan(dps={"1": True}, spec=self._spec())
+        await fan.async_set_percentage(50)
+        fan.coordinator.async_send_dps.assert_awaited_once_with({"3": 3})

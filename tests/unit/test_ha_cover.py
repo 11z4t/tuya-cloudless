@@ -261,3 +261,53 @@ class TestCoverSetupEntry:
         added: list = []
         await async_setup_entry(MagicMock(), entry, lambda e: added.extend(e))
         assert len(added) == 0
+
+
+class TestCoverStop:
+    """PLAT-714: Cover STOP support — tests for async_stop_cover and STOP feature flag."""
+
+    def _make_cover_with_stop(self) -> TuyaCloudlessCover:
+        """Return a cover entity that has dp_stop configured on DP 7."""
+        from custom_components.tuya_cloudless.cover import TuyaCloudlessCover
+
+        spec = EntitySpec(
+            platform="cover",
+            name="cover",
+            dp_open=DPSpec(id="1", type="bool"),
+            dp_position=DPSpec(id="2", type="int"),
+            dp_stop=DPSpec(id="7", type="bool"),
+        )
+        coord = _make_coordinator({"1": True, "2": 50})
+        return TuyaCloudlessCover(coord, spec)
+
+    def _make_cover_without_stop(self) -> TuyaCloudlessCover:
+        """Return a cover entity that does NOT have dp_stop configured."""
+        from custom_components.tuya_cloudless.cover import TuyaCloudlessCover
+
+        spec = _make_cover_spec()  # dp_stop is None by default
+        coord = _make_coordinator({"1": True, "2": 50})
+        return TuyaCloudlessCover(coord, spec)
+
+    @pytest.mark.asyncio
+    async def test_stop_cover_sends_dp7(self) -> None:
+        """async_stop_cover sends True on the stop DP (id=7) when dp_stop is set."""
+        e = self._make_cover_with_stop()
+        await e.async_stop_cover()
+        e.coordinator.async_send_dps.assert_awaited_once_with({"7": True})
+
+    @pytest.mark.asyncio
+    async def test_stop_cover_noop_when_no_dp_stop(self) -> None:
+        """async_stop_cover does nothing when dp_stop is not configured in the profile."""
+        e = self._make_cover_without_stop()
+        await e.async_stop_cover()
+        e.coordinator.async_send_dps.assert_not_awaited()
+
+    def test_stop_feature_advertised_when_dp_stop_set(self) -> None:
+        """CoverEntityFeature.STOP is in supported_features when dp_stop is configured."""
+        e = self._make_cover_with_stop()
+        assert CoverEntityFeature.STOP in e._attr_supported_features
+
+    def test_stop_feature_absent_when_no_dp_stop(self) -> None:
+        """CoverEntityFeature.STOP is not in supported_features without dp_stop."""
+        e = self._make_cover_without_stop()
+        assert CoverEntityFeature.STOP not in e._attr_supported_features

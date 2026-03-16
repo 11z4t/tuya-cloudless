@@ -1,0 +1,9 @@
+name: "Roller Shutter"
+model: "rs*"
+entities:
+  - platform: cover
+    name: cover
+    dp_open: {id: "1", type: bool}
+    dp_position: {id: "2", type: int, min_raw: 0, max_raw: 100}
+    dp_stop: {id: "7", type: bool}
+    device_class: shutter
