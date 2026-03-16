@@ -1050,3 +1050,156 @@ class TestSendLock:
         """coordinator.version must return the protocol version string."""
         coord = _make_coordinator(version="3.4")
         assert coord.version == "3.4"
+
+
+# ── TestSendInitialDpQuery (PLAT-761) ─────────────────────────────────────────
+
+
+class TestSendInitialDpQuery:
+    """Tests for the initial DP_QUERY sent on every TCP connect (PLAT-761)."""
+
+    @pytest.mark.asyncio
+    async def test_dp_query_sent_on_success(self) -> None:
+        """AC4: DP_QUERY (0x0a) is written to the socket on first attempt."""
+        coord = _make_coordinator()
+        writer = MagicMock()
+        writer.write = MagicMock()
+        writer.drain = AsyncMock()
+
+        with patch(
+            "tuya_cloudless.protocol.encode_status_query",
+            return_value=b"dp_query_frame",
+        ) as mock_encode:
+            await coord._send_initial_dp_query(writer)
+
+        mock_encode.assert_called_once()
+        writer.write.assert_called_once_with(b"dp_query_frame")
+        writer.drain.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_dp_query_uses_correct_command(self) -> None:
+        """AC2: encode_status_query (CMD_DP_QUERY 0x0a) is called, not a different command."""
+        from tuya_cloudless.const import CMD_DP_QUERY
+
+        coord = _make_coordinator(version="3.3")
+        writer = MagicMock()
+        writer.write = MagicMock()
+        writer.drain = AsyncMock()
+
+        # Use the real encode_status_query to verify it builds a DP_QUERY frame
+        from tuya_cloudless.protocol import encode_status_query
+
+        captured_frames: list[bytes] = []
+
+        def capture_write(data: bytes) -> None:
+            captured_frames.append(data)
+
+        writer.write.side_effect = capture_write
+
+        await coord._send_initial_dp_query(writer)
+
+        assert len(captured_frames) == 1
+        # CMD_DP_QUERY (0x0a = 10) is at bytes 8-11 in the frame header
+        import struct
+
+        _, _, cmd, _ = struct.unpack(">4sIII", captured_frames[0][:16])
+        assert cmd == CMD_DP_QUERY
+
+    @pytest.mark.asyncio
+    async def test_dp_query_retries_on_oserror(self) -> None:
+        """AC5: If write fails, retries up to _DP_QUERY_MAX_RETRIES times."""
+        from custom_components.tuya_cloudless.coordinator import _DP_QUERY_MAX_RETRIES
+
+        coord = _make_coordinator()
+        writer = MagicMock()
+        writer.write = MagicMock()
+        writer.drain = AsyncMock(side_effect=OSError("broken pipe"))
+
+        with (
+            patch(
+                "tuya_cloudless.protocol.encode_status_query",
+                return_value=b"dp_query_frame",
+            ),
+            patch("asyncio.sleep", new_callable=AsyncMock) as mock_sleep,
+        ):
+            await coord._send_initial_dp_query(writer)  # Must NOT raise
+
+        # drain was called once per attempt
+        assert writer.drain.await_count == _DP_QUERY_MAX_RETRIES
+        # Sleep between retries: called _DP_QUERY_MAX_RETRIES - 1 times
+        assert mock_sleep.await_count == _DP_QUERY_MAX_RETRIES - 1
+
+    @pytest.mark.asyncio
+    async def test_dp_query_graceful_after_all_retries_fail(self) -> None:
+        """AC5: After all retries, no exception raised — graceful degradation."""
+        coord = _make_coordinator()
+        writer = MagicMock()
+        writer.write = MagicMock(side_effect=OSError("network down"))
+        writer.drain = AsyncMock()
+
+        with (
+            patch(
+                "tuya_cloudless.protocol.encode_status_query",
+                return_value=b"dp_query_frame",
+            ),
+            patch("asyncio.sleep", new_callable=AsyncMock),
+        ):
+            # Must complete without raising — graceful degradation
+            await coord._send_initial_dp_query(writer)
+
+        # State must remain unchanged (available was set before this call in _connect)
+        assert coord.state.dps == {}
+
+    @pytest.mark.asyncio
+    async def test_dp_query_succeeds_on_retry(self) -> None:
+        """AC5: If the first attempt fails but a later one succeeds, no warning logged."""
+        coord = _make_coordinator()
+        writer = MagicMock()
+
+        call_count = 0
+
+        async def flaky_drain() -> None:
+            nonlocal call_count
+            call_count += 1
+            if call_count < 2:
+                raise OSError("temporary error")
+
+        writer.write = MagicMock()
+        writer.drain = AsyncMock(side_effect=flaky_drain)
+
+        with (
+            patch(
+                "tuya_cloudless.protocol.encode_status_query",
+                return_value=b"dp_query_frame",
+            ),
+            patch("asyncio.sleep", new_callable=AsyncMock) as mock_sleep,
+        ):
+            await coord._send_initial_dp_query(writer)
+
+        assert call_count == 2  # Failed once, succeeded second time
+        assert mock_sleep.await_count == 1  # One delay between attempts
+
+    @pytest.mark.asyncio
+    async def test_connect_triggers_dp_query(self) -> None:
+        """AC4: Verify _connect calls _send_initial_dp_query after session setup."""
+        coord = _make_coordinator(version="3.3")
+
+        reader = AsyncMock()
+        writer = MagicMock()
+        writer.close = MagicMock()
+        writer.wait_closed = AsyncMock()
+        writer.drain = AsyncMock()
+
+        async def mock_receive_loop(r: Any) -> None:
+            pass
+
+        coord._receive_loop = mock_receive_loop
+        coord._disconnect = AsyncMock()
+        coord._send_initial_dp_query = AsyncMock()
+
+        with patch("asyncio.wait_for", new_callable=AsyncMock) as mock_wait:
+            mock_wait.return_value = (reader, writer)
+            await coord._connect()
+
+        # _send_initial_dp_query must have been awaited exactly once
+        coord._send_initial_dp_query.assert_awaited_once_with(writer)

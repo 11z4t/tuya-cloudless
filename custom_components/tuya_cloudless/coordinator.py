@@ -50,6 +50,10 @@ _MAX_CONSECUTIVE_ERRORS = 5
 #: Maximum receive buffer — forces reconnect if exceeded (guards against corrupt streams)
 _MAX_BUFFER_BYTES = 65_536  # 64 KB
 
+#: Initial DP_QUERY retry policy (PLAT-761)
+_DP_QUERY_MAX_RETRIES: int = 3
+_DP_QUERY_RETRY_DELAY: float = 2.0
+
 
 @dataclass
 class DeviceState:
@@ -278,26 +282,9 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         _LOGGER.info("[%s] Connected to %s", self._gw_id, self._ip)
         self.async_update_listeners()
 
-        # Send initial DPS status query so entities get populated immediately
-        # without waiting for the device to push an unsolicited update (PLAT-707).
-        try:
-            from tuya_cloudless.protocol import encode_status_query
-
-            query = encode_status_query(
-                sequence=self._next_sequence(),
-                version=self._version,
-                local_key=self._local_key,
-                session_key=self._session_key,
-            )
-            writer.write(query)
-            await writer.drain()
-            _LOGGER.debug("[%s] Initial DPS status query sent", self._gw_id)
-        except OSError as exc:
-            _LOGGER.warning("[%s] Failed to send initial status query: %s", self._gw_id, exc)
-            writer.close()
-            with contextlib.suppress(OSError):
-                await writer.wait_closed()
-            raise
+        # Send initial DP_QUERY so entities are populated immediately after connect
+        # without waiting for the device to push an unsolicited update (PLAT-761).
+        await self._send_initial_dp_query(writer)
 
         # Start heartbeat
         self._heartbeat_task = self.hass.async_create_task(
@@ -323,6 +310,56 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self._reader = None
         self._session_key = None
         self.state.available = False
+
+    async def _send_initial_dp_query(self, writer: asyncio.StreamWriter) -> None:
+        """Send DP_QUERY (0x0a) immediately after connect to pre-populate entity state.
+
+        Retries up to ``_DP_QUERY_MAX_RETRIES`` times with ``_DP_QUERY_RETRY_DELAY``
+        seconds between attempts. If all attempts fail, logs a warning and returns
+        gracefully — entity state will populate when the device next pushes an update.
+
+        Args:
+            writer: Open async stream writer for the device TCP connection.
+        """
+        from tuya_cloudless.protocol import encode_status_query
+
+        last_exc: OSError | None = None
+        for attempt in range(_DP_QUERY_MAX_RETRIES):
+            if attempt > 0:
+                await asyncio.sleep(_DP_QUERY_RETRY_DELAY)
+            try:
+                query = encode_status_query(
+                    sequence=self._next_sequence(),
+                    version=self._version,
+                    local_key=self._local_key,
+                    session_key=self._session_key,
+                )
+                writer.write(query)
+                await writer.drain()
+                _LOGGER.debug(
+                    "[%s] DP_QUERY (0x0a) skickat vid connect (försök %d/%d)",
+                    self._gw_id,
+                    attempt + 1,
+                    _DP_QUERY_MAX_RETRIES,
+                )
+                return  # Lyckades — inget mer att göra
+            except OSError as exc:
+                last_exc = exc
+                _LOGGER.debug(
+                    "[%s] DP_QUERY misslyckades (försök %d/%d): %s",
+                    self._gw_id,
+                    attempt + 1,
+                    _DP_QUERY_MAX_RETRIES,
+                    exc,
+                )
+
+        _LOGGER.warning(
+            "[%s] Kunde inte skicka initial DP_QUERY efter %d försök: %s — "
+            "entiteter visar 'unknown' tills enheten skickar en uppdatering",
+            self._gw_id,
+            _DP_QUERY_MAX_RETRIES,
+            last_exc,
+        )
 
     async def _heartbeat_loop(self) -> None:
         """Send heartbeat frames at the configured interval."""
