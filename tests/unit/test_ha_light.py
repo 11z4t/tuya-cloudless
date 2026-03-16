@@ -104,6 +104,8 @@ def _make_light(
     else:
         entity._attr_effect_list = None
         entity._attr_supported_features = LightEntityFeature(0)
+    entity._optimistic_state = None  # set by __init__ normally
+    entity.async_write_ha_state = MagicMock()  # stub out HA framework call
     return entity
 
 

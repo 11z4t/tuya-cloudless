@@ -31,6 +31,11 @@ def _make_coordinator(
     coord._sequence = 42
     coord._session_key = session_key
     coord._consecutive_decode_errors = 0
+    # Public connection properties used by diagnostics (PLAT-720)
+    coord.tcp_connected = available
+    coord.sequence_counter = 42
+    coord.session_key_active = session_key is not None
+    coord.consecutive_decode_errors = 0
     coord.state = DeviceState(
         available=available,
         dps=dps or {},

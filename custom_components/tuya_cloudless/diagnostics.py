@@ -52,9 +52,9 @@ async def async_get_config_entry_diagnostics(
             "dps": dict(coord.state.dps),
         },
         "connection": {
-            "tcp_connected": coord._writer is not None,
-            "sequence_counter": coord._sequence,
-            "session_key_active": coord._session_key is not None,
-            "consecutive_decode_errors": coord._consecutive_decode_errors,
+            "tcp_connected": coord.tcp_connected,
+            "sequence_counter": coord.sequence_counter,
+            "session_key_active": coord.session_key_active,
+            "consecutive_decode_errors": coord.consecutive_decode_errors,
         },
     }

@@ -6,14 +6,36 @@ All platform entities (switch, light, sensor) inherit from
 
 from __future__ import annotations
 
-__all__ = ["TuyaCloudlessEntity"]
+__all__ = ["RestoreStateMixin", "TuyaCloudlessEntity"]
 
 from typing import Any
 
 from homeassistant.helpers.device_registry import DeviceInfo
+from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .coordinator import TuyaCloudlessCoordinator
+
+
+class RestoreStateMixin(RestoreEntity):
+    """Mixin that adds last-state restoration for Tuya Cloudless entities.
+
+    Subclasses must call ``await super().async_added_to_hass()`` and then
+    optionally read ``self._restored_state`` to pre-populate optimistic
+    state before the first device push is received.
+    """
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        """Initialise the mixin."""
+        super().__init__(*args, **kwargs)
+        self._restored_state: str | None = None
+
+    async def async_added_to_hass(self) -> None:
+        """Register with HA and restore last known state if available."""
+        await super().async_added_to_hass()
+        last_state = await self.async_get_last_state()
+        if last_state is not None:
+            self._restored_state = last_state.state
 
 
 class TuyaCloudlessEntity(CoordinatorEntity[TuyaCloudlessCoordinator]):

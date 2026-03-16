@@ -109,6 +109,8 @@ def _make_light(dps: dict[str, Any] | None = None, spec: EntitySpec | None = Non
         entity._attr_effect_list = None
         entity._attr_supported_features = LightEntityFeature(0)
 
+    entity._optimistic_state = None  # set by __init__ normally
+    entity.async_write_ha_state = MagicMock()  # stub out HA framework call
     return entity
 
 
@@ -531,6 +533,7 @@ class TestLightEdgeCases:
         coord = _make_coordinator()
         spec = _make_light_spec(effects=("rainbow",))
         light = TuyaCloudlessLight(coord, spec)
+        light.async_write_ha_state = MagicMock()  # stub out HA framework call
         # Should not raise — just logs
         await light.async_turn_on(**{ATTR_EFFECT: "rainbow"})
         coord.async_send_dps.assert_called_once()

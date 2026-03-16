@@ -22,6 +22,11 @@ def _make_entry(gw_id: str = "gw001") -> MagicMock:
     coord._sequence = 42
     coord._session_key = None
     coord._consecutive_decode_errors = 0
+    # Public connection properties (PLAT-720)
+    coord.tcp_connected = True
+    coord.sequence_counter = 42
+    coord.session_key_active = False
+    coord.consecutive_decode_errors = 0
 
     state = MagicMock()
     state.available = True
@@ -90,6 +95,7 @@ class TestDiagnostics:
 
         entry = _make_entry()
         entry.runtime_data.coordinator._writer = None
+        entry.runtime_data.coordinator.tcp_connected = False  # update public property too
         result = await async_get_config_entry_diagnostics(MagicMock(), entry)
         assert result["connection"]["tcp_connected"] is False
 
@@ -101,6 +107,7 @@ class TestDiagnostics:
 
         entry = _make_entry()
         entry.runtime_data.coordinator._session_key = b"\x00" * 32
+        entry.runtime_data.coordinator.session_key_active = True  # update public property too
         result = await async_get_config_entry_diagnostics(MagicMock(), entry)
         assert result["connection"]["session_key_active"] is True
 

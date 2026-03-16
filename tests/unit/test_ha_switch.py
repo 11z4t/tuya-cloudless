@@ -51,6 +51,8 @@ def _make_switch(
     entity._spec = spec
     entity._attr_unique_id = f"{gw_id}_{spec.platform}_{spec.name}"
     entity._attr_translation_key = spec.name
+    entity._optimistic_state = None  # set by __init__ normally
+    entity.async_write_ha_state = MagicMock()  # stub out HA framework call
     return entity
 
 
