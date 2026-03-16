@@ -5,19 +5,33 @@
       "user": {
         "title": "Dodaj urządzenie Tuya",
         "description": "Wybierz, jak chcesz dodać urządzenie. **Szukaj** automatycznie skanuje sieć — upewnij się, że urządzenie jest włączone i podłączone do tej samej sieci Wi-Fi co Home Assistant.",
-        "data": { "setup_mode": "Metoda konfiguracji" },
-        "data_description": { "setup_mode": "Szukaj znajduje urządzenia automatycznie. Wybierz Ręczne, jeśli urządzenie nie zostanie znalezione." }
+        "data": {
+          "setup_mode": "Metoda konfiguracji"
+        },
+        "data_description": {
+          "setup_mode": "Szukaj znajduje urządzenia automatycznie. Wybierz Ręczne, jeśli urządzenie nie zostanie znalezione."
+        }
       },
       "select": {
         "title": "Znaleziono {count} urządzenie/urządzenia",
         "description": "Wybierz urządzenie, które chcesz dodać.",
-        "data": { "device": "Urządzenie" }
+        "data": {
+          "device": "Urządzenie"
+        }
       },
       "local_key": {
         "title": "Wprowadź klucz bezpieczeństwa",
         "description": "Twoje urządzenie pod adresem **{ip_address}** (firmware {firmware}) potrzebuje klucza bezpieczeństwa.\n\nKlucz jest wyświetlany podczas parowania z Tuya Cloudless. Jest przechowywany tylko w Home Assistant.",
-        "data": { "local_key": "Klucz bezpieczeństwa", "device_name": "Nazwa urządzenia", "profile": "Typ urządzenia" },
-        "data_description": { "local_key": "Klucz 16-znakowy z parowania", "device_name": "Własna nazwa w Home Assistant (zostaw puste, aby użyć adresu IP)", "profile": "Wybierz typ najlepiej pasujący do Twojego urządzenia" }
+        "data": {
+          "local_key": "Klucz bezpieczeństwa",
+          "device_name": "Nazwa urządzenia",
+          "profile": "Typ urządzenia"
+        },
+        "data_description": {
+          "local_key": "Klucz 16-znakowy z parowania",
+          "device_name": "Własna nazwa w Home Assistant (zostaw puste, aby użyć adresu IP)",
+          "profile": "Wybierz typ najlepiej pasujący do Twojego urządzenia"
+        }
       },
       "confirm": {
         "title": "Gotowe do połączenia",
@@ -27,25 +41,51 @@
       "manual": {
         "title": "Dodaj urządzenie ręcznie",
         "description": "Wprowadź dane urządzenia Tuya. ID urządzenia i klucz bezpieczeństwa są wyświetlane w narzędziu Tuya Cloudless.",
-        "data": { "gw_id": "ID urządzenia", "local_key": "Klucz bezpieczeństwa", "ip_address": "Adres IP", "protocol_version": "Model urządzenia", "profile": "Typ urządzenia", "device_name": "Nazwa urządzenia" },
-        "data_description": { "gw_id": "Unikalny identyfikator urządzenia (np. abc123def456)", "local_key": "Klucz 16-znakowy", "ip_address": "Adres IP urządzenia", "protocol_version": "Model 3.3 działa dla większości urządzeń od 2020 roku", "profile": "Wybierz najlepiej pasujący typ" }
+        "data": {
+          "gw_id": "ID urządzenia",
+          "local_key": "Klucz bezpieczeństwa",
+          "ip_address": "Adres IP",
+          "protocol_version": "Model urządzenia",
+          "profile": "Typ urządzenia",
+          "device_name": "Nazwa urządzenia"
+        },
+        "data_description": {
+          "gw_id": "Unikalny identyfikator urządzenia (np. abc123def456)",
+          "local_key": "Klucz 16-znakowy",
+          "ip_address": "Adres IP urządzenia",
+          "protocol_version": "Model 3.3 działa dla większości urządzeń od 2020 roku",
+          "profile": "Wybierz najlepiej pasujący typ"
+        }
       },
       "discovery": {
         "title": "Znaleziono urządzenie Tuya",
         "description": "Wykryto urządzenie pod adresem **{ip_address}** (firmware {firmware}).\n\nWprowadź klucz bezpieczeństwa, aby zakończyć konfigurację.",
-        "data": { "local_key": "Klucz bezpieczeństwa", "profile": "Typ urządzenia", "device_name": "Nazwa urządzenia" },
-        "data_description": { "local_key": "Klucz 16-znakowy z narzędzia Tuya Cloudless" }
+        "data": {
+          "local_key": "Klucz bezpieczeństwa",
+          "profile": "Typ urządzenia",
+          "device_name": "Nazwa urządzenia"
+        },
+        "data_description": {
+          "local_key": "Klucz 16-znakowy z narzędzia Tuya Cloudless"
+        }
       },
       "reauth_confirm": {
         "title": "Zaktualizuj klucz bezpieczeństwa",
         "description": "Klucz bezpieczeństwa dla **{device_name}** przestał działać. Wprowadź nowy klucz, aby ponownie się połączyć.",
-        "data": { "local_key": "Nowy klucz bezpieczeństwa", "ip_address": "Adres IP (jeśli się zmienił)" },
-        "data_description": { "local_key": "Klucz 16-znakowy z ostatniego parowania", "ip_address": "Zostaw puste, jeśli adres się nie zmienił" }
+        "data": {
+          "local_key": "Nowy klucz bezpieczeństwa",
+          "ip_address": "Adres IP (jeśli się zmienił)"
+        },
+        "data_description": {
+          "local_key": "Klucz 16-znakowy z ostatniego parowania",
+          "ip_address": "Zostaw puste, jeśli adres się nie zmienił"
+        }
       }
     },
     "error": {
       "cannot_connect": "Nie można dotrzeć do urządzenia — sprawdź adres IP i czy urządzenie jest w tej samej sieci",
       "invalid_local_key": "Nieprawidłowy klucz bezpieczeństwa — musi mieć dokładnie 16 znaków",
+      "invalid_auth_key": "Klucz bezpieczeństwa jest nieprawidłowy. Sprawdź klucz i spróbuj ponownie.",
       "invalid_gw_id": "Nieprawidłowe ID urządzenia — nie może być puste",
       "auth_failed": "Połączenie odrzucone — klucz może być nieprawidłowy lub urządzenie zostało sparowane ponownie",
       "no_devices_found": "Nie znaleziono urządzeń Tuya. Upewnij się, że urządzenie jest włączone i w tej samej sieci Wi-Fi. Użyj **Ręczne** powyżej.",
@@ -61,16 +101,51 @@
     "step": {
       "init": {
         "title": "Ustawienia urządzenia",
-        "data": { "ip_address": "Adres IP", "protocol_version": "Model urządzenia" },
-        "data_description": { "ip_address": "Zaktualizuj, jeśli adres IP się zmienił", "protocol_version": "Zmień tylko, jeśli urządzenie przestało odpowiadać po aktualizacji" }
+        "data": {
+          "ip_address": "Adres IP",
+          "protocol_version": "Model urządzenia"
+        },
+        "data_description": {
+          "ip_address": "Zaktualizuj, jeśli adres IP się zmienił",
+          "protocol_version": "Zmień tylko, jeśli urządzenie przestało odpowiadać po aktualizacji"
+        }
       }
     }
   },
   "entity": {
-    "switch": { "main_switch": { "name": "Przełącznik" } },
-    "light": { "main_light": { "name": "Światło" } },
-    "sensor": { "rssi": { "name": "Ponowne połączenia" }, "last_seen": { "name": "Ostatnio widziane" }, "power_consumption": { "name": "Moc" }, "current": { "name": "Prąd" } },
-    "binary_sensor": { "overload": { "name": "Przeciążenie" } },
-    "cover": { "cover": { "name": "Roleta" } }
+    "switch": {
+      "main_switch": {
+        "name": "Przełącznik"
+      }
+    },
+    "light": {
+      "main_light": {
+        "name": "Światło"
+      }
+    },
+    "sensor": {
+      "rssi": {
+        "name": "Ponowne połączenia"
+      },
+      "last_seen": {
+        "name": "Ostatnio widziane"
+      },
+      "power_consumption": {
+        "name": "Moc"
+      },
+      "current": {
+        "name": "Prąd"
+      }
+    },
+    "binary_sensor": {
+      "overload": {
+        "name": "Przeciążenie"
+      }
+    },
+    "cover": {
+      "cover": {
+        "name": "Roleta"
+      }
+    }
   }
 }

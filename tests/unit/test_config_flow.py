@@ -583,6 +583,283 @@ class TestConfigFlowCheckConnection:
 
         assert "ip_address" in errors
 
+    @pytest.mark.asyncio
+    async def test_check_connection_skips_key_validation_when_no_key(self) -> None:
+        """When local_key is empty, _validate_local_key is never called."""
+        flow = _make_config_flow()
+        _restore_method(flow, "_check_connection")
+        flow._validate_local_key = AsyncMock(return_value={})
+
+        writer = MagicMock()
+        writer.close = MagicMock()
+        writer.wait_closed = AsyncMock()
+
+        with patch(
+            "asyncio.open_connection",
+            return_value=(AsyncMock(), writer),
+        ):
+            errors = await flow._check_connection("10.0.0.1", local_key="")
+
+        assert errors == {}
+        flow._validate_local_key.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_check_connection_validates_key_when_provided(self) -> None:
+        """When local_key is 16 chars, _validate_local_key is called."""
+        flow = _make_config_flow()
+        _restore_method(flow, "_check_connection")
+        flow._validate_local_key = AsyncMock(return_value={})
+
+        writer = MagicMock()
+        writer.close = MagicMock()
+        writer.wait_closed = AsyncMock()
+
+        with patch(
+            "asyncio.open_connection",
+            return_value=(AsyncMock(), writer),
+        ):
+            errors = await flow._check_connection("10.0.0.1", local_key="0123456789abcdef")
+
+        assert errors == {}
+        flow._validate_local_key.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_check_connection_propagates_invalid_auth_key_error(self) -> None:
+        """A wrong key detected by _validate_local_key surfaces to caller."""
+        flow = _make_config_flow()
+        _restore_method(flow, "_check_connection")
+        flow._validate_local_key = AsyncMock(return_value={"base": "invalid_auth_key"})
+
+        writer = MagicMock()
+        writer.close = MagicMock()
+        writer.wait_closed = AsyncMock()
+
+        with patch(
+            "asyncio.open_connection",
+            return_value=(AsyncMock(), writer),
+        ):
+            errors = await flow._check_connection("10.0.0.1", local_key="0123456789abcdef")
+
+        assert errors == {"base": "invalid_auth_key"}
+
+
+class TestValidateLocalKey:
+    """Tests for _validate_local_key — best-effort key validation."""
+
+    @pytest.mark.asyncio
+    async def test_returns_empty_when_import_fails(self) -> None:
+        """If the protocol lib is not importable, skip validation."""
+        import builtins
+
+        flow = _make_config_flow()
+        _restore_method(flow, "_validate_local_key")
+
+        reader = AsyncMock()
+        writer = MagicMock()
+        writer.write = MagicMock()
+        writer.drain = AsyncMock()
+        writer.get_extra_info = MagicMock(return_value=("10.0.0.1", 6668))
+
+        real_import = builtins.__import__
+        _blocked = (
+            "tuya_cloudless.protocol",
+            "tuya_cloudless.crypto",
+            "tuya_cloudless.exceptions",
+        )
+
+        def mock_import(name: str, *args: Any, **kwargs: Any) -> Any:
+            if name in _blocked:
+                raise ImportError("mocked")
+            return real_import(name, *args, **kwargs)
+
+        with patch("builtins.__import__", side_effect=mock_import):
+            errors = await flow._validate_local_key(
+                reader, writer, local_key="0123456789abcdef", version="3.3"
+            )
+
+        assert errors == {}
+
+    @pytest.mark.asyncio
+    async def test_returns_empty_on_read_timeout(self) -> None:
+        """A timeout reading the device response is treated as OK."""
+        flow = _make_config_flow()
+        _restore_method(flow, "_validate_local_key")
+
+        reader = AsyncMock()
+        writer = MagicMock()
+        writer.write = MagicMock()
+        writer.drain = AsyncMock()
+        writer.get_extra_info = MagicMock(return_value=("10.0.0.1", 6668))
+
+        with (
+            patch(
+                "tuya_cloudless.protocol.encode_heartbeat",
+                return_value=b"\x00\x00U\xaa" + b"\x00" * 20,
+            ),
+            patch(
+                "custom_components.tuya_cloudless.config_flow.asyncio.wait_for",
+                side_effect=TimeoutError(),
+            ),
+        ):
+            errors = await flow._validate_local_key(
+                reader, writer, local_key="0123456789abcdef", version="3.3"
+            )
+
+        assert errors == {}
+
+    @pytest.mark.asyncio
+    async def test_returns_invalid_auth_key_on_crypto_error(self) -> None:
+        """A CryptoError during decode_frame means the key is wrong."""
+        from tuya_cloudless.crypto import CryptoError
+
+        flow = _make_config_flow()
+        _restore_method(flow, "_validate_local_key")
+
+        reader = AsyncMock()
+        writer = MagicMock()
+        writer.write = MagicMock()
+        writer.drain = AsyncMock()
+        writer.get_extra_info = MagicMock(return_value=("10.0.0.1", 6668))
+
+        dummy_frame = b"\x00\x00U\xaa" + b"\x00" * 24
+
+        with (
+            patch(
+                "tuya_cloudless.protocol.encode_heartbeat",
+                return_value=b"\x00\x00U\xaa" + b"\x00" * 20,
+            ),
+            patch(
+                "custom_components.tuya_cloudless.config_flow.asyncio.wait_for",
+                return_value=dummy_frame,
+            ),
+            patch(
+                "tuya_cloudless.protocol.split_frames",
+                return_value=([dummy_frame], b""),
+            ),
+            patch(
+                "tuya_cloudless.protocol.decode_frame",
+                side_effect=CryptoError("bad padding"),
+            ),
+        ):
+            errors = await flow._validate_local_key(
+                reader, writer, local_key="0123456789abcdef", version="3.3"
+            )
+
+        assert errors == {"base": "invalid_auth_key"}
+
+    @pytest.mark.asyncio
+    async def test_returns_empty_on_malformed_packet(self) -> None:
+        """A MalformedPacketError means we cannot conclude key is wrong — skip."""
+        from tuya_cloudless.exceptions import MalformedPacketError
+
+        flow = _make_config_flow()
+        _restore_method(flow, "_validate_local_key")
+
+        reader = AsyncMock()
+        writer = MagicMock()
+        writer.write = MagicMock()
+        writer.drain = AsyncMock()
+        writer.get_extra_info = MagicMock(return_value=("10.0.0.1", 6668))
+
+        dummy_frame = b"\x00\x00U\xaa" + b"\x00" * 24
+
+        with (
+            patch(
+                "tuya_cloudless.protocol.encode_heartbeat",
+                return_value=b"\x00\x00U\xaa" + b"\x00" * 20,
+            ),
+            patch(
+                "custom_components.tuya_cloudless.config_flow.asyncio.wait_for",
+                return_value=dummy_frame,
+            ),
+            patch(
+                "tuya_cloudless.protocol.split_frames",
+                return_value=([dummy_frame], b""),
+            ),
+            patch(
+                "tuya_cloudless.protocol.decode_frame",
+                side_effect=MalformedPacketError("bad prefix"),
+            ),
+        ):
+            errors = await flow._validate_local_key(
+                reader, writer, local_key="0123456789abcdef", version="3.3"
+            )
+
+        assert errors == {}
+
+    @pytest.mark.asyncio
+    async def test_returns_empty_when_no_complete_frames(self) -> None:
+        """If split_frames returns no complete frames, skip validation."""
+        flow = _make_config_flow()
+        _restore_method(flow, "_validate_local_key")
+
+        reader = AsyncMock()
+        writer = MagicMock()
+        writer.write = MagicMock()
+        writer.drain = AsyncMock()
+        writer.get_extra_info = MagicMock(return_value=("10.0.0.1", 6668))
+
+        with (
+            patch(
+                "tuya_cloudless.protocol.encode_heartbeat",
+                return_value=b"\x00\x00U\xaa" + b"\x00" * 20,
+            ),
+            patch(
+                "custom_components.tuya_cloudless.config_flow.asyncio.wait_for",
+                return_value=b"\x00\x01",
+            ),
+            patch(
+                "tuya_cloudless.protocol.split_frames",
+                return_value=([], b"\x00\x01"),
+            ),
+        ):
+            errors = await flow._validate_local_key(
+                reader, writer, local_key="0123456789abcdef", version="3.3"
+            )
+
+        assert errors == {}
+
+    @pytest.mark.asyncio
+    async def test_returns_empty_on_successful_decode(self) -> None:
+        """Successful decode_frame means key is correct — no error."""
+        from tuya_cloudless.protocol import TuyaFrame
+
+        flow = _make_config_flow()
+        _restore_method(flow, "_validate_local_key")
+
+        reader = AsyncMock()
+        writer = MagicMock()
+        writer.write = MagicMock()
+        writer.drain = AsyncMock()
+        writer.get_extra_info = MagicMock(return_value=("10.0.0.1", 6668))
+
+        dummy_frame = b"\x00\x00U\xaa" + b"\x00" * 24
+        good_frame = TuyaFrame(sequence=1, command=9, version="3.3", payload=b"")
+
+        with (
+            patch(
+                "tuya_cloudless.protocol.encode_heartbeat",
+                return_value=b"\x00\x00U\xaa" + b"\x00" * 20,
+            ),
+            patch(
+                "custom_components.tuya_cloudless.config_flow.asyncio.wait_for",
+                return_value=dummy_frame,
+            ),
+            patch(
+                "tuya_cloudless.protocol.split_frames",
+                return_value=([dummy_frame], b""),
+            ),
+            patch(
+                "tuya_cloudless.protocol.decode_frame",
+                return_value=good_frame,
+            ),
+        ):
+            errors = await flow._validate_local_key(
+                reader, writer, local_key="0123456789abcdef", version="3.3"
+            )
+
+        assert errors == {}
+
 
 # ── OptionsFlow async_step_init ────────────────────────────────────────────────
 

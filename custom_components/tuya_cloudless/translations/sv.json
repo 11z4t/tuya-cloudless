@@ -106,6 +106,7 @@
     "error": {
       "cannot_connect": "Det gick inte att nå enheten — kontrollera IP-adressen och att enheten är på samma nätverk som Home Assistant",
       "invalid_local_key": "Ogiltig säkerhetsnyckel — nyckeln måste vara exakt 16 tecken",
+      "invalid_auth_key": "Säkerhetsnyckeln är felaktig. Kontrollera nyckeln och försök igen.",
       "invalid_gw_id": "Ogiltigt enhets-ID — får inte vara tomt",
       "invalid_ip": "Ogiltig IP-adress — får inte vara tom",
       "auth_failed": "Anslutningen nekades — säkerhetsnyckeln kan vara felaktig eller enheten har kopplats ihop på nytt med Tuya-appen",

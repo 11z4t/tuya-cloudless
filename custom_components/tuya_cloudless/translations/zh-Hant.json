@@ -5,19 +5,33 @@
       "user": {
         "title": "新增Tuya裝置",
         "description": "選擇新增裝置的方式。**搜尋**會自動掃描您的網路——請確認裝置已開啟並連接至與Home Assistant相同的Wi-Fi。",
-        "data": { "setup_mode": "設定方式" },
-        "data_description": { "setup_mode": "搜尋會自動找到裝置。如果找不到裝置，請選擇手動。" }
+        "data": {
+          "setup_mode": "設定方式"
+        },
+        "data_description": {
+          "setup_mode": "搜尋會自動找到裝置。如果找不到裝置，請選擇手動。"
+        }
       },
       "select": {
         "title": "找到{count}個裝置",
         "description": "選擇您要新增的裝置。",
-        "data": { "device": "裝置" }
+        "data": {
+          "device": "裝置"
+        }
       },
       "local_key": {
         "title": "輸入安全金鑰",
         "description": "位於**{ip_address}**（韌體{firmware}）的裝置需要安全金鑰才能進行本地通訊。\n\n金鑰在使用Tuya Cloudless配對時顯示，僅儲存在Home Assistant中。",
-        "data": { "local_key": "安全金鑰", "device_name": "裝置名稱", "profile": "裝置類型" },
-        "data_description": { "local_key": "配對時取得的16位金鑰", "device_name": "在Home Assistant中顯示的名稱（留空則使用IP位址）", "profile": "選擇最符合您裝置的類型" }
+        "data": {
+          "local_key": "安全金鑰",
+          "device_name": "裝置名稱",
+          "profile": "裝置類型"
+        },
+        "data_description": {
+          "local_key": "配對時取得的16位金鑰",
+          "device_name": "在Home Assistant中顯示的名稱（留空則使用IP位址）",
+          "profile": "選擇最符合您裝置的類型"
+        }
       },
       "confirm": {
         "title": "準備連接",
@@ -27,25 +41,51 @@
       "manual": {
         "title": "手動新增裝置",
         "description": "輸入您的Tuya裝置詳細資訊。裝置ID和安全金鑰在Tuya Cloudless工具中顯示。",
-        "data": { "gw_id": "裝置ID", "local_key": "安全金鑰", "ip_address": "IP位址", "protocol_version": "裝置型號", "profile": "裝置類型", "device_name": "裝置名稱" },
-        "data_description": { "gw_id": "唯一裝置識別碼（例如abc123def456）", "local_key": "16位安全金鑰", "ip_address": "裝置IP位址", "protocol_version": "3.3適用於2020年後的大多數裝置", "profile": "選擇最符合的類型" }
+        "data": {
+          "gw_id": "裝置ID",
+          "local_key": "安全金鑰",
+          "ip_address": "IP位址",
+          "protocol_version": "裝置型號",
+          "profile": "裝置類型",
+          "device_name": "裝置名稱"
+        },
+        "data_description": {
+          "gw_id": "唯一裝置識別碼（例如abc123def456）",
+          "local_key": "16位安全金鑰",
+          "ip_address": "裝置IP位址",
+          "protocol_version": "3.3適用於2020年後的大多數裝置",
+          "profile": "選擇最符合的類型"
+        }
       },
       "discovery": {
         "title": "發現Tuya裝置",
         "description": "在**{ip_address}**（韌體{firmware}）偵測到裝置。\n\n輸入安全金鑰以完成設定。",
-        "data": { "local_key": "安全金鑰", "profile": "裝置類型", "device_name": "裝置名稱" },
-        "data_description": { "local_key": "Tuya Cloudless工具中的16位金鑰" }
+        "data": {
+          "local_key": "安全金鑰",
+          "profile": "裝置類型",
+          "device_name": "裝置名稱"
+        },
+        "data_description": {
+          "local_key": "Tuya Cloudless工具中的16位金鑰"
+        }
       },
       "reauth_confirm": {
         "title": "更新安全金鑰",
         "description": "**{device_name}**的安全金鑰已失效。請輸入新金鑰以重新連接。",
-        "data": { "local_key": "新安全金鑰", "ip_address": "IP位址（如已變更）" },
-        "data_description": { "local_key": "最近配對時的16位金鑰", "ip_address": "如果位址未變更請留空" }
+        "data": {
+          "local_key": "新安全金鑰",
+          "ip_address": "IP位址（如已變更）"
+        },
+        "data_description": {
+          "local_key": "最近配對時的16位金鑰",
+          "ip_address": "如果位址未變更請留空"
+        }
       }
     },
     "error": {
       "cannot_connect": "無法連接裝置——請檢查IP位址，確認裝置在相同網路中",
       "invalid_local_key": "安全金鑰無效——必須是正好16個字元",
+      "invalid_auth_key": "安全金鑰不正確。請檢查金鑰並重試。",
       "invalid_gw_id": "裝置ID無效——不能為空",
       "auth_failed": "連接被拒絕——金鑰可能不正確，或裝置已重新配對",
       "no_devices_found": "網路上未找到Tuya裝置。請確認裝置已開啟且在相同Wi-Fi上。使用上方的**手動**。",
@@ -61,16 +101,51 @@
     "step": {
       "init": {
         "title": "裝置設定",
-        "data": { "ip_address": "IP位址", "protocol_version": "裝置型號" },
-        "data_description": { "ip_address": "如果IP位址已變更請更新", "protocol_version": "僅在韌體更新後裝置停止回應時變更" }
+        "data": {
+          "ip_address": "IP位址",
+          "protocol_version": "裝置型號"
+        },
+        "data_description": {
+          "ip_address": "如果IP位址已變更請更新",
+          "protocol_version": "僅在韌體更新後裝置停止回應時變更"
+        }
       }
     }
   },
   "entity": {
-    "switch": { "main_switch": { "name": "開關" } },
-    "light": { "main_light": { "name": "燈" } },
-    "sensor": { "rssi": { "name": "重連次數" }, "last_seen": { "name": "最後上線" }, "power_consumption": { "name": "功率" }, "current": { "name": "電流" } },
-    "binary_sensor": { "overload": { "name": "過載保護" } },
-    "cover": { "cover": { "name": "窗簾" } }
+    "switch": {
+      "main_switch": {
+        "name": "開關"
+      }
+    },
+    "light": {
+      "main_light": {
+        "name": "燈"
+      }
+    },
+    "sensor": {
+      "rssi": {
+        "name": "重連次數"
+      },
+      "last_seen": {
+        "name": "最後上線"
+      },
+      "power_consumption": {
+        "name": "功率"
+      },
+      "current": {
+        "name": "電流"
+      }
+    },
+    "binary_sensor": {
+      "overload": {
+        "name": "過載保護"
+      }
+    },
+    "cover": {
+      "cover": {
+        "name": "窗簾"
+      }
+    }
   }
 }

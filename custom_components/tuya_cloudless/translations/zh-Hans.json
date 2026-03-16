@@ -5,19 +5,33 @@
       "user": {
         "title": "添加Tuya设备",
         "description": "选择添加设备的方式。**搜索**会自动扫描您的网络——请确保设备已开启并连接到与Home Assistant相同的Wi-Fi。",
-        "data": { "setup_mode": "设置方式" },
-        "data_description": { "setup_mode": "搜索会自动找到设备。如果找不到设备，请选择手动。" }
+        "data": {
+          "setup_mode": "设置方式"
+        },
+        "data_description": {
+          "setup_mode": "搜索会自动找到设备。如果找不到设备，请选择手动。"
+        }
       },
       "select": {
         "title": "找到{count}个设备",
         "description": "选择您要添加的设备。",
-        "data": { "device": "设备" }
+        "data": {
+          "device": "设备"
+        }
       },
       "local_key": {
         "title": "输入安全密钥",
         "description": "位于**{ip_address}**（固件{firmware}）的设备需要安全密钥才能进行本地通信。\n\n密钥在使用Tuya Cloudless配对时显示，仅存储在Home Assistant中。",
-        "data": { "local_key": "安全密钥", "device_name": "设备名称", "profile": "设备类型" },
-        "data_description": { "local_key": "配对时获得的16位密钥", "device_name": "在Home Assistant中显示的名称（留空则使用IP地址）", "profile": "选择最符合您设备的类型" }
+        "data": {
+          "local_key": "安全密钥",
+          "device_name": "设备名称",
+          "profile": "设备类型"
+        },
+        "data_description": {
+          "local_key": "配对时获得的16位密钥",
+          "device_name": "在Home Assistant中显示的名称（留空则使用IP地址）",
+          "profile": "选择最符合您设备的类型"
+        }
       },
       "confirm": {
         "title": "准备连接",
@@ -27,25 +41,51 @@
       "manual": {
         "title": "手动添加设备",
         "description": "输入您的Tuya设备的详细信息。设备ID和安全密钥在Tuya Cloudless工具中显示。",
-        "data": { "gw_id": "设备ID", "local_key": "安全密钥", "ip_address": "IP地址", "protocol_version": "设备型号", "profile": "设备类型", "device_name": "设备名称" },
-        "data_description": { "gw_id": "唯一设备标识符（例如abc123def456）", "local_key": "16位安全密钥", "ip_address": "设备IP地址", "protocol_version": "3.3适用于2020年后的大多数设备", "profile": "选择最符合的类型" }
+        "data": {
+          "gw_id": "设备ID",
+          "local_key": "安全密钥",
+          "ip_address": "IP地址",
+          "protocol_version": "设备型号",
+          "profile": "设备类型",
+          "device_name": "设备名称"
+        },
+        "data_description": {
+          "gw_id": "唯一设备标识符（例如abc123def456）",
+          "local_key": "16位安全密钥",
+          "ip_address": "设备IP地址",
+          "protocol_version": "3.3适用于2020年后的大多数设备",
+          "profile": "选择最符合的类型"
+        }
       },
       "discovery": {
         "title": "发现Tuya设备",
         "description": "在**{ip_address}**（固件{firmware}）检测到设备。\n\n输入安全密钥以完成设置。",
-        "data": { "local_key": "安全密钥", "profile": "设备类型", "device_name": "设备名称" },
-        "data_description": { "local_key": "Tuya Cloudless工具中的16位密钥" }
+        "data": {
+          "local_key": "安全密钥",
+          "profile": "设备类型",
+          "device_name": "设备名称"
+        },
+        "data_description": {
+          "local_key": "Tuya Cloudless工具中的16位密钥"
+        }
       },
       "reauth_confirm": {
         "title": "更新安全密钥",
         "description": "**{device_name}**的安全密钥已失效。请输入新密钥以重新连接。",
-        "data": { "local_key": "新安全密钥", "ip_address": "IP地址（如已更改）" },
-        "data_description": { "local_key": "最近配对时的16位密钥", "ip_address": "如果地址未更改请留空" }
+        "data": {
+          "local_key": "新安全密钥",
+          "ip_address": "IP地址（如已更改）"
+        },
+        "data_description": {
+          "local_key": "最近配对时的16位密钥",
+          "ip_address": "如果地址未更改请留空"
+        }
       }
     },
     "error": {
       "cannot_connect": "无法连接设备——请检查IP地址，确保设备在同一网络中",
       "invalid_local_key": "安全密钥无效——必须是正好16个字符",
+      "invalid_auth_key": "安全密钥不正确。请检查密钥并重试。",
       "invalid_gw_id": "设备ID无效——不能为空",
       "auth_failed": "连接被拒绝——密钥可能不正确，或设备已重新配对",
       "no_devices_found": "网络上未找到Tuya设备。请确保设备已开启且在同一Wi-Fi上。使用上方的**手动**。",
@@ -61,16 +101,51 @@
     "step": {
       "init": {
         "title": "设备设置",
-        "data": { "ip_address": "IP地址", "protocol_version": "设备型号" },
-        "data_description": { "ip_address": "如果IP地址已更改请更新", "protocol_version": "仅在固件更新后设备停止响应时更改" }
+        "data": {
+          "ip_address": "IP地址",
+          "protocol_version": "设备型号"
+        },
+        "data_description": {
+          "ip_address": "如果IP地址已更改请更新",
+          "protocol_version": "仅在固件更新后设备停止响应时更改"
+        }
       }
     }
   },
   "entity": {
-    "switch": { "main_switch": { "name": "开关" } },
-    "light": { "main_light": { "name": "灯" } },
-    "sensor": { "rssi": { "name": "重连次数" }, "last_seen": { "name": "最后在线" }, "power_consumption": { "name": "功率" }, "current": { "name": "电流" } },
-    "binary_sensor": { "overload": { "name": "过载保护" } },
-    "cover": { "cover": { "name": "窗帘" } }
+    "switch": {
+      "main_switch": {
+        "name": "开关"
+      }
+    },
+    "light": {
+      "main_light": {
+        "name": "灯"
+      }
+    },
+    "sensor": {
+      "rssi": {
+        "name": "重连次数"
+      },
+      "last_seen": {
+        "name": "最后在线"
+      },
+      "power_consumption": {
+        "name": "功率"
+      },
+      "current": {
+        "name": "电流"
+      }
+    },
+    "binary_sensor": {
+      "overload": {
+        "name": "过载保护"
+      }
+    },
+    "cover": {
+      "cover": {
+        "name": "窗帘"
+      }
+    }
   }
 }

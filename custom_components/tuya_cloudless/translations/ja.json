@@ -5,19 +5,33 @@
       "user": {
         "title": "Tuyaデバイスを追加",
         "description": "デバイスの追加方法を選択してください。**検索**はネットワークを自動的にスキャンします — デバイスがオンになっており、Home Assistantと同じWi-Fiに接続されていることを確認してください。",
-        "data": { "setup_mode": "設定方法" },
-        "data_description": { "setup_mode": "検索はデバイスを自動的に見つけます。デバイスが見つからない場合は手動を選択してください。" }
+        "data": {
+          "setup_mode": "設定方法"
+        },
+        "data_description": {
+          "setup_mode": "検索はデバイスを自動的に見つけます。デバイスが見つからない場合は手動を選択してください。"
+        }
       },
       "select": {
         "title": "{count}台のデバイスが見つかりました",
         "description": "追加するデバイスを選択してください。",
-        "data": { "device": "デバイス" }
+        "data": {
+          "device": "デバイス"
+        }
       },
       "local_key": {
         "title": "セキュリティキーを入力",
         "description": "**{ip_address}**のデバイス（ファームウェア{firmware}）はローカル通信にセキュリティキーが必要です。\n\nキーはTuya Cloudlessでデバイスをペアリングするときに表示されます。Home Assistantにのみ保存されます。",
-        "data": { "local_key": "セキュリティキー", "device_name": "デバイス名", "profile": "デバイスの種類" },
-        "data_description": { "local_key": "ペアリング時の16文字のキー", "device_name": "Home Assistantで表示する名前（空白の場合はIPアドレスを使用）", "profile": "デバイスに最も適したタイプを選択" }
+        "data": {
+          "local_key": "セキュリティキー",
+          "device_name": "デバイス名",
+          "profile": "デバイスの種類"
+        },
+        "data_description": {
+          "local_key": "ペアリング時の16文字のキー",
+          "device_name": "Home Assistantで表示する名前（空白の場合はIPアドレスを使用）",
+          "profile": "デバイスに最も適したタイプを選択"
+        }
       },
       "confirm": {
         "title": "接続の準備完了",
@@ -27,25 +41,51 @@
       "manual": {
         "title": "デバイスを手動で追加",
         "description": "Tuyaデバイスの詳細を入力してください。デバイスIDとセキュリティキーはTuya Cloudlessツールで表示されます。",
-        "data": { "gw_id": "デバイスID", "local_key": "セキュリティキー", "ip_address": "IPアドレス", "protocol_version": "デバイスモデル", "profile": "デバイスの種類", "device_name": "デバイス名" },
-        "data_description": { "gw_id": "一意のデバイス識別子（例：abc123def456）", "local_key": "16文字のセキュリティキー", "ip_address": "デバイスのIPアドレス", "protocol_version": "モデル3.3は2020年以降のほとんどのデバイスで動作します", "profile": "最も適したタイプを選択" }
+        "data": {
+          "gw_id": "デバイスID",
+          "local_key": "セキュリティキー",
+          "ip_address": "IPアドレス",
+          "protocol_version": "デバイスモデル",
+          "profile": "デバイスの種類",
+          "device_name": "デバイス名"
+        },
+        "data_description": {
+          "gw_id": "一意のデバイス識別子（例：abc123def456）",
+          "local_key": "16文字のセキュリティキー",
+          "ip_address": "デバイスのIPアドレス",
+          "protocol_version": "モデル3.3は2020年以降のほとんどのデバイスで動作します",
+          "profile": "最も適したタイプを選択"
+        }
       },
       "discovery": {
         "title": "Tuyaデバイスが見つかりました",
         "description": "**{ip_address}**（ファームウェア{firmware}）でデバイスが検出されました。\n\nセットアップを完了するためにセキュリティキーを入力してください。",
-        "data": { "local_key": "セキュリティキー", "profile": "デバイスの種類", "device_name": "デバイス名" },
-        "data_description": { "local_key": "Tuya Cloudlessツールの16文字のキー" }
+        "data": {
+          "local_key": "セキュリティキー",
+          "profile": "デバイスの種類",
+          "device_name": "デバイス名"
+        },
+        "data_description": {
+          "local_key": "Tuya Cloudlessツールの16文字のキー"
+        }
       },
       "reauth_confirm": {
         "title": "セキュリティキーを更新",
         "description": "**{device_name}**のセキュリティキーが動作しなくなりました。新しいキーを入力して再接続してください。",
-        "data": { "local_key": "新しいセキュリティキー", "ip_address": "IPアドレス（変更された場合）" },
-        "data_description": { "local_key": "最後のペアリング時の16文字のキー", "ip_address": "アドレスが変更されていない場合は空白のままにしてください" }
+        "data": {
+          "local_key": "新しいセキュリティキー",
+          "ip_address": "IPアドレス（変更された場合）"
+        },
+        "data_description": {
+          "local_key": "最後のペアリング時の16文字のキー",
+          "ip_address": "アドレスが変更されていない場合は空白のままにしてください"
+        }
       }
     },
     "error": {
       "cannot_connect": "デバイスに接続できません — IPアドレスを確認し、同じネットワーク上にあることを確認してください",
       "invalid_local_key": "無効なセキュリティキー — 正確に16文字でなければなりません",
+      "invalid_auth_key": "セキュリティキーが間違っています。キーを確認してもう一度お試しください。",
       "invalid_gw_id": "無効なデバイスID — 空にできません",
       "auth_failed": "接続が拒否されました — キーが間違っているか、デバイスが再ペアリングされた可能性があります",
       "no_devices_found": "Tuyaデバイスが見つかりません。デバイスがオンになっており、同じWi-Fiにあることを確認してください。上の**手動**を使用してください。",
@@ -61,16 +101,51 @@
     "step": {
       "init": {
         "title": "デバイス設定",
-        "data": { "ip_address": "IPアドレス", "protocol_version": "デバイスモデル" },
-        "data_description": { "ip_address": "IPアドレスが変更された場合は更新", "protocol_version": "ファームウェア更新後にデバイスが応答しなくなった場合のみ変更" }
+        "data": {
+          "ip_address": "IPアドレス",
+          "protocol_version": "デバイスモデル"
+        },
+        "data_description": {
+          "ip_address": "IPアドレスが変更された場合は更新",
+          "protocol_version": "ファームウェア更新後にデバイスが応答しなくなった場合のみ変更"
+        }
       }
     }
   },
   "entity": {
-    "switch": { "main_switch": { "name": "スイッチ" } },
-    "light": { "main_light": { "name": "ライト" } },
-    "sensor": { "rssi": { "name": "再接続回数" }, "last_seen": { "name": "最終オンライン" }, "power_consumption": { "name": "電力" }, "current": { "name": "電流" } },
-    "binary_sensor": { "overload": { "name": "過負荷保護" } },
-    "cover": { "cover": { "name": "ブラインド" } }
+    "switch": {
+      "main_switch": {
+        "name": "スイッチ"
+      }
+    },
+    "light": {
+      "main_light": {
+        "name": "ライト"
+      }
+    },
+    "sensor": {
+      "rssi": {
+        "name": "再接続回数"
+      },
+      "last_seen": {
+        "name": "最終オンライン"
+      },
+      "power_consumption": {
+        "name": "電力"
+      },
+      "current": {
+        "name": "電流"
+      }
+    },
+    "binary_sensor": {
+      "overload": {
+        "name": "過負荷保護"
+      }
+    },
+    "cover": {
+      "cover": {
+        "name": "ブラインド"
+      }
+    }
   }
 }

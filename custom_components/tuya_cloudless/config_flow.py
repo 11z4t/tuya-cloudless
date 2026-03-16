@@ -62,6 +62,7 @@ _LOCAL_KEY_LENGTH = 16
 _DISCOVERY_LISTEN_SECS = 5.0
 _DISCOVERY_TIMEOUT = _DISCOVERY_LISTEN_SECS + 1.0
 _CONNECTION_TIMEOUT = 3.0
+_KEY_VALIDATION_TIMEOUT = 4.0
 
 
 def _get_profile_options() -> list[SelectOptionDict]:
@@ -326,8 +327,12 @@ class TuyaCloudlessConfigFlow(ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             gw_id = self._device[CONF_GW_ID]
             ip_address = self._device[CONF_IP_ADDRESS]
+            dev_local_key = self._device.get(CONF_LOCAL_KEY, "")
+            dev_version = self._device.get(CONF_PROTOCOL_VERSION, DEFAULT_PROTOCOL_VERSION)
 
-            errors = await self._check_connection(ip_address)
+            errors = await self._check_connection(
+                ip_address, local_key=dev_local_key, version=dev_version
+            )
 
             if not errors:
                 await self.async_set_unique_id(gw_id)
@@ -339,9 +344,7 @@ class TuyaCloudlessConfigFlow(ConfigFlow, domain=DOMAIN):
                         CONF_GW_ID: gw_id,
                         CONF_LOCAL_KEY: self._device[CONF_LOCAL_KEY],
                         CONF_IP_ADDRESS: ip_address,
-                        CONF_PROTOCOL_VERSION: self._device.get(
-                            CONF_PROTOCOL_VERSION, DEFAULT_PROTOCOL_VERSION
-                        ),
+                        CONF_PROTOCOL_VERSION: dev_version,
                         CONF_PROFILE: self._device.get(CONF_PROFILE, "Generic Switch"),
                         CONF_DEVICE_NAME: title,
                     },
@@ -386,7 +389,10 @@ class TuyaCloudlessConfigFlow(ConfigFlow, domain=DOMAIN):
                 errors[CONF_IP_ADDRESS] = "cannot_connect"
 
             if not errors:
-                errors = await self._check_connection(ip_address)
+                manual_version = user_input.get(CONF_PROTOCOL_VERSION, DEFAULT_PROTOCOL_VERSION)
+                errors = await self._check_connection(
+                    ip_address, local_key=local_key, version=manual_version
+                )
 
             if not errors:
                 await self.async_set_unique_id(gw_id)
@@ -541,7 +547,12 @@ class TuyaCloudlessConfigFlow(ConfigFlow, domain=DOMAIN):
                 ip_address = user_input.get(CONF_IP_ADDRESS, "").strip() or reauth_entry.data.get(
                     CONF_IP_ADDRESS, ""
                 )
-                errors = await self._check_connection(ip_address)
+                reauth_version = reauth_entry.data.get(
+                    CONF_PROTOCOL_VERSION, DEFAULT_PROTOCOL_VERSION
+                )
+                errors = await self._check_connection(
+                    ip_address, local_key=local_key, version=reauth_version
+                )
 
                 if not errors:
                     new_data = {
@@ -602,7 +613,12 @@ class TuyaCloudlessConfigFlow(ConfigFlow, domain=DOMAIN):
             elif not ip_address:
                 errors[CONF_IP_ADDRESS] = "invalid_ip"
             else:
-                errors = await self._check_connection(ip_address)
+                reconfig_version = reconfigure_entry.data.get(
+                    CONF_PROTOCOL_VERSION, DEFAULT_PROTOCOL_VERSION
+                )
+                errors = await self._check_connection(
+                    ip_address, local_key=local_key, version=reconfig_version
+                )
 
             if not errors:
                 return self.async_update_reload_and_abort(
@@ -702,29 +718,135 @@ class TuyaCloudlessConfigFlow(ConfigFlow, domain=DOMAIN):
             for dev in raw
         ]
 
-    async def _check_connection(self, ip_address: str) -> dict[str, str]:
-        """Try a TCP connect to confirm the device is reachable.
+    async def _check_connection(
+        self,
+        ip_address: str,
+        *,
+        local_key: str = "",
+        version: str = DEFAULT_PROTOCOL_VERSION,
+    ) -> dict[str, str]:
+        """Try a TCP connect and optionally validate the local key against the device.
+
+        Opens a TCP connection to the device and, when a ``local_key`` is
+        provided, sends a heartbeat frame and attempts to decrypt the response.
+        A decryption failure means the key is wrong. A timeout waiting for the
+        response is treated as OK — the device may simply be slow or running
+        firmware that does not send an immediate heartbeat reply.
 
         Args:
             ip_address: Device IP address.
+            local_key: 16-character device security key. When non-empty the
+                method attempts to validate the key by exchanging a heartbeat
+                frame. Pass an empty string to skip key validation (TCP-only
+                check).
+            version: Protocol version string used for the heartbeat frame
+                (e.g. ``"3.3"``). Defaults to :data:`.const.DEFAULT_PROTOCOL_VERSION`.
 
         Returns:
             Error dict mapping field name to error key.
-            Empty if the connection succeeded.
+            Empty if the connection (and optional key validation) succeeded.
         """
         errors: dict[str, str] = {}
         try:
-            _reader, _writer = await asyncio.wait_for(
+            reader, writer = await asyncio.wait_for(
                 asyncio.open_connection(ip_address, DEFAULT_TCP_PORT),
                 timeout=_CONNECTION_TIMEOUT,
             )
-            _writer.close()
-            with contextlib.suppress(OSError):
-                await _writer.wait_closed()
         except (TimeoutError, OSError) as exc:
             _LOGGER.debug("Connection test to %s failed: %s", ip_address, exc)
             errors[CONF_IP_ADDRESS] = "cannot_connect"
+            return errors
+
+        try:
+            if local_key and len(local_key) == _LOCAL_KEY_LENGTH:
+                errors = await self._validate_local_key(
+                    reader, writer, local_key=local_key, version=version
+                )
+        finally:
+            writer.close()
+            with contextlib.suppress(OSError):
+                await writer.wait_closed()
+
         return errors
+
+    async def _validate_local_key(
+        self,
+        reader: asyncio.StreamReader,
+        writer: asyncio.StreamWriter,
+        *,
+        local_key: str,
+        version: str,
+    ) -> dict[str, str]:
+        """Send a heartbeat and attempt to decode the response to validate the key.
+
+        This is a best-effort check. A timeout waiting for the device response
+        is silently ignored — setup proceeds normally. Only a clear decryption
+        failure (wrong PKCS7 padding, bad GCM tag, etc.) causes an error.
+
+        Args:
+            reader: Open asyncio stream reader connected to the device.
+            writer: Open asyncio stream writer connected to the device.
+            local_key: 16-character device security key.
+            version: Protocol version string for the heartbeat frame.
+
+        Returns:
+            Error dict. Empty on success or timeout. ``{"base": "invalid_auth_key"}``
+            on confirmed decryption failure.
+        """
+        try:
+            from tuya_cloudless.crypto import AuthenticationError, CryptoError
+            from tuya_cloudless.exceptions import MalformedPacketError, UnsupportedVersionError
+            from tuya_cloudless.protocol import decode_frame, encode_heartbeat, split_frames
+        except ImportError:
+            _LOGGER.debug("Protocol library not available; skipping key validation")
+            return {}
+
+        key_bytes = local_key.encode("utf-8")
+
+        try:
+            heartbeat = encode_heartbeat(sequence=1, version=version, local_key=key_bytes)
+        except (UnsupportedVersionError, CryptoError) as exc:
+            _LOGGER.debug("Could not encode heartbeat for key validation: %s", exc)
+            return {}
+
+        try:
+            writer.write(heartbeat)
+            await writer.drain()
+        except OSError as exc:
+            _LOGGER.debug("Could not send heartbeat during key validation: %s", exc)
+            return {}
+
+        try:
+            raw = await asyncio.wait_for(reader.read(4096), timeout=_KEY_VALIDATION_TIMEOUT)
+        except TimeoutError:
+            _LOGGER.debug(
+                "Device at %s did not respond to heartbeat — skipping key validation",
+                writer.get_extra_info("peername"),
+            )
+            return {}
+        except OSError as exc:
+            _LOGGER.debug("Read error during key validation: %s", exc)
+            return {}
+
+        if not raw:
+            _LOGGER.debug("Device closed connection during key validation — skipping check")
+            return {}
+
+        frames, _ = split_frames(raw)
+        if not frames:
+            _LOGGER.debug("No complete frames in heartbeat response — skipping key validation")
+            return {}
+
+        try:
+            decode_frame(frames[0], version=version, local_key=key_bytes)
+        except (CryptoError, AuthenticationError) as exc:
+            _LOGGER.debug("Key validation failed — decryption error: %s", type(exc).__name__)
+            return {"base": "invalid_auth_key"}
+        except (MalformedPacketError, UnsupportedVersionError, ValueError) as exc:
+            _LOGGER.debug("Key validation inconclusive — frame parse error: %s", exc)
+            return {}
+
+        return {}
 
 
 # ── Options flow ───────────────────────────────────────────────────────────────
