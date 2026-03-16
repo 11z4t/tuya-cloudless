@@ -66,69 +66,52 @@ class TestResolveProfile:
         entry.entry_id = "test_entry"
         return entry
 
-    def _make_hass(self) -> MagicMock:
+    def _make_hass(self, registry: MagicMock | None = None) -> MagicMock:
+        from custom_components.tuya_cloudless import _KEY_PROFILE_REGISTRY
+        from custom_components.tuya_cloudless.const import DOMAIN
+
         hass = MagicMock()
-        hass.data = {}
+        reg = registry if registry is not None else MagicMock()
+        hass.data = {DOMAIN: {_KEY_PROFILE_REGISTRY: reg}}
         hass.async_add_executor_job = AsyncMock()
         return hass
 
     async def test_resolves_by_profile_name(self) -> None:
         from custom_components.tuya_cloudless import _resolve_profile
 
-        profile = DeviceProfile(
-            name="Smart Plug",
-            model="sp*",
-            entities=[],
-        )
+        profile = DeviceProfile(name="Smart Plug", model="sp*", entities=[])
+        mock_registry = MagicMock()
+        mock_registry.find_profile.return_value = profile
 
-        with (
-            patch(
-                "custom_components.tuya_cloudless.find_profile",
-                return_value=profile,
-            ),
-            patch("custom_components.tuya_cloudless._ensure_profiles", new=AsyncMock()),
-        ):
+        with patch("custom_components.tuya_cloudless._ensure_profiles", new=AsyncMock()):
             entry = self._make_entry({"profile": "Smart Plug"})
-            result = await _resolve_profile(self._make_hass(), entry)
+            result = await _resolve_profile(self._make_hass(mock_registry), entry)
         assert result is not None
         assert result.name == "Smart Plug"
 
     async def test_returns_none_when_no_profiles(self) -> None:
         from custom_components.tuya_cloudless import _resolve_profile
 
-        with (
-            patch(
-                "custom_components.tuya_cloudless.find_profile",
-                return_value=None,
-            ),
-            patch(
-                "custom_components.tuya_cloudless.list_profiles",
-                return_value=[],
-            ),
-            patch("custom_components.tuya_cloudless._ensure_profiles", new=AsyncMock()),
-        ):
+        mock_registry = MagicMock()
+        mock_registry.find_profile.return_value = None
+        mock_registry.list_profiles.return_value = []
+
+        with patch("custom_components.tuya_cloudless._ensure_profiles", new=AsyncMock()):
             entry = self._make_entry({"profile": "Missing Profile"})
-            result = await _resolve_profile(self._make_hass(), entry)
+            result = await _resolve_profile(self._make_hass(mock_registry), entry)
         assert result is None
 
     async def test_falls_back_to_first_profile(self) -> None:
         from custom_components.tuya_cloudless import _resolve_profile
 
         fallback = DeviceProfile(name="Generic Switch", model="*", entities=[])
+        mock_registry = MagicMock()
+        mock_registry.find_profile.return_value = None
+        mock_registry.list_profiles.return_value = [fallback]
 
-        with (
-            patch(
-                "custom_components.tuya_cloudless.find_profile",
-                return_value=None,
-            ),
-            patch(
-                "custom_components.tuya_cloudless.list_profiles",
-                return_value=[fallback],
-            ),
-            patch("custom_components.tuya_cloudless._ensure_profiles", new=AsyncMock()),
-        ):
+        with patch("custom_components.tuya_cloudless._ensure_profiles", new=AsyncMock()):
             entry = self._make_entry({"profile": "Unknown"})
-            result = await _resolve_profile(self._make_hass(), entry)
+            result = await _resolve_profile(self._make_hass(mock_registry), entry)
         assert result is not None
         assert result.name == "Generic Switch"
 
@@ -137,17 +120,13 @@ class TestResolveProfile:
         from custom_components.tuya_cloudless import _resolve_profile
 
         profile = DeviceProfile(name="Generic Switch", model="*", entities=[])
+        mock_registry = MagicMock()
+        mock_registry.find_profile.return_value = profile
 
-        with (
-            patch(
-                "custom_components.tuya_cloudless.find_profile",
-                return_value=profile,
-            ),
-            patch("custom_components.tuya_cloudless._ensure_profiles", new=AsyncMock()),
-        ):
+        with patch("custom_components.tuya_cloudless._ensure_profiles", new=AsyncMock()):
             # Legacy entry: no "profile" key, uses "device_type"
             entry = self._make_entry({"device_type": "switch"})
-            result = await _resolve_profile(self._make_hass(), entry)
+            result = await _resolve_profile(self._make_hass(mock_registry), entry)
 
         assert result is not None
         assert result.name == "Generic Switch"
@@ -170,11 +149,11 @@ class TestEnsureProfiles:
         hass.async_add_executor_job.assert_called_once()
 
     async def test_ensure_profiles_idempotent_when_already_loaded(self) -> None:
-        from custom_components.tuya_cloudless import _KEY_PROFILES_LOADED, _ensure_profiles
+        from custom_components.tuya_cloudless import _KEY_PROFILE_REGISTRY, _ensure_profiles
         from custom_components.tuya_cloudless.const import DOMAIN
 
         hass = MagicMock()
-        hass.data = {DOMAIN: {_KEY_PROFILES_LOADED: True}}
+        hass.data = {DOMAIN: {_KEY_PROFILE_REGISTRY: MagicMock()}}
         hass.async_add_executor_job = AsyncMock()
 
         await _ensure_profiles(hass)

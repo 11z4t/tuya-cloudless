@@ -16,6 +16,7 @@ __all__ = [
     "DPSpec",
     "DeviceProfile",
     "EntitySpec",
+    "ProfileRegistry",
     "find_profile",
     "find_profile_by_product_key",
     "init_profiles",
@@ -265,74 +266,119 @@ def load_profiles_from_dir(profiles_dir: Path) -> list[DeviceProfile]:
     return profiles
 
 
-# ── Global profile registry ───────────────────────────────────────────────────
+# ── Per-instance profile registry ────────────────────────────────────────────
 
-_REGISTRY: list[DeviceProfile] = []
+
+class ProfileRegistry:
+    """Per-hass-instance profile registry (no global mutable state).
+
+    Create one instance per Home Assistant instance and store it in
+    ``hass.data[DOMAIN]``. This prevents sharing mutable profile state
+    across multiple HA instances running in the same Python process.
+
+    Usage in integration setup::
+
+        registry = ProfileRegistry()
+        registry.init(PROFILES_DIR)          # sync — run in executor
+        hass.data[DOMAIN]["profile_registry"] = registry
+    """
+
+    __slots__ = ("_profiles",)
+
+    def __init__(self) -> None:
+        self._profiles: list[DeviceProfile] = []
+
+    def init(self, profiles_dir: Path) -> None:
+        """Load profiles from *profiles_dir* into this registry.
+
+        Call once per instance. Thread-safe for single-writer scenarios
+        (HA event loop is single-threaded).
+
+        Args:
+            profiles_dir: Directory containing ``*.yaml`` profile files.
+        """
+        self._profiles = load_profiles_from_dir(profiles_dir)
+        _LOGGER.info(
+            "Profile registry ready: %d profiles loaded from %s",
+            len(self._profiles),
+            profiles_dir,
+        )
+
+    def list_profiles(self) -> list[DeviceProfile]:
+        """Return all profiles in this registry (shallow copy)."""
+        return list(self._profiles)
+
+    def find_profile(self, name: str) -> DeviceProfile | None:
+        """Find a profile by its exact display name.
+
+        Args:
+            name: Profile name as stored in config entry data.
+
+        Returns:
+            Matching :class:`DeviceProfile`, or ``None`` if not found.
+        """
+        for profile in self._profiles:
+            if profile.name == name:
+                return profile
+        return None
+
+    def find_profile_by_product_key(self, product_key: str) -> DeviceProfile | None:
+        """Find the best-matching profile for a device product key.
+
+        Uses glob-style matching against each profile's ``model`` pattern.
+        The first match wins (alphabetical profile file order).
+
+        Args:
+            product_key: Product key string from UDP device discovery.
+
+        Returns:
+            Best-matching :class:`DeviceProfile`, or ``None`` if none match.
+        """
+        fallback: DeviceProfile | None = None
+        for profile in self._profiles:
+            if profile.model == "*":
+                if fallback is None:
+                    fallback = profile
+                continue
+            if fnmatch.fnmatch(product_key.lower(), profile.model.lower()):
+                return profile
+        return fallback
+
+    def __len__(self) -> int:
+        return len(self._profiles)
+
+
+# ── Module-level compatibility helpers ────────────────────────────────────────
+# These wrap a single module-level ProfileRegistry for callers (config_flow,
+# tests) that cannot easily receive a hass-scoped registry.  Do NOT use these
+# from integration setup code — use a per-hass ProfileRegistry via hass.data.
+
+_COMPAT_REGISTRY: ProfileRegistry = ProfileRegistry()
 
 
 def init_profiles(profiles_dir: Path) -> None:
-    """Load all profiles from *profiles_dir* into the module-level registry.
+    """Load profiles into the module-level compatibility registry.
 
-    Call this once at integration startup. Thread-safe for single-writer
-    scenarios (HA event loop is single-threaded).
+    .. note::
+        For HA integration setup, prefer creating a :class:`ProfileRegistry`
+        directly and storing it in ``hass.data[DOMAIN]``.
 
     Args:
         profiles_dir: Directory containing ``*.yaml`` profile files.
     """
-    global _REGISTRY
-    _REGISTRY = load_profiles_from_dir(profiles_dir)
-    _LOGGER.info(
-        "Profile registry ready: %d profiles loaded from %s",
-        len(_REGISTRY),
-        profiles_dir,
-    )
+    _COMPAT_REGISTRY.init(profiles_dir)
 
 
 def list_profiles() -> list[DeviceProfile]:
-    """Return all profiles in the registry.
-
-    Returns:
-        Shallow copy of the registry list (stable across mutations).
-    """
-    return list(_REGISTRY)
+    """Return all profiles in the module-level compatibility registry."""
+    return _COMPAT_REGISTRY.list_profiles()
 
 
 def find_profile(name: str) -> DeviceProfile | None:
-    """Find a profile by its exact display name.
-
-    Args:
-        name: Profile name as stored in config entry data.
-
-    Returns:
-        Matching :class:`DeviceProfile`, or ``None`` if not found.
-    """
-    for profile in _REGISTRY:
-        if profile.name == name:
-            return profile
-    return None
+    """Find a profile by name in the module-level compatibility registry."""
+    return _COMPAT_REGISTRY.find_profile(name)
 
 
 def find_profile_by_product_key(product_key: str) -> DeviceProfile | None:
-    """Find the best-matching profile for a device product key.
-
-    Uses glob-style matching against each profile's ``model`` pattern.
-    The first match wins (alphabetical profile file order).
-
-    Args:
-        product_key: Product key string from UDP device discovery.
-
-    Returns:
-        Best-matching :class:`DeviceProfile`, or ``None`` if none match.
-    """
-    for profile in _REGISTRY:
-        if profile.model == "*":
-            continue  # Generic catch-all — only match as last resort
-        if fnmatch.fnmatch(product_key.lower(), profile.model.lower()):
-            return profile
-
-    # Fall back to the first wildcard profile
-    for profile in _REGISTRY:
-        if profile.model == "*":
-            return profile
-
-    return None
+    """Find the best-matching profile in the module-level compatibility registry."""
+    return _COMPAT_REGISTRY.find_profile_by_product_key(product_key)

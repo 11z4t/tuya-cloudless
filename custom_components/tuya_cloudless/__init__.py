@@ -42,9 +42,7 @@ from homeassistant.helpers.device_registry import DeviceInfo
 from tuya_cloudless.profiles import (
     DeviceProfile,
     EntitySpec,
-    find_profile,
-    init_profiles,
-    list_profiles,
+    ProfileRegistry,
 )
 
 from .const import (
@@ -63,30 +61,35 @@ from .coordinator import TuyaCloudlessCoordinator
 _LOGGER = logging.getLogger(__name__)
 
 # Per-hass domain data keys
-_KEY_PROFILES_LOADED = "profiles_loaded"
-_KEY_PROFILES_LOCK = "profiles_lock"
+_KEY_PROFILE_REGISTRY = "profile_registry"
+_KEY_PROFILE_LOCK = "profile_lock"
 
 
 async def _ensure_profiles(hass: HomeAssistant) -> None:
     """Load device profiles from disk if not already loaded for this HA instance.
+
+    Creates a :class:`~tuya_cloudless.profiles.ProfileRegistry` per hass
+    instance and stores it in ``hass.data[DOMAIN]``.  This isolates profile
+    state across multiple HA instances in the same Python process (PLAT-770).
 
     Uses a per-hass asyncio.Lock to prevent duplicate loading when multiple
     config entries set up concurrently. Disk I/O runs in the executor thread pool.
     """
     domain_data: dict[str, object] = hass.data.setdefault(DOMAIN, {})
 
-    # Fast path: already loaded
-    if domain_data.get(_KEY_PROFILES_LOADED):
+    # Fast path: registry already created for this hass instance
+    if _KEY_PROFILE_REGISTRY in domain_data:
         return
 
-    # Ensure lock exists (only one coroutine reaches this per HA instance)
-    if _KEY_PROFILES_LOCK not in domain_data:
-        domain_data[_KEY_PROFILES_LOCK] = asyncio.Lock()
+    # Ensure lock exists (only one coroutine races here per HA instance)
+    if _KEY_PROFILE_LOCK not in domain_data:
+        domain_data[_KEY_PROFILE_LOCK] = asyncio.Lock()
 
-    async with domain_data[_KEY_PROFILES_LOCK]:  # type: ignore[union-attr]
-        if not domain_data.get(_KEY_PROFILES_LOADED):
-            await hass.async_add_executor_job(init_profiles, PROFILES_DIR)
-            domain_data[_KEY_PROFILES_LOADED] = True
+    async with domain_data[_KEY_PROFILE_LOCK]:  # type: ignore[union-attr]
+        if _KEY_PROFILE_REGISTRY not in domain_data:
+            registry = ProfileRegistry()
+            await hass.async_add_executor_job(registry.init, PROFILES_DIR)
+            domain_data[_KEY_PROFILE_REGISTRY] = registry
 
 
 async def _resolve_profile(hass: HomeAssistant, entry: ConfigEntry) -> DeviceProfile | None:
@@ -107,6 +110,8 @@ async def _resolve_profile(hass: HomeAssistant, entry: ConfigEntry) -> DevicePro
     """
     await _ensure_profiles(hass)
 
+    registry: ProfileRegistry = hass.data[DOMAIN][_KEY_PROFILE_REGISTRY]  # type: ignore[assignment]
+
     # New entries: profile name stored directly
     profile_name: str | None = entry.data.get(CONF_PROFILE)
 
@@ -115,11 +120,11 @@ async def _resolve_profile(hass: HomeAssistant, entry: ConfigEntry) -> DevicePro
         device_type = entry.data.get(CONF_DEVICE_TYPE, "generic")
         profile_name = DEVICE_TYPE_TO_PROFILE.get(device_type, "Generic Switch")
 
-    profile = find_profile(profile_name) if profile_name else None
+    profile = registry.find_profile(profile_name) if profile_name else None
 
     if profile is None:
         # Last resort: use the first loaded profile
-        all_profiles = list_profiles()
+        all_profiles = registry.list_profiles()
         profile = all_profiles[0] if all_profiles else None
         if profile:
             _LOGGER.warning(
