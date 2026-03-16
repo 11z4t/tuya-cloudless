@@ -41,6 +41,9 @@ from .const import (
     DEFAULT_OPT_RECONNECT_MAX_DELAY,
     DEFAULT_TCP_PORT,
     DOMAIN,
+    EVENT_TUYA_CONNECTED,
+    EVENT_TUYA_DISCONNECTED,
+    EVENT_TUYA_DP_CHANGED,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -301,6 +304,7 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.state.last_error = None
         _LOGGER.info("[%s] Connected to %s", self._gw_id, self._ip)
         self.async_update_listeners()
+        self._fire_event(EVENT_TUYA_CONNECTED)
 
         # Send initial DP_QUERY so entities are populated immediately after connect
         # without waiting for the device to push an unsolicited update (PLAT-761).
@@ -321,6 +325,8 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     async def _disconnect(self) -> None:
         """Close TCP connection if open."""
         if self._writer is not None:
+            if self.state.available:
+                self._fire_event(EVENT_TUYA_DISCONNECTED)
             try:
                 self._writer.close()
                 await self._writer.wait_closed()
@@ -566,6 +572,7 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self.state.last_seen = datetime.now(UTC)
             _LOGGER.debug("[%s] DPS update: %s", self._gw_id, list(dps.keys()))
             self.async_set_updated_data(self.state.dps)
+            self._fire_event(EVENT_TUYA_DP_CHANGED, {"dps": dict(dps)})
 
     # ── Session key negotiation (v3.4/3.5) ───────────────────────────────────
 
@@ -849,6 +856,30 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         return self.state.last_error
 
     # ── Utility ───────────────────────────────────────────────────────────────
+
+    @callback
+    def _fire_event(self, event_type: str, extra_data: dict | None = None) -> None:
+        """Fire a Tuya Cloudless event on the HA event bus.
+
+        Includes the HA device registry ID so that device automations can filter
+        by device.  If the device is not yet in the registry (e.g. first connect
+        before entities are set up) the gw_id is used as a fallback.
+
+        Args:
+            event_type: Event type string, one of EVENT_TUYA_*.
+            extra_data: Optional additional keys to include in event data.
+        """
+        from homeassistant.const import ATTR_DEVICE_ID
+        from homeassistant.helpers import device_registry as dr
+
+        device = dr.async_get(self.hass).async_get_device(
+            identifiers={(DOMAIN, self._gw_id)}
+        )
+        device_id: str = device.id if device is not None else self._gw_id
+        data: dict = {ATTR_DEVICE_ID: device_id, CONF_GW_ID: self._gw_id}
+        if extra_data:
+            data.update(extra_data)
+        self.hass.bus.async_fire(event_type, data)
 
     def _next_sequence(self) -> int:
         """Return the next monotonically increasing sequence number."""

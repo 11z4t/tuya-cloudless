@@ -20,6 +20,9 @@ __all__ = [
     "DEVICE_TYPE_SWITCH",
     "DEVICE_TYPE_TO_PROFILE",
     "DOMAIN",
+    "EVENT_TUYA_CONNECTED",
+    "EVENT_TUYA_DISCONNECTED",
+    "EVENT_TUYA_DP_CHANGED",
     "PLATFORMS",
     "PROFILES_DIR",
 ]
@@ -107,3 +110,8 @@ CONFIG_ENTRY_VERSION = 2
 
 # Number of consecutive connection failures before raising a connectivity repair issue
 CONNECTIVITY_ISSUE_THRESHOLD: int = 10
+
+# Logbook / device trigger event types
+EVENT_TUYA_CONNECTED = "tuya_cloudless_connected"
+EVENT_TUYA_DISCONNECTED = "tuya_cloudless_disconnected"
+EVENT_TUYA_DP_CHANGED = "tuya_cloudless_dp_changed"

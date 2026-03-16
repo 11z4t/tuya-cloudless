@@ -20,6 +20,7 @@ def _make_coord() -> object:
 
     coord = TuyaCloudlessCoordinator.__new__(TuyaCloudlessCoordinator)
     coord._hass = hass
+    coord.hass = hass
     coord._entry_id = "test"
     coord._gw_id = "gw001"
     coord.device_name = "gw001"
