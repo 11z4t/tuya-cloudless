@@ -3,169 +3,169 @@
     "flow_title": "{name}",
     "step": {
       "pair": {
-        "title": "Parningsverktyg",
-        "description": "Enhetsuppgifter importerades från Tuya Cloudless-parningsverktyget. Kontrollera att uppgifterna är korrekta och klicka på **Nästa** för att testa anslutningen.",
+        "title": "Pairing tool",
+        "description": "Device details were imported from the Tuya Cloudless pairing tool. Verify that the details are correct and click **Next** to test the connection.",
         "data": {
-          "gw_id": "Enhets-ID",
-          "local_key": "Säkerhetsnyckel",
-          "ip_address": "IP-adress"
+          "gw_id": "Device ID",
+          "local_key": "Security key",
+          "ip_address": "IP address"
         }
       },
       "user": {
-        "title": "Lägg till en Tuya-enhet",
-        "description": "Välj hur du vill lägga till din enhet. **Sök** hittar enheter automatiskt på ditt nätverk — se till att enheten är påslagen och ansluten till samma Wi-Fi som Home Assistant.",
+        "title": "Add a Tuya device",
+        "description": "Choose how you want to add your device. **Scan** finds devices automatically on your network — make sure the device is powered on and connected to the same Wi-Fi as Home Assistant.",
         "data": {
-          "setup_mode": "Inställningsmetod"
+          "setup_mode": "Setup method"
         },
         "data_description": {
-          "setup_mode": "Sök hittar enheter automatiskt. Välj manuell om din enhet inte hittas."
+          "setup_mode": "Scan finds devices automatically. Choose manual if your device is not found."
         }
       },
       "select": {
-        "title": "Hittade {count} enhet(er)",
-        "description": "Välj den enhet du vill lägga till.",
+        "title": "Found {count} device(s)",
+        "description": "Select the device you want to add.",
         "data": {
-          "device": "Enhet"
+          "device": "Device"
         }
       },
       "local_key": {
-        "title": "Ange säkerhetsnyckeln",
-        "description": "Din enhet på **{ip_address}** (firmware {firmware}) behöver en säkerhetsnyckel för att kommunicera lokalt.\n\nNyckeln visas när du kopplar ihop enheten med [Tuya Cloudless-verktyget]({pairing_tool_url}). Den lagras bara i Home Assistant — inget skickas till molnet.",
+        "title": "Enter the security key",
+        "description": "Your device at **{ip_address}** (firmware {firmware}) needs a security key to communicate locally.\n\nThe key is shown when you pair the device using the [Tuya Cloudless pairing tool]({pairing_tool_url}). It is stored only in Home Assistant — nothing is sent to the cloud.",
         "data": {
-          "local_key": "Säkerhetsnyckel",
-          "device_name": "Enhetsnamn",
-          "profile": "Enhetstyp"
+          "local_key": "Security key",
+          "device_name": "Device name",
+          "profile": "Device type"
         },
         "data_description": {
-          "local_key": "16 tecken från ihopkopplingen",
-          "device_name": "Ett eget namn som visas i Home Assistant (lämna tomt för att använda IP-adressen)",
-          "profile": "Välj den typ som passar din enhet bäst"
+          "local_key": "16-character key from the pairing tool",
+          "device_name": "A friendly name shown in Home Assistant (leave empty to use the IP address)",
+          "profile": "Select the type that best matches your device"
         }
       },
       "confirm": {
-        "title": "Redo att ansluta",
-        "description": "**{device_name}** på `{ip_address}` läggs till i Home Assistant.\n\nKlicka på **Anslut** för att testa anslutningen och slutföra inställningen.",
+        "title": "Ready to connect",
+        "description": "**{device_name}** at `{ip_address}` will be added to Home Assistant.\n\nClick **Connect** to test the connection and finish setup.",
         "data": {}
       },
       "manual": {
-        "title": "Lägg till enhet manuellt",
-        "description": "Ange uppgifterna för din Tuya-enhet. Enhets-ID och säkerhetsnyckel visas i [Tuya Cloudless-verktyget]({pairing_tool_url}).",
+        "title": "Add device manually",
+        "description": "Enter the details for your Tuya device. The device ID and security key are shown in the [Tuya Cloudless pairing tool]({pairing_tool_url}).",
         "data": {
-          "gw_id": "Enhets-ID",
-          "local_key": "Säkerhetsnyckel",
-          "ip_address": "IP-adress",
-          "protocol_version": "Enhetsmodell",
-          "profile": "Enhetstyp",
-          "device_name": "Enhetsnamn"
+          "gw_id": "Device ID",
+          "local_key": "Security key",
+          "ip_address": "IP address",
+          "protocol_version": "Device model",
+          "profile": "Device type",
+          "device_name": "Device name"
         },
         "data_description": {
-          "gw_id": "Unikt ID för enheten (visas under ihopkopplingen, t.ex. abc123def456)",
-          "local_key": "16 tecken från ihopkopplingen",
-          "ip_address": "Enhetens IP-adress (ange en fast adress i routern för bättre stabilitet)",
-          "protocol_version": "Modell 3.3 fungerar för de flesta enheter tillverkade efter 2020",
-          "profile": "Välj den typ som passar din enhet bäst"
+          "gw_id": "Unique device identifier (shown during pairing, e.g. abc123def456)",
+          "local_key": "16-character security key from the pairing tool",
+          "ip_address": "Device IP address (set a fixed address in your router for best reliability)",
+          "protocol_version": "Model 3.3 works for most devices made after 2020",
+          "profile": "Select the type that best matches your device"
         }
       },
       "discovery": {
-        "title": "Tuya-enhet hittad",
-        "description": "En enhet hittades på **{ip_address}** (firmware {firmware}).\n\nAnge säkerhetsnyckeln från [Tuya Cloudless-verktyget]({pairing_tool_url}) för att slutföra inställningen.",
+        "title": "Tuya device found",
+        "description": "A device was detected at **{ip_address}** (firmware {firmware}).\n\nEnter the security key from the [Tuya Cloudless pairing tool]({pairing_tool_url}) to finish setup.",
         "data": {
-          "local_key": "Säkerhetsnyckel",
-          "profile": "Enhetstyp",
-          "device_name": "Enhetsnamn"
+          "local_key": "Security key",
+          "profile": "Device type",
+          "device_name": "Device name"
         },
         "data_description": {
-          "local_key": "16 tecken från Tuya Cloudless-verktyget"
+          "local_key": "16-character key from the Tuya Cloudless pairing tool"
         }
       },
       "reauth_confirm": {
-        "title": "Uppdatera säkerhetsnyckeln",
-        "description": "Säkerhetsnyckeln för **{device_name}** har slutat fungera. Det händer om enheten har återställts till fabriksinställningar eller kopplats ihop på nytt.\n\nHämta den nya nyckeln från [Tuya Cloudless-verktyget]({pairing_tool_url}) och ange den nedan för att återansluta.",
+        "title": "Update security key",
+        "description": "The security key for **{device_name}** stopped working. This happens if the device was factory reset or paired again.\n\nGet the new key from the [Tuya Cloudless pairing tool]({pairing_tool_url}) and enter it below to reconnect.",
         "data": {
-          "local_key": "Ny säkerhetsnyckel",
-          "ip_address": "IP-adress (om den har ändrats)"
+          "local_key": "New security key",
+          "ip_address": "IP address (if it changed)"
         },
         "data_description": {
-          "local_key": "16 tecken från den senaste ihopkopplingen",
-          "ip_address": "Lämna tomt om adressen inte har ändrats"
+          "local_key": "16-character key from the latest pairing",
+          "ip_address": "Leave empty if the address has not changed"
         }
       },
       "reconfigure": {
-        "title": "Ändra anslutningsinställningar",
-        "description": "Uppdatera IP-adress eller säkerhetsnyckel för **{device_name}** utan att ta bort och lägga till enheten på nytt.",
+        "title": "Update connection settings",
+        "description": "Update the IP address or security key for **{device_name}** without removing and re-adding the device.",
         "data": {
-          "ip_address": "IP-adress",
-          "local_key": "Säkerhetsnyckel"
+          "ip_address": "IP address",
+          "local_key": "Security key"
         },
         "data_description": {
-          "ip_address": "Enhetens aktuella IP-adress på nätverket",
-          "local_key": "16-teckens säkerhetsnyckel"
+          "ip_address": "Current IP address of the device on your network",
+          "local_key": "16-character security key"
         }
       }
     },
     "error": {
-      "cannot_connect": "Det gick inte att nå enheten — kontrollera IP-adressen och att enheten är på samma nätverk som Home Assistant",
-      "invalid_local_key": "Ogiltig säkerhetsnyckel — nyckeln måste vara exakt 16 tecken",
-      "invalid_gw_id": "Ogiltigt enhets-ID — får inte vara tomt",
-      "invalid_ip": "Ogiltig IP-adress — får inte vara tom",
-      "auth_failed": "Anslutningen nekades — säkerhetsnyckeln kan vara felaktig eller enheten har kopplats ihop på nytt med Tuya-appen",
-      "no_devices_found": "Inga Tuya-enheter hittades på nätverket. Se till att enheten är påslagen och på samma Wi-Fi. Byt till **Manuell** ovan för att ange uppgifterna för hand.",
-      "unknown": "Oväntat fel — kontrollera Home Assistant-loggen för detaljer"
+      "cannot_connect": "Could not reach the device — check the IP address and that the device is on the same network as Home Assistant",
+      "invalid_local_key": "Invalid security key — must be exactly 16 characters",
+      "invalid_gw_id": "Invalid device ID — must not be empty",
+      "invalid_ip": "Invalid IP address — must not be empty",
+      "auth_failed": "Connection refused — the security key may be wrong, or the device was paired again using the Tuya app",
+      "no_devices_found": "No Tuya devices found on your network. Make sure the device is powered on and on the same Wi-Fi. Switch to **Manual** above to enter details by hand.",
+      "unknown": "Unexpected error — check the Home Assistant log for details"
     },
     "abort": {
-      "already_configured": "Den här enheten är redan inlagd",
-      "not_tuya_device": "Enheten svarade inte som förväntat",
-      "reauth_successful": "Säkerhetsnyckeln uppdaterades — enheten är ansluten igen",
-      "reconfigure_successful": "Inställningarna uppdaterades — enheten laddas om"
+      "already_configured": "This device is already set up",
+      "not_tuya_device": "The device did not respond as expected",
+      "reauth_successful": "Security key updated — the device is connected again",
+      "reconfigure_successful": "Settings updated — the device is reloading"
     }
   },
   "exceptions": {
     "device_unavailable": {
-      "message": "Enheten är inte tillgänglig — anslutningen är bruten"
+      "message": "Device is unavailable — the connection is down"
     },
     "command_timeout": {
-      "message": "Kommandot nådde inte enheten inom tidsgränsen — försök igen"
+      "message": "Command did not reach the device within the timeout — please try again"
     },
     "entry_not_found": {
-      "message": "Konfigurationsposten hittades inte"
+      "message": "Config entry not found"
     },
     "entry_not_loaded": {
-      "message": "Konfigurationsposten är inte laddad"
+      "message": "Config entry is not loaded"
     },
     "send_failed": {
-      "message": "Det gick inte att skicka kommandot till enheten"
+      "message": "Failed to send command to the device"
     }
   },
   "options": {
     "step": {
       "init": {
-        "title": "Enhetsinställningar",
+        "title": "Device settings",
         "data": {
-          "ip_address": "IP-adress",
-          "protocol_version": "Enhetsmodell",
-          "heartbeat_interval": "Hjärtslag-intervall (sekunder)",
-          "command_timeout": "Kommando-timeout (sekunder)",
-          "reconnect_max_delay": "Max väntetid vid återanslutning (sekunder)"
+          "ip_address": "IP address",
+          "protocol_version": "Device model",
+          "heartbeat_interval": "Heartbeat interval (seconds)",
+          "command_timeout": "Command timeout (seconds)",
+          "reconnect_max_delay": "Max reconnect delay (seconds)"
         },
         "data_description": {
-          "ip_address": "Uppdatera om enhetens IP-adress har ändrats",
-          "protocol_version": "Ändra bara om enheten slutade svara efter en firmware-uppdatering",
-          "heartbeat_interval": "Hur ofta ett hjärtslag skickas för att kontrollera anslutningen (5–300 s, standard 20)",
-          "command_timeout": "Hur länge integreringen väntar på svar vid ett kommando (1–30 s, standard 5)",
-          "reconnect_max_delay": "Longest wait between reconnection attempts (10–3600 s, standard 300)"
+          "ip_address": "Update if the device IP address changed",
+          "protocol_version": "Change only if the device stopped responding after a firmware update",
+          "heartbeat_interval": "How often a heartbeat is sent to keep the connection alive (5–300 s, default 20)",
+          "command_timeout": "How long to wait for a command response before giving up (1–30 s, default 5)",
+          "reconnect_max_delay": "Maximum wait between reconnection attempts (10–3600 s, default 300)"
         }
       }
     }
   },
   "issues": {
     "auth_failed": {
-      "title": "Autentisering misslyckades för {device_name}",
-      "description": "Enheten **{device_name}** nekar anslutningen. Säkerhetsnyckeln är troligtvis felaktig — det händer om enheten har återställts till fabriksinställningar eller kopplats ihop på nytt i Tuya-appen.\n\nKlicka på **Åtgärda** för att ange en ny säkerhetsnyckel.",
+      "title": "Authentication failed for {device_name}",
+      "description": "The device **{device_name}** is rejecting the connection. The security key is likely wrong — this happens when the device is factory reset or paired again using the Tuya app.\n\nClick **Fix** to enter a new security key.",
       "fix_flow": {
         "step": {
           "confirm": {
-            "title": "Uppdatera säkerhetsnyckeln",
-            "description": "Gå till **Inställningar → Integrationer → Tuya Cloudless → {device_name}** och välj **Autentisera igen**."
+            "title": "Update the security key",
+            "description": "Go to **Settings → Integrations → Tuya Cloudless → {device_name}** and select **Re-authenticate**."
           }
         }
       }
@@ -174,101 +174,101 @@
   "entity": {
     "switch": {
       "main_switch": {
-        "name": "Strömbrytare"
+        "name": "Switch"
       }
     },
     "light": {
       "main_light": {
-        "name": "Lampa"
+        "name": "Light"
       },
       "fan_light": {
-        "name": "Fläktlampa"
+        "name": "Fan Light"
       }
     },
     "sensor": {
       "reconnects": {
-        "name": "Återanslutningar"
+        "name": "Reconnects"
       },
       "last_seen": {
-        "name": "Senast sedd"
+        "name": "Last seen"
       },
       "power_consumption": {
-        "name": "Effekt"
+        "name": "Power"
       },
       "current": {
-        "name": "Ström"
+        "name": "Current"
       },
       "battery": {
-        "name": "Batteri"
+        "name": "Battery"
       },
       "co2": {
         "name": "CO₂"
       },
       "temperature": {
-        "name": "Temperatur"
+        "name": "Temperature"
       },
       "humidity": {
-        "name": "Luftfuktighet"
+        "name": "Humidity"
       },
       "floor_temp": {
-        "name": "Golvtemperatur"
+        "name": "Floor Temperature"
       }
     },
     "binary_sensor": {
       "overload": {
-        "name": "Överlastskydd"
+        "name": "Overload"
       },
       "leak": {
-        "name": "Vattenläcka"
+        "name": "Water Leak"
       },
       "motion": {
-        "name": "Rörelse"
+        "name": "Motion"
       },
       "smoke": {
-        "name": "Rök"
+        "name": "Smoke"
       },
       "contact": {
-        "name": "Öppen/stängd"
+        "name": "Door/Window"
       },
       "tamper": {
-        "name": "Sabotage"
+        "name": "Tamper"
       }
     },
     "cover": {
       "cover": {
-        "name": "Rullgardin"
+        "name": "Cover"
       }
     },
     "number": {
       "volume": {
-        "name": "Volym"
+        "name": "Volume"
       }
     },
     "select": {
       "siren_mode": {
-        "name": "Sirenläge"
+        "name": "Siren Mode"
       }
     },
     "climate": {
       "heater": {
-        "name": "Värmare"
+        "name": "Heater"
       },
       "thermostat": {
-        "name": "Termostat"
+        "name": "Thermostat"
       },
       "ac": {
-        "name": "Luftkonditionering"
+        "name": "Air Conditioner"
       },
       "floor_heater": {
-        "name": "Golvvärme"
+        "name": "Floor Heating"
       },
       "heat_pump": {
-        "name": "Värmepump"
+        "name": "Heat Pump"
       }
     },
     "fan": {
       "main_fan": {
-        "name": "Fläkt"
+        "name": "Fan"
       }
     }
   }

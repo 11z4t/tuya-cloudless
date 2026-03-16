@@ -2,6 +2,15 @@
   "config": {
     "flow_title": "{name}",
     "step": {
+      "pair": {
+        "title": "Parningsverktyg",
+        "description": "Enhetsuppgifter importerades från Tuya Cloudless-parningsverktyget. Kontrollera att uppgifterna är korrekta och klicka på **Nästa** för att testa anslutningen.",
+        "data": {
+          "gw_id": "Enhets-ID",
+          "local_key": "Säkerhetsnyckel",
+          "ip_address": "IP-adress"
+        }
+      },
       "user": {
         "title": "Lägg till en Tuya-enhet",
         "description": "Välj hur du vill lägga till din enhet. **Sök** hittar enheter automatiskt på ditt nätverk — se till att enheten är påslagen och ansluten till samma Wi-Fi som Home Assistant.",

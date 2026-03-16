@@ -2,14 +2,23 @@
   "config": {
     "flow_title": "{name}",
     "step": {
+      "pair": {
+        "title": "Pairing tool",
+        "description": "Device details were imported from the Tuya Cloudless pairing tool. Verify that the details are correct and click **Next** to test the connection.",
+        "data": {
+          "gw_id": "Device ID",
+          "local_key": "Security key",
+          "ip_address": "IP address"
+        }
+      },
       "user": {
         "title": "Add a Tuya device",
-        "description": "Choose how you want to add your device. **Search** scans your network automatically — make sure the device is powered on and connected to the same Wi-Fi as Home Assistant.",
+        "description": "Choose how you want to add your device. **Scan** finds devices automatically on your network — make sure the device is powered on and connected to the same Wi-Fi as Home Assistant.",
         "data": {
           "setup_mode": "Setup method"
         },
         "data_description": {
-          "setup_mode": "Search finds devices automatically. Choose manual if your device is not found."
+          "setup_mode": "Scan finds devices automatically. Choose manual if your device is not found."
         }
       },
       "select": {
