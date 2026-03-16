@@ -59,7 +59,6 @@ from .const import (
     PROFILES_DIR,
 )
 from .coordinator import TuyaCloudlessCoordinator
-from .pairing_server import ensure_pairing_server, stop_pairing_server
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -162,16 +161,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         True if setup succeeded.
     """
     _LOGGER.info("Setting up Tuya Cloudless entry: %s", entry.title)
-
-    # Start the BLE pairing server (idempotent — only starts once)
-    try:
-        await ensure_pairing_server(hass)
-    except OSError as exc:
-        _LOGGER.warning(
-            "Could not start Tuya Cloudless pairing server on port 8099: %s. "
-            "BLE provisioning will not be available.",
-            exc,
-        )
 
     coordinator = TuyaCloudlessCoordinator.from_config_entry(hass, entry)
 
@@ -292,11 +281,6 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await runtime.coordinator.async_stop()
 
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
-
-    # Stop the pairing server when the last entry is unloaded
-    remaining = hass.config_entries.async_entries(DOMAIN)
-    if len(remaining) <= 1:
-        await stop_pairing_server(hass)
 
     # Clean up sys.path when the last entry for this domain is unloaded.
     # The inserted path was only needed for the initial import; it is safe to

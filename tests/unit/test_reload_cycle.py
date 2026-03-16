@@ -15,8 +15,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from custom_components.tuya_cloudless.const import DOMAIN
-
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
 
@@ -24,7 +22,7 @@ def _make_hass(num_entries: int = 1) -> MagicMock:
     """Return a minimal HomeAssistant mock.
 
     Args:
-        num_entries: Number of config entries ``async_entries(DOMAIN)`` reports.
+        num_entries: Number of config entries ``async_entries()`` reports.
                      Controls whether the pairing server is stopped on unload.
     """
     hass: MagicMock = MagicMock()
@@ -112,14 +110,6 @@ class TestReloadCycle:
                 "custom_components.tuya_cloudless._resolve_profile",
                 return_value=_mock_profile(),
             ),
-            patch(
-                "custom_components.tuya_cloudless.ensure_pairing_server",
-                new=AsyncMock(),
-            ),
-            patch(
-                "custom_components.tuya_cloudless.stop_pairing_server",
-                new=AsyncMock(),
-            ),
         ):
             # --- First setup ---
             result = await async_setup_entry(hass, entry)
@@ -163,14 +153,6 @@ class TestReloadCycle:
                 "custom_components.tuya_cloudless._resolve_profile",
                 return_value=_mock_profile(),
             ),
-            patch(
-                "custom_components.tuya_cloudless.ensure_pairing_server",
-                new=AsyncMock(),
-            ),
-            patch(
-                "custom_components.tuya_cloudless.stop_pairing_server",
-                new=AsyncMock(),
-            ),
         ):
             for i, coord in enumerate(coordinators):
                 result = await async_setup_entry(hass, entry)
@@ -191,23 +173,20 @@ class TestReloadCycle:
             )
 
     @pytest.mark.asyncio
-    async def test_pairing_server_survives_reload(self) -> None:
-        """Pairing server must remain running across a single-entry reload cycle."""
+    async def test_pairing_server_not_managed_by_setup(self) -> None:
+        """Pairing server lifecycle is now managed by the config flow, not setup/unload.
+
+        async_setup_entry must NOT call ensure_pairing_server.
+        async_unload_entry must NOT call stop_pairing_server.
+        The pairing server persists independently across reloads.
+        """
         from custom_components.tuya_cloudless import async_setup_entry, async_unload_entry
-        from custom_components.tuya_cloudless.pairing_server import (
-            _KEY_PAIRING_SERVER,
-            PairingServer,
-        )
 
         hass = _make_hass(num_entries=1)
         entry = _make_entry("entry_c")
 
-        # Install a real PairingServer mock into hass.data so the integration
-        # can check its presence via get_pairing_server / ensure_pairing_server.
-        mock_server: MagicMock = MagicMock(spec=PairingServer)
-        mock_server.start = AsyncMock()
-        mock_server.stop = AsyncMock()
-        hass.data.setdefault(DOMAIN, {})[_KEY_PAIRING_SERVER] = mock_server
+        ensure_mock = AsyncMock()
+        stop_mock = AsyncMock()
 
         with (
             patch(
@@ -218,38 +197,30 @@ class TestReloadCycle:
                 "custom_components.tuya_cloudless._resolve_profile",
                 return_value=_mock_profile(),
             ),
-            # Pairing server is "already running" — ensure_pairing_server returns the mock
+            # These should NOT be called from __init__.py any more
             patch(
-                "custom_components.tuya_cloudless.ensure_pairing_server",
-                return_value=mock_server,
-            ) as mock_ensure,
+                "custom_components.tuya_cloudless.pairing_server.ensure_pairing_server",
+                ensure_mock,
+            ),
             patch(
-                "custom_components.tuya_cloudless.stop_pairing_server",
-                new=AsyncMock(),
-            ) as mock_stop,
+                "custom_components.tuya_cloudless.pairing_server.stop_pairing_server",
+                stop_mock,
+            ),
         ):
-            # First setup
             await async_setup_entry(hass, entry)
-            mock_ensure.assert_awaited_once()
+            ensure_mock.assert_not_awaited()
 
-            # Unload (num_entries=1 so remaining≤1 → stop_pairing_server is called)
             await async_unload_entry(hass, entry)
-            mock_stop.assert_awaited_once()
+            stop_mock.assert_not_awaited()
 
-            # Second setup — ensure_pairing_server must be called again
             await async_setup_entry(hass, entry)
-            assert mock_ensure.await_count == 2, (
-                "ensure_pairing_server should be called on every setup"
-            )
+            ensure_mock.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_pairing_server_stops_on_last_unload(self) -> None:
-        """Pairing server must stop only when the last config entry is unloaded."""
+    async def test_multi_entry_unload_no_server_stop(self) -> None:
+        """Unloading entries must not call stop_pairing_server (server is flow-managed)."""
         from custom_components.tuya_cloudless import async_setup_entry, async_unload_entry
 
-        # Two entries are active — async_entries initially returns 2 items.
-        # After the first unload we simulate one entry remaining (still > 1 → don't stop).
-        # After the second unload only one is left (≤ 1 → stop).
         hass = _make_hass(num_entries=2)
         entry_a = _make_entry("entry_d1")
         entry_b = _make_entry("entry_d2")
@@ -259,36 +230,21 @@ class TestReloadCycle:
         with (
             patch(
                 "custom_components.tuya_cloudless.TuyaCloudlessCoordinator.from_config_entry",
-                side_effect=[
-                    _mock_coordinator(),
-                    _mock_coordinator(),
-                ],
+                side_effect=[_mock_coordinator(), _mock_coordinator()],
             ),
             patch(
                 "custom_components.tuya_cloudless._resolve_profile",
                 return_value=_mock_profile(),
             ),
             patch(
-                "custom_components.tuya_cloudless.ensure_pairing_server",
-                new=AsyncMock(),
-            ),
-            patch(
-                "custom_components.tuya_cloudless.stop_pairing_server",
+                "custom_components.tuya_cloudless.pairing_server.stop_pairing_server",
                 new=stop_server,
             ),
         ):
-            # Set up both entries
             await async_setup_entry(hass, entry_a)
             await async_setup_entry(hass, entry_b)
 
-            # Unload first entry — still 2 entries reported by async_entries,
-            # so len(remaining) > 1 → stop_pairing_server should NOT be called.
+            # Unload both entries — stop_pairing_server must NEVER be called
             await async_unload_entry(hass, entry_a)
-            stop_server.assert_not_awaited()
-
-            # Now simulate only one entry remaining
-            hass.config_entries.async_entries = MagicMock(return_value=[MagicMock()])
-
-            # Unload second entry — len(remaining) <= 1 → stop IS called.
             await async_unload_entry(hass, entry_b)
-            stop_server.assert_awaited_once()
+            stop_server.assert_not_awaited()

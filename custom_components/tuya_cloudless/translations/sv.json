@@ -11,14 +11,30 @@
           "ip_address": "IP-adress"
         }
       },
+      "ble_pair": {
+        "title": "BLE-parkoppling",
+        "description": "Ihopkopplingsverktyget öppnas i din webbläsare. Följ stegen för att ansluta din enhet via Bluetooth.\n\n**Kräver Chrome eller Edge** (dator eller Android) och **HTTPS** — se [HTTPS-installationsguiden](https://github.com/11z4t/tuya-cloudless/wiki/HTTPS-Setup) vid behov."
+      },
+      "ble_confirm": {
+        "title": "Enhet parkopplad ✓",
+        "description": "Din enhet på **{ip_address}** (ID: `{gw_id}`) parkopplades. Ge den ett namn och välj enhetstyp.",
+        "data": {
+          "device_name": "Enhetsnamn",
+          "profile": "Enhetstyp"
+        },
+        "data_description": {
+          "device_name": "Ett eget namn som visas i Home Assistant",
+          "profile": "Välj den typ som passar din enhet bäst"
+        }
+      },
       "user": {
         "title": "Lägg till en Tuya-enhet",
-        "description": "Välj hur du vill lägga till din enhet. **Sök** hittar enheter automatiskt på ditt nätverk — se till att enheten är påslagen och ansluten till samma Wi-Fi som Home Assistant.",
+        "description": "Välj hur du vill lägga till din enhet.",
         "data": {
           "setup_mode": "Inställningsmetod"
         },
         "data_description": {
-          "setup_mode": "Sök hittar enheter automatiskt. Välj manuell om din enhet inte hittas."
+          "setup_mode": "BLE-parkoppling rekommenderas för nya enheter. Sök hittar enheter som redan finns på nätverket. Manuell inmatning låter dig ange uppgifter för hand."
         }
       },
       "select": {
@@ -116,6 +132,8 @@
     "abort": {
       "already_configured": "Den här enheten är redan inlagd",
       "not_tuya_device": "Enheten svarade inte som förväntat",
+      "pairing_server_unavailable": "Det gick inte att starta BLE-parkopplingsservern på port 8099 — porten kan redan användas. Försök igen eller använd Sök/Manuell inmatning.",
+      "https_required": "BLE-parkoppling kräver HTTPS. Se [HTTPS-installationsguiden](https://github.com/11z4t/tuya-cloudless/wiki/HTTPS-Setup) för att konfigurera ett certifikat, och försök sedan igen.",
       "reauth_successful": "Säkerhetsnyckeln uppdaterades — enheten är ansluten igen",
       "reconfigure_successful": "Inställningarna uppdaterades — enheten laddas om"
     }

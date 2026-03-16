@@ -11,14 +11,30 @@
           "ip_address": "IP address"
         }
       },
+      "ble_pair": {
+        "title": "BLE Pairing",
+        "description": "The pairing tool is opening in your browser. Follow the steps to connect your device over Bluetooth.\n\n**Requires Chrome or Edge** (desktop or Android) and **HTTPS** — see the [HTTPS setup guide](https://github.com/11z4t/tuya-cloudless/wiki/HTTPS-Setup) if needed."
+      },
+      "ble_confirm": {
+        "title": "Device paired ✓",
+        "description": "Your device at **{ip_address}** (ID: `{gw_id}`) was paired successfully. Give it a name and select the device type.",
+        "data": {
+          "device_name": "Device name",
+          "profile": "Device type"
+        },
+        "data_description": {
+          "device_name": "A friendly name shown in Home Assistant",
+          "profile": "Select the type that best matches your device"
+        }
+      },
       "user": {
         "title": "Add a Tuya device",
-        "description": "Choose how you want to add your device. **Scan** finds devices automatically on your network — make sure the device is powered on and connected to the same Wi-Fi as Home Assistant.",
+        "description": "Choose how you want to add your device.",
         "data": {
           "setup_mode": "Setup method"
         },
         "data_description": {
-          "setup_mode": "Scan finds devices automatically. Choose manual if your device is not found."
+          "setup_mode": "BLE Pairing is recommended for new devices. Search finds devices already on your network. Manual entry lets you enter details by hand."
         }
       },
       "select": {
@@ -116,6 +132,8 @@
     "abort": {
       "already_configured": "This device is already set up",
       "not_tuya_device": "The device did not respond as expected",
+      "pairing_server_unavailable": "Could not start the BLE pairing server on port 8099 — the port may be in use. Try again or use Search / Manual setup instead.",
+      "https_required": "BLE Pairing requires HTTPS. See the [HTTPS setup guide](https://github.com/11z4t/tuya-cloudless/wiki/HTTPS-Setup) to configure a certificate, then try again.",
       "reauth_successful": "Security key updated — the device is connected again",
       "reconfigure_successful": "Settings updated — the device is reloading"
     }

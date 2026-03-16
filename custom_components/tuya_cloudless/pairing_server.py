@@ -145,6 +145,10 @@ class PairingServer:
         self._results: dict[str, ActivationResult] = {}
         # SSE subscriber queues (one per open /api/provision/events connection)
         self._sse_queues: list[asyncio.Queue[str | None]] = []
+        # Config flow IDs waiting for device activation
+        self._pending_flows: set[str] = set()
+        # Auto-stop task (stops server 60s after last flow unregisters)
+        self._auto_stop_task: asyncio.Task[None] | None = None
 
     # ── Lifecycle ──────────────────────────────────────────────────────────
 
@@ -211,6 +215,31 @@ class PairingServer:
             host = parsed.hostname or "homeassistant.local"
             return f"http://{host}:{self._port}"
         return f"http://homeassistant.local:{self._port}"
+
+    def register_flow(self, flow_id: str) -> None:
+        """Register a config flow to be notified when a device activates.
+
+        Cancels any pending idle-stop timer.
+
+        Args:
+            flow_id: HA config flow ID waiting for activation.
+        """
+        self._pending_flows.add(flow_id)
+        if self._auto_stop_task is not None:
+            self._auto_stop_task.cancel()
+            self._auto_stop_task = None
+
+    def unregister_flow(self, flow_id: str) -> None:
+        """Unregister a config flow (e.g. when the flow is aborted or completed).
+
+        Schedules an idle stop 60 s after the last flow unregisters.
+
+        Args:
+            flow_id: HA config flow ID to remove.
+        """
+        self._pending_flows.discard(flow_id)
+        if not self._pending_flows and self._auto_stop_task is None:
+            self._auto_stop_task = asyncio.ensure_future(self._auto_stop_after_idle())
 
     # ── Route handlers ─────────────────────────────────────────────────────
 
@@ -407,6 +436,18 @@ class PairingServer:
         }
         await self._broadcast_sse("activated", json.dumps(event_data))
 
+        # Resume any waiting HA config flows
+        flow_data = {
+            "gw_id": gw_id,
+            "local_key": local_key,
+            "ip_address": client_ip,
+            "product_key": product_key,
+        }
+        for flow_id in list(self._pending_flows):
+            self._hass.async_create_task(
+                self._hass.config_entries.flow.async_configure(flow_id, flow_data)
+            )
+
         # Respond in Tuya cloud activation format
         response_body = {
             "t": int(time.time()),
@@ -520,6 +561,24 @@ class PairingServer:
         ]
         for token in expired:
             del self._results[token]
+
+    async def _auto_stop_after_idle(self) -> None:
+        """Stop the server 60 s after the last flow unregisters, if still idle."""
+        await asyncio.sleep(60)
+        if self._pending_flows:
+            # A new flow registered while we were sleeping — do nothing.
+            self._auto_stop_task = None
+            return
+
+        # Verify we're still the active server before stopping.
+        from .const import DOMAIN
+
+        current = self._hass.data.get(DOMAIN, {}).get(_KEY_PAIRING_SERVER)
+        if current is self:
+            _LOGGER.info("Tuya Cloudless pairing server idle for 60 s — stopping automatically")
+            await stop_pairing_server(self._hass)
+
+        self._auto_stop_task = None
 
 
 # ── Module-level singleton helpers ────────────────────────────────────────────

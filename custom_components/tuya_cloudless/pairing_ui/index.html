@@ -29,64 +29,105 @@
       display: flex;
       justify-content: center;
       align-items: flex-start;
-      padding: 24px 16px 48px;
+      padding: 16px 12px 48px;
     }
 
     .card {
       background: var(--surface);
       border: 1px solid var(--border);
       border-radius: var(--radius);
-      padding: 32px 28px;
+      padding: 24px 20px;
       width: 100%;
       max-width: 480px;
       display: flex;
       flex-direction: column;
-      gap: 24px;
+      gap: 20px;
+    }
+
+    .header-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
     }
 
     h1 {
-      font-size: 1.4rem;
+      font-size: 1.2rem;
       font-weight: 700;
       display: flex;
       align-items: center;
-      gap: 10px;
+      gap: 8px;
     }
     h1 svg { flex-shrink: 0; }
 
-    .step {
+    .lang-select {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      padding: 6px 10px;
+      font-size: 0.85rem;
+      cursor: pointer;
+      outline: none;
+    }
+    .lang-select:focus { border-color: var(--accent); }
+
+    /* Progress indicator */
+    .progress {
+      display: flex;
+      gap: 0;
+      align-items: center;
+    }
+    .progress-step {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.78rem;
+      color: var(--muted);
+    }
+    .progress-step.active  { color: var(--accent); font-weight: 600; }
+    .progress-step.done    { color: var(--success); }
+    .progress-dot {
+      width: 22px; height: 22px;
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.72rem; font-weight: 700;
+      background: var(--border);
+      color: var(--muted);
+      flex-shrink: 0;
+    }
+    .progress-step.active .progress-dot  { background: var(--accent); color: #0f172a; }
+    .progress-step.done   .progress-dot  { background: var(--success); color: #0f172a; }
+    .progress-sep {
+      flex: 1;
+      height: 2px;
+      background: var(--border);
+      margin: 0 6px;
+      min-width: 16px;
+    }
+
+    /* Steps */
+    .step-panel {
       border: 1px solid var(--border);
       border-radius: var(--radius);
-      padding: 20px;
+      padding: 18px 16px;
       display: flex;
       flex-direction: column;
       gap: 14px;
     }
+    .step-panel.hidden { display: none !important; }
+
     .step-header {
-      display: flex;
-      align-items: center;
-      gap: 10px;
       font-weight: 600;
       font-size: 0.95rem;
-    }
-    .step-num {
-      background: var(--accent);
-      color: #0f172a;
-      border-radius: 50%;
-      width: 24px;
-      height: 24px;
-      font-size: 0.8rem;
-      font-weight: 700;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      flex-shrink: 0;
     }
 
     label {
       display: block;
-      font-size: 0.85rem;
+      font-size: 0.82rem;
       color: var(--muted);
-      margin-bottom: 6px;
+      margin-bottom: 5px;
     }
 
     input[type="text"],
@@ -96,10 +137,11 @@
       border: 1px solid var(--border);
       border-radius: 8px;
       color: var(--text);
-      padding: 10px 14px;
+      padding: 12px 14px;
       font-size: 0.95rem;
       outline: none;
       transition: border-color .15s;
+      -webkit-appearance: none;
     }
     input:focus { border-color: var(--accent); }
 
@@ -109,25 +151,34 @@
       justify-content: center;
       gap: 8px;
       border: none;
-      border-radius: 8px;
-      padding: 11px 20px;
+      border-radius: 10px;
+      padding: 14px 20px;
+      min-height: 48px;
       font-size: 0.95rem;
       font-weight: 600;
       cursor: pointer;
       transition: opacity .15s, transform .1s;
       text-decoration: none;
+      width: 100%;
+      -webkit-tap-highlight-color: transparent;
     }
     .btn:active { transform: scale(.97); }
     .btn:disabled { opacity: .4; cursor: not-allowed; transform: none; }
     .btn-primary { background: var(--accent); color: #0f172a; }
     .btn-success { background: var(--success); color: #0f172a; }
     .btn-ha      { background: var(--accent2); color: #0f172a; }
-    .btn-sm      { padding: 8px 14px; font-size: 0.85rem; }
+    .btn-sm {
+      padding: 10px 14px;
+      font-size: 0.85rem;
+      min-height: 40px;
+      width: auto;
+    }
 
     .status-box {
       border-radius: 8px;
-      padding: 12px 16px;
-      font-size: 0.9rem;
+      padding: 12px 14px;
+      font-size: 0.88rem;
+      line-height: 1.45;
       display: none;
     }
     .status-box.visible { display: block; }
@@ -139,8 +190,8 @@
     .result-grid {
       display: grid;
       grid-template-columns: auto 1fr;
-      gap: 8px 16px;
-      font-size: 0.9rem;
+      gap: 8px 14px;
+      font-size: 0.88rem;
     }
     .result-label { color: var(--muted); }
     .result-value { font-family: monospace; word-break: break-all; }
@@ -164,6 +215,13 @@
       border-radius: 4px;
       padding: 2px 6px;
       color: var(--muted);
+      margin-left: 4px;
+    }
+
+    .step-hint {
+      font-size: 0.83rem;
+      color: var(--muted);
+      line-height: 1.45;
     }
 
     footer {
@@ -177,14 +235,14 @@
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 12px;
+      gap: 10px;
     }
     .qr-wrap img {
-      width: 180px;
-      height: 180px;
+      width: 160px;
+      height: 160px;
       border-radius: 8px;
       background: #fff;
-      padding: 8px;
+      padding: 6px;
     }
     .url-row {
       display: flex;
@@ -192,53 +250,84 @@
       width: 100%;
     }
     .url-row input { flex: 1; }
+
+    .ha-flow-notice {
+      text-align: center;
+      font-size: 0.9rem;
+      color: var(--muted);
+      padding: 8px 0;
+      line-height: 1.5;
+    }
+
+    @media (max-width: 360px) {
+      .card { padding: 16px 12px; }
+      h1 { font-size: 1.05rem; }
+    }
   </style>
 </head>
 <body>
 <div class="card">
 
   <!-- Header -->
-  <h1>
-    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"
-            stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-    </svg>
-    Tuya Cloudless &mdash; Pair Device
-  </h1>
-
-  <!-- Browser check -->
-  <div id="no-ble-warning" class="status-box status-warn hidden">
-    ⚠️ <strong>Web Bluetooth not supported.</strong>
-    Use <strong>Chrome</strong> or <strong>Edge</strong> on desktop or Android.
-    Safari and Firefox do not support Web Bluetooth.
+  <div class="header-row">
+    <h1>
+      <svg width="26" height="26" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"
+              stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      Tuya Cloudless
+    </h1>
+    <select id="lang-select" class="lang-select" onchange="changeLang(this.value)" aria-label="Language">
+      <option value="en">🇬🇧 English</option>
+      <option value="sv">🇸🇪 Svenska</option>
+    </select>
   </div>
 
-  <!-- Mobile / QR fallback (shown when Web Bluetooth unavailable) -->
-  <div id="qr-section" class="step hidden">
-    <div class="step-header">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-        <rect x="2" y="2" width="8" height="8" rx="1" stroke="var(--accent)" stroke-width="2"/>
-        <rect x="14" y="2" width="8" height="8" rx="1" stroke="var(--accent)" stroke-width="2"/>
-        <rect x="2" y="14" width="8" height="8" rx="1" stroke="var(--accent)" stroke-width="2"/>
-        <path d="M14 14h2v2h-2zM18 14h2v2h-2zM14 18h2v2h-2zM18 18h2v2h-2z"
-              fill="var(--accent)"/>
-      </svg>
-      Open on Android Chrome
+  <!-- Progress bar -->
+  <div class="progress" id="progress" aria-label="Progress">
+    <div class="progress-step active" id="prog-1">
+      <div class="progress-dot">1</div>
+      <span id="prog-1-label">WiFi</span>
     </div>
-    <p style="font-size:.85rem;color:var(--muted);">
-      Web Bluetooth requires <strong>Chrome</strong> or <strong>Edge</strong>.
-      Scan the QR code with your Android phone to open this page there.
-    </p>
+    <div class="progress-sep"></div>
+    <div class="progress-step" id="prog-2">
+      <div class="progress-dot">2</div>
+      <span id="prog-2-label">Device</span>
+    </div>
+    <div class="progress-sep"></div>
+    <div class="progress-step" id="prog-3">
+      <div class="progress-dot">3</div>
+      <span id="prog-3-label">Done</span>
+    </div>
+  </div>
+
+  <!-- Error: HTTPS required -->
+  <div id="error-https" class="status-box status-error hidden">
+    <strong id="err-https-title">HTTPS required</strong><br>
+    <span id="err-https-body">Web Bluetooth requires a secure context (HTTPS or localhost).</span><br>
+    <a id="err-https-link" href="https://github.com/11z4t/tuya-cloudless/wiki/HTTPS-Setup"
+       target="_blank" style="color:var(--error);margin-top:6px;display:inline-block;">
+      HTTPS setup guide →
+    </a>
+  </div>
+
+  <!-- Error: Unsupported browser -->
+  <div id="error-browser" class="status-box status-warn hidden">
+    <strong id="err-browser-title">Browser not supported</strong><br>
+    <span id="err-browser-body">Web Bluetooth requires Chrome or Edge on desktop or Android.</span>
+  </div>
+
+  <!-- QR / share fallback (shown when BLE unavailable but page is secure) -->
+  <div id="qr-section" class="step-panel hidden">
+    <div class="step-header" id="qr-title">Open on Android Chrome</div>
+    <p class="step-hint" id="qr-body">Scan the QR code with your Android phone to open this page in Chrome.</p>
     <div class="qr-wrap">
-      <img id="qr-img" src="/api/provision/qr.svg" alt="QR code for pairing URL"
+      <img id="qr-img" src="/api/provision/qr.svg" alt="QR code"
            onerror="this.style.display='none';document.getElementById('qr-unavail').style.display='block'">
-      <p id="qr-unavail" style="display:none;font-size:.8rem;color:var(--muted);text-align:center;">
-        QR image unavailable.<br>
-        Install: <code style="font-size:.8rem;">pip install 'tuya-cloudless[qr]'</code>
-      </p>
+      <p id="qr-unavail" style="display:none;font-size:.78rem;color:var(--muted);text-align:center;"></p>
     </div>
     <div>
-      <label>Or copy this URL and open on Chrome / Edge:</label>
+      <label id="qr-copy-label">Or copy this URL and open on Chrome / Edge:</label>
       <div class="url-row">
         <input type="text" id="share-url" readonly>
         <button class="btn btn-primary btn-sm" onclick="copyShareUrl()" id="btn-copy">Copy</button>
@@ -247,62 +336,71 @@
   </div>
 
   <!-- Step 1 — WiFi credentials -->
-  <div class="step">
-    <div class="step-header">
-      <span class="step-num">1</span> WiFi credentials
+  <div id="panel-wifi" class="step-panel">
+    <div class="step-header" id="step1-title">WiFi credentials</div>
+    <div>
+      <label for="ssid" id="ssid-label">Network name (SSID)</label>
+      <input type="text" id="ssid" autocomplete="off" spellcheck="false"
+             inputmode="text" placeholder="My Home WiFi">
     </div>
     <div>
-      <label for="ssid">Network name (SSID)</label>
-      <input type="text" id="ssid" placeholder="My Home WiFi" autocomplete="off" spellcheck="false">
+      <label for="password" id="password-label">Password</label>
+      <input type="password" id="password" autocomplete="off" placeholder="WiFi password">
     </div>
-    <div>
-      <label for="password">Password</label>
-      <input type="password" id="password" placeholder="WiFi password" autocomplete="off">
-    </div>
+    <button class="btn btn-primary" id="btn-next" onclick="goToStep2()">
+      <span id="btn-next-label">Next →</span>
+    </button>
   </div>
 
   <!-- Step 2 — BLE pairing -->
-  <div class="step">
+  <div id="panel-ble" class="step-panel hidden">
     <div class="step-header">
-      <span class="step-num">2</span>
-      Pair device via Bluetooth
-      <span class="badge">Chrome / Edge</span>
+      <span id="step2-title">Pair device via Bluetooth</span>
+      <span class="badge" id="step2-badge">Chrome / Edge</span>
     </div>
-    <p style="font-size:.85rem;color:var(--muted);">
-      Put your Tuya device in pairing mode (factory reset or hold pair button until
-      the indicator flashes rapidly), then click <strong>Scan &amp; Pair</strong>.
+    <p class="step-hint" id="step2-hint">
+      Put your Tuya device in pairing mode (factory reset or hold the pair button until
+      the indicator flashes rapidly), then click Scan &amp; Pair.
     </p>
     <button id="btn-pair" class="btn btn-primary" onclick="startPairing()">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-        <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/>
-        <path d="M8 12h8M12 8v8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        <path d="M5 8.5A6.5 6.5 0 0 1 18.5 12M19 15.5A6.5 6.5 0 0 1 5.5 12"
+              stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        <circle cx="12" cy="12" r="2" fill="currentColor"/>
       </svg>
-      Scan &amp; Pair
+      <span id="btn-pair-label">Scan &amp; Pair</span>
     </button>
     <div id="pair-status" class="status-box"></div>
   </div>
 
-  <!-- Step 3 — Activation result -->
-  <div id="result-section" class="step hidden">
-    <div class="step-header">
-      <span class="step-num">3</span>
-      Device activated ✓
-    </div>
+  <!-- Step 3 — Done -->
+  <div id="panel-done" class="step-panel hidden">
+    <div class="step-header" id="step3-title">Device activated ✓</div>
     <div id="result-grid" class="result-grid"></div>
-    <a id="btn-add-ha" href="#" class="btn btn-ha" target="_top">
+    <!-- Shown when launched from HA config flow -->
+    <div id="ha-flow-msg" class="ha-flow-notice hidden" id="step3-ha-flow">
+      Home Assistant is setting up your device. You can close this window and continue in the Home Assistant UI.
+    </div>
+    <!-- Shown in standalone mode (no flow_id) -->
+    <a id="btn-add-ha" href="#" class="btn btn-ha hidden" target="_top">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
         <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"
               stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
         <polyline points="9,22 9,12 15,12 15,22"
                   stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
       </svg>
-      Add to Home Assistant
+      <span id="btn-add-ha-label">Add to Home Assistant</span>
     </a>
   </div>
 
   <footer>
-    Tuya Cloudless &bull; <a href="https://github.com/Z-Solutions-Dev/tuya-cloudless" target="_blank">GitHub</a>
-    &bull; No cloud account required
+    Tuya Cloudless &bull;
+    <a href="https://github.com/11z4t/tuya-cloudless" target="_blank" id="footer-github">GitHub</a>
+    &bull;
+    <a href="https://github.com/11z4t/tuya-cloudless/wiki/HTTPS-Setup" target="_blank" id="footer-wiki">
+      Help / HTTPS setup
+    </a>
+    &bull; <span id="footer-no-cloud">No cloud account required</span>
   </footer>
 </div>
 
@@ -310,22 +408,99 @@
 "use strict";
 
 // ── Constants ────────────────────────────────────────────────────────────────
-const BLE_SERVICE      = "0000fd50-0000-1000-8000-00805f9b34fb";
-const WRITE_CHAR       = "00000001-0000-1001-8001-00805f9b07d0";
-const NOTIFY_CHAR      = "00000002-0000-1001-8001-00805f9b07d0";
-const BLE_MAX_MTU      = 20;   // ATT default MTU — 2 byte header, 18 byte payload
-const PROTOCOL_VER     = 0x04; // WiFi+BLE combo protocol version
-const MAGIC            = [0x55, 0xAA];
-const CMD_HANDSHAKE    = 0x00;
-const CMD_WIFI_CONFIG  = 0x01;
-const CMD_PAIR_FAIL    = 0x05;
+const BLE_SERVICE     = "0000fd50-0000-1000-8000-00805f9b34fb";
+const WRITE_CHAR      = "00000001-0000-1001-8001-00805f9b07d0";
+const NOTIFY_CHAR     = "00000002-0000-1001-8001-00805f9b07d0";
+const BLE_MAX_MTU     = 20;
+const PROTOCOL_VER    = 0x04;
+const CMD_HANDSHAKE   = 0x00;
+const CMD_WIFI_CONFIG = 0x01;
+const CMD_PAIR_FAIL   = 0x05;
+const WIKI_URL        = "https://github.com/11z4t/tuya-cloudless/wiki/HTTPS-Setup";
 
-// ── Server config (fetched from /api/provision/config) ───────────────────────
-// activator_url is always HTTP (LAN) so the Tuya device can reach it.
-// This matters when the UI is served over HTTPS (mobile via reverse proxy)
-// but the device activation still goes directly to the LAN HTTP server.
+// ── i18n ─────────────────────────────────────────────────────────────────────
+let _strings = {};
+let _currentLang = "en";
+const _supportedLangs = ["en", "sv"];
+
+async function loadLang(lang) {
+  try {
+    const r = await fetch(`/static/i18n/${lang}.json`);
+    if (!r.ok) throw new Error("not found");
+    _strings = await r.json();
+    _currentLang = lang;
+  } catch (_) {
+    if (lang !== "en") await loadLang("en");
+  }
+}
+
+function t(key, vars) {
+  let s = _strings[key] || key;
+  if (vars) {
+    for (const [k, v] of Object.entries(vars)) {
+      s = s.replaceAll("{" + k + "}", v);
+    }
+  }
+  return s;
+}
+
+function applyStrings() {
+  const el = (id) => document.getElementById(id);
+  document.title        = t("title");
+  el("step1-title").textContent   = t("step1_title");
+  el("ssid-label").textContent    = t("ssid_label");
+  el("ssid").placeholder          = t("ssid_placeholder");
+  el("password-label").textContent = t("password_label");
+  el("password").placeholder      = t("password_placeholder");
+  el("btn-next-label").textContent = t("btn_next", {}) || "Next →";
+  el("step2-title").textContent   = t("step2_title");
+  el("step2-badge").textContent   = t("step2_badge");
+  el("step2-hint").textContent    = t("step2_hint");
+  el("btn-pair-label").innerHTML  = t("btn_scan");
+  el("step3-title").textContent   = t("step3_title");
+  el("ha-flow-msg").textContent   = t("step3_ha_flow");
+  el("btn-add-ha-label").textContent = t("btn_add_ha");
+  el("footer-github").textContent = t("footer_github");
+  el("footer-wiki").textContent   = t("wiki_help");
+  el("footer-no-cloud").textContent = t("footer_no_cloud");
+  el("qr-title").textContent      = t("qr_title");
+  el("qr-body").textContent       = t("qr_body");
+  el("qr-unavail").textContent    = t("qr_unavail");
+  el("qr-copy-label").textContent = t("qr_copy_label");
+  el("btn-copy").textContent      = t("qr_copy_btn");
+  el("err-https-title").textContent = t("error_https_required_title");
+  el("err-https-body").textContent  = t("error_https_required_body");
+  el("err-https-link").textContent  = t("error_https_link") + " →";
+  el("err-browser-title").textContent = t("error_browser_title");
+  el("err-browser-body").textContent  = t("error_browser_body");
+  // Progress labels
+  el("prog-1-label").textContent  = t("step1_title");
+  el("prog-2-label").textContent  = t("step2_title");
+  el("prog-3-label").textContent  = t("step3_title");
+  // Lang picker aria-label
+  el("lang-select").setAttribute("aria-label", t("lang_picker_label"));
+}
+
+function changeLang(lang) {
+  localStorage.setItem("tc-lang", lang);
+  loadLang(lang).then(applyStrings);
+  document.documentElement.lang = lang;
+}
+
+function detectLang() {
+  const stored = localStorage.getItem("tc-lang");
+  if (stored && _supportedLangs.includes(stored)) return stored;
+  const nav = (navigator.language || "en").substring(0, 2).toLowerCase();
+  return _supportedLangs.includes(nav) ? nav : "en";
+}
+
+// ── Server config ─────────────────────────────────────────────────────────────
 let ACTIVATOR_URL = window.location.origin;
 let EVENTS_URL    = ACTIVATOR_URL + "/api/provision/events";
+
+// Detect flow_id from URL query params (set by HA when launched via async_external_step)
+const _urlParams  = new URLSearchParams(window.location.search);
+const _haFlowId   = _urlParams.get("flow_id") || null;
 
 async function loadServerConfig() {
   try {
@@ -336,6 +511,61 @@ async function loadServerConfig() {
       if (cfg.events_url)    EVENTS_URL    = cfg.events_url;
     }
   } catch (_) { /* keep defaults */ }
+}
+
+// ── Progress ──────────────────────────────────────────────────────────────────
+function setProgress(step) {
+  for (let i = 1; i <= 3; i++) {
+    const el = document.getElementById("prog-" + i);
+    el.classList.remove("active", "done");
+    if (i < step)  el.classList.add("done");
+    if (i === step) el.classList.add("active");
+    // Update dot content: show checkmark for done steps
+    el.querySelector(".progress-dot").textContent = i < step ? "✓" : String(i);
+  }
+}
+
+// ── Step navigation ───────────────────────────────────────────────────────────
+let _ssid = "";
+let _pwd  = "";
+
+function goToStep2() {
+  _ssid = document.getElementById("ssid").value.trim();
+  _pwd  = document.getElementById("password").value;
+  if (!_ssid) {
+    setStatus("pair-status", "status-warn", t("warn_no_ssid"));
+    // Show pair-status inside wifi panel temporarily
+    const box = document.getElementById("pair-status");
+    document.getElementById("panel-wifi").appendChild(box);
+    box.classList.add("visible");
+    return;
+  }
+  document.getElementById("panel-wifi").classList.add("hidden");
+  document.getElementById("panel-ble").classList.remove("hidden");
+  setProgress(2);
+}
+
+function showDone(gw_id, local_key, ip_address) {
+  document.getElementById("panel-ble").classList.add("hidden");
+  const panel = document.getElementById("panel-done");
+  panel.classList.remove("hidden");
+  setProgress(3);
+
+  const grid = document.getElementById("result-grid");
+  grid.innerHTML =
+    `<span class="result-label">${esc(t("label_device_id"))}</span><span class="result-value">${esc(gw_id)}</span>` +
+    `<span class="result-label">${esc(t("label_ip"))}</span><span class="result-value">${esc(ip_address)}</span>` +
+    `<span class="result-label">${esc(t("label_local_key"))}</span><span class="result-value key-value">${esc(local_key)}</span>`;
+
+  if (_haFlowId) {
+    // Launched from HA config flow — no need for "Add to HA" button
+    document.getElementById("ha-flow-msg").classList.remove("hidden");
+  } else {
+    // Standalone mode — show deep-link button
+    const params = new URLSearchParams({ domain: "tuya_cloudless", gw_id, local_key, ip_address });
+    document.getElementById("btn-add-ha").href = `/config/integrations/add?${params}`;
+    document.getElementById("btn-add-ha").classList.remove("hidden");
+  }
 }
 
 // ── CRC-16/MODBUS ─────────────────────────────────────────────────────────────
@@ -353,7 +583,6 @@ function crc16Modbus(data) {
 
 // ── Frame encoding ────────────────────────────────────────────────────────────
 function encodeFrame(cmd, seq, payload) {
-  // Header: magic(2) version(1) cmd(1) seq(2 BE) len(2 BE)
   const header = new Uint8Array(8);
   header[0] = 0x55; header[1] = 0xAA;
   header[2] = PROTOCOL_VER;
@@ -368,14 +597,14 @@ function encodeFrame(cmd, seq, payload) {
   const crc = crc16Modbus(body);
   const frame = new Uint8Array(body.length + 2);
   frame.set(body);
-  frame[body.length]     = crc & 0xFF;         // LE low byte
-  frame[body.length + 1] = (crc >> 8) & 0xFF;  // LE high byte
+  frame[body.length]     = crc & 0xFF;
+  frame[body.length + 1] = (crc >> 8) & 0xFF;
   return frame;
 }
 
-// ── Chunking (20-byte BLE transport) ─────────────────────────────────────────
+// ── Chunking ──────────────────────────────────────────────────────────────────
 function chunkFrame(frameBytes) {
-  const PAYLOAD = BLE_MAX_MTU - 2; // 18 bytes per chunk
+  const PAYLOAD = BLE_MAX_MTU - 2;
   const chunks = [];
   let offset = 0;
   while (offset < frameBytes.length) {
@@ -437,11 +666,11 @@ function parseFrame(chunks) {
   return { cmd, payload };
 }
 
-// ── Token generation ──────────────────────────────────────────────────────────
+// ── Token ─────────────────────────────────────────────────────────────────────
 function randomToken() {
   const arr = new Uint8Array(16);
   crypto.getRandomValues(arr);
-  return Array.from(arr).map(b => b.toString(16).padStart(2, '0')).join('');
+  return Array.from(arr).map(b => b.toString(16).padStart(2, "0")).join("");
 }
 
 // ── UI helpers ────────────────────────────────────────────────────────────────
@@ -452,27 +681,8 @@ function setStatus(id, cls, html) {
 }
 
 function showSpinner(id, msg) {
-  setStatus(id, "status-info", `<span style="display:flex;align-items:center;gap:8px"><span class="spinner"></span>${msg}</span>`);
-}
-
-function showResult(gw_id, local_key, ip_address) {
-  const grid = document.getElementById("result-grid");
-  grid.innerHTML = `
-    <span class="result-label">Device ID</span><span class="result-value">${esc(gw_id)}</span>
-    <span class="result-label">IP address</span><span class="result-value">${esc(ip_address)}</span>
-    <span class="result-label">Local key</span><span class="result-value key-value">${esc(local_key)}</span>
-  `;
-  document.getElementById("result-section").classList.remove("hidden");
-
-  // Build deep-link URL to HA config flow with pre-filled data
-  const params = new URLSearchParams({
-    domain: "tuya_cloudless",
-    gw_id,
-    local_key,
-    ip_address,
-  });
-  document.getElementById("btn-add-ha").href =
-    `/config/integrations/add?${params}`;
+  setStatus(id, "status-info",
+    `<span style="display:flex;align-items:center;gap:8px"><span class="spinner"></span>${esc(msg)}</span>`);
 }
 
 function esc(s) {
@@ -481,7 +691,7 @@ function esc(s) {
     .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
-// ── SSE for activation result ─────────────────────────────────────────────────
+// ── SSE ───────────────────────────────────────────────────────────────────────
 function listenForActivation(token) {
   const es = new EventSource(EVENTS_URL);
   es.addEventListener("activated", (e) => {
@@ -489,68 +699,45 @@ function listenForActivation(token) {
       const d = JSON.parse(e.data);
       if (!token || d.token === token || !d.token) {
         es.close();
-        setStatus("pair-status", "status-success",
-          "✓ Device activated! Local key generated.");
-        showResult(d.gw_id, d.local_key, d.ip_address);
+        setStatus("pair-status", "status-success", t("success_activated"));
+        showDone(d.gw_id, d.local_key, d.ip_address);
         document.getElementById("btn-pair").disabled = false;
       }
     } catch (_) {}
   });
   es.onerror = () => es.close();
-  // Auto-close after 2 minutes
   setTimeout(() => es.close(), 120_000);
   return es;
 }
 
 // ── Main pairing flow ─────────────────────────────────────────────────────────
 async function startPairing() {
-  const btn  = document.getElementById("btn-pair");
-  const ssid = document.getElementById("ssid").value.trim();
-  const pwd  = document.getElementById("password").value;
-
-  if (!ssid) {
-    setStatus("pair-status", "status-warn", "⚠️ Enter a WiFi network name first.");
-    return;
-  }
-
+  const btn = document.getElementById("btn-pair");
   btn.disabled = true;
-  document.getElementById("result-section").classList.add("hidden");
-
-  // 1. Check Web Bluetooth availability
-  if (!navigator.bluetooth) {
-    setStatus("pair-status", "status-error",
-      "❌ Web Bluetooth not available. Use Chrome or Edge.");
-    btn.disabled = false;
-    return;
-  }
 
   const token = randomToken();
   const activator = ACTIVATOR_URL;
-
-  // 2. Start listening for activation before BLE (device may activate quickly)
   const es = listenForActivation(token);
 
-  let device, server, service, writeChar, notifyChar;
+  let server;
 
   try {
-    // 3. Scan for Tuya BLE device
-    showSpinner("pair-status", "Scanning for Tuya device…");
-    device = await navigator.bluetooth.requestDevice({
+    showSpinner("pair-status", t("spin_scanning"));
+    const device = await navigator.bluetooth.requestDevice({
       filters: [{ services: [BLE_SERVICE] }],
       optionalServices: [BLE_SERVICE],
     });
 
-    showSpinner("pair-status", `Connecting to ${esc(device.name || device.id)}…`);
+    showSpinner("pair-status", t("spin_connecting", { name: device.name || device.id }));
     server = await device.gatt.connect();
-    service = await server.getPrimaryService(BLE_SERVICE);
-    writeChar  = await service.getCharacteristic(WRITE_CHAR);
-    notifyChar = await service.getCharacteristic(NOTIFY_CHAR);
+    const service    = await server.getPrimaryService(BLE_SERVICE);
+    const writeChar  = await service.getCharacteristic(WRITE_CHAR);
+    const notifyChar = await service.getCharacteristic(NOTIFY_CHAR);
 
     await notifyChar.startNotifications();
     notifyChar.addEventListener("characteristicvaluechanged", onNotify);
 
-    // 4. Handshake
-    showSpinner("pair-status", "Handshake…");
+    showSpinner("pair-status", t("spin_handshake"));
     const controllerNonce = new Uint8Array(16);
     crypto.getRandomValues(controllerNonce);
 
@@ -562,12 +749,10 @@ async function startPairing() {
     const hsChunks = await waitForResponse(10_000);
     const hsResp = parseFrame(hsChunks);
     if (hsResp.payload.length < 16) throw new Error("Bad handshake nonce");
-    // Session key = XOR of nonces (we don't need it in JS for now — device handles encryption)
 
-    // 5. Send WiFi config + token
-    showSpinner("pair-status", "Sending WiFi credentials…");
+    showSpinner("pair-status", t("spin_sending"));
     const wifiPayload = JSON.stringify({
-      s: ssid, p: pwd, t: token, r: "az", activator: activator,
+      s: _ssid, p: _pwd, t: token, r: "az", activator: activator,
     });
     const wifiBytes = new TextEncoder().encode(wifiPayload);
     const wifiFrame = encodeFrame(CMD_WIFI_CONFIG, 1, wifiBytes);
@@ -575,20 +760,18 @@ async function startPairing() {
       await writeChar.writeValueWithoutResponse(chunk);
     }
 
-    // 6. Wait for WiFi config ACK
     const ackChunks = await waitForResponse(15_000);
     const ack = parseFrame(ackChunks);
     if (ack.cmd === CMD_PAIR_FAIL) throw new Error("Device rejected WiFi config");
 
-    showSpinner("pair-status", "Credentials sent ✓ — waiting for device to activate…");
+    showSpinner("pair-status", t("spin_waiting"));
 
-    // Disconnect BLE (device is now connecting to WiFi)
     if (server.connected) server.disconnect();
 
   } catch (err) {
     es.close();
     if (err.name === "NotFoundError" || err.name === "AbortError") {
-      setStatus("pair-status", "status-warn", "⚠️ Bluetooth scan cancelled.");
+      setStatus("pair-status", "status-warn", t("warn_scan_cancelled"));
     } else {
       setStatus("pair-status", "status-error", `❌ ${esc(err.message)}`);
     }
@@ -604,20 +787,39 @@ function copyShareUrl() {
     ? navigator.clipboard.writeText(val)
     : Promise.resolve(document.execCommand("copy"))
   ).then(() => {
-    btn.textContent = "Copied!";
-    setTimeout(() => { btn.textContent = "Copy"; }, 2000);
+    btn.textContent = t("qr_copy_done");
+    setTimeout(() => { btn.textContent = t("qr_copy_btn"); }, 2000);
   }).catch(() => {});
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 (async function init() {
+  // 1. Detect and load language
+  const lang = detectLang();
+  document.getElementById("lang-select").value = lang;
+  document.documentElement.lang = lang;
+  await loadLang(lang);
+  applyStrings();
+
+  // 2. Load server config (activator URL)
   await loadServerConfig();
+
+  // 3. Secure context check
+  if (!window.isSecureContext) {
+    document.getElementById("error-https").classList.remove("hidden");
+    document.getElementById("panel-wifi").classList.add("hidden");
+    // Don't bother checking for BLE — it won't work without secure context
+    return;
+  }
+
+  // 4. Web Bluetooth availability check
   if (!navigator.bluetooth) {
-    document.getElementById("no-ble-warning").classList.remove("hidden");
+    document.getElementById("error-browser").classList.remove("hidden");
     document.getElementById("btn-pair").disabled = true;
-    // Show QR / share section for non-BLE browsers
+    // Show QR/share section so user can open on a supported device
     document.getElementById("qr-section").classList.remove("hidden");
     document.getElementById("share-url").value = window.location.href;
+    return;
   }
 })();
 </script>

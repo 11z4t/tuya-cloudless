@@ -166,6 +166,123 @@ class TuyaCloudlessConfigFlow(ConfigFlow, domain=DOMAIN):
         # Data missing or invalid — fall through to manual entry
         return await self.async_step_manual()
 
+    # ── BLE Pairing ────────────────────────────────────────────────────────────
+
+    async def async_step_ble_pair(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Launch the BLE pairing tool in the user's browser and wait for activation.
+
+        First call (``user_input`` is ``None``):
+          - Starts the pairing server on port 8099 (if not already running).
+          - Registers this flow so the server can resume it on device activation.
+          - Returns an :meth:`async_external_step` pointing the browser to 8099.
+
+        Second call (``user_input`` contains device data from the server):
+          - Stores device details and advances to :meth:`async_step_ble_confirm`.
+
+        Args:
+            user_input: ``None`` on first render; device data dict on activation.
+
+        Returns:
+            Config flow result — external step or advance to confirm.
+        """
+        if user_input is not None:
+            # Second call: pairing server resumed us with device data.
+            self._device = {
+                CONF_GW_ID: str(user_input.get(CONF_GW_ID, "")).strip(),
+                CONF_LOCAL_KEY: str(user_input.get(CONF_LOCAL_KEY, "")).strip(),
+                CONF_IP_ADDRESS: str(user_input.get("ip_address", "")).strip(),
+                "product_key": str(user_input.get("product_key", "")).strip(),
+            }
+            return self.async_external_step_done(next_step_id="ble_confirm")
+
+        # First call: start the pairing server and open the browser.
+        from .pairing_server import ensure_pairing_server
+
+        try:
+            server = await ensure_pairing_server(self.hass)
+        except OSError as exc:
+            _LOGGER.warning("Could not start pairing server: %s", exc)
+            return self.async_abort(reason="pairing_server_unavailable")
+
+        server.register_flow(self.flow_id)
+
+        url = f"{server.ha_local_url()}/?flow_id={self.flow_id}"
+        return self.async_external_step(
+            step_id="ble_pair",
+            url=url,
+        )
+
+    async def async_step_ble_confirm(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Let the user name the newly paired device and select a profile.
+
+        The device ``gw_id``, ``local_key``, and ``ip_address`` were filled in
+        by :meth:`async_step_ble_pair` from the pairing server callback.
+
+        Args:
+            user_input: Submitted form data, or ``None`` on first render.
+
+        Returns:
+            Config flow result — creates the entry on success.
+        """
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            gw_id = self._device.get(CONF_GW_ID, "")
+            ip_address = self._device.get(CONF_IP_ADDRESS, "")
+            local_key = self._device.get(CONF_LOCAL_KEY, "")
+            name = (user_input.get(CONF_DEVICE_NAME) or "").strip() or ip_address
+
+            from .pairing_server import get_pairing_server
+
+            server = get_pairing_server(self.hass)
+            if server is not None:
+                server.unregister_flow(self.flow_id)
+
+            await self.async_set_unique_id(gw_id)
+            self._abort_if_unique_id_configured()
+
+            return self.async_create_entry(
+                title=name,
+                data={
+                    CONF_GW_ID: gw_id,
+                    CONF_LOCAL_KEY: local_key,
+                    CONF_IP_ADDRESS: ip_address,
+                    CONF_PROTOCOL_VERSION: DEFAULT_PROTOCOL_VERSION,
+                    CONF_PROFILE: user_input.get(CONF_PROFILE, "Generic Switch"),
+                    CONF_DEVICE_NAME: name,
+                },
+            )
+
+        profile_options = _get_profile_options()
+        default_profile = _suggest_profile(self._device.get("product_key"))
+        default_name = self._device.get(CONF_IP_ADDRESS, "")
+
+        schema = vol.Schema(
+            {
+                vol.Optional(CONF_DEVICE_NAME, default=default_name): str,
+                vol.Optional(CONF_PROFILE, default=default_profile): SelectSelector(
+                    SelectSelectorConfig(
+                        options=profile_options,
+                        mode=SelectSelectorMode.LIST,
+                    )
+                ),
+            }
+        )
+
+        return self.async_show_form(
+            step_id="ble_confirm",
+            data_schema=schema,
+            errors=errors,
+            description_placeholders={
+                "ip_address": self._device.get(CONF_IP_ADDRESS, ""),
+                "gw_id": self._device.get(CONF_GW_ID, ""),
+            },
+        )
+
     # ── Step 1: Search ─────────────────────────────────────────────────────────
 
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
@@ -184,6 +301,9 @@ class TuyaCloudlessConfigFlow(ConfigFlow, domain=DOMAIN):
         errors: dict[str, str] = {}
 
         if user_input is not None:
+            if user_input.get("setup_mode") == "ble":
+                return await self.async_step_ble_pair()
+
             if user_input.get("setup_mode") == "manual":
                 return await self.async_step_manual()
 
@@ -206,7 +326,16 @@ class TuyaCloudlessConfigFlow(ConfigFlow, domain=DOMAIN):
 
         schema = vol.Schema(
             {
-                vol.Required("setup_mode", default="search"): vol.In(["search", "manual"]),
+                vol.Required("setup_mode", default="ble"): SelectSelector(
+                    SelectSelectorConfig(
+                        options=[
+                            SelectOptionDict(value="ble", label="BLE Pairing (recommended)"),
+                            SelectOptionDict(value="search", label="Search network"),
+                            SelectOptionDict(value="manual", label="Manual entry"),
+                        ],
+                        mode=SelectSelectorMode.LIST,
+                    )
+                ),
             }
         )
 
@@ -687,6 +816,18 @@ class TuyaCloudlessConfigFlow(ConfigFlow, domain=DOMAIN):
     ) -> TuyaCloudlessOptionsFlow:
         """Return the options flow handler."""
         return TuyaCloudlessOptionsFlow()
+
+    async def async_remove(self) -> None:
+        """Clean up when the flow is cancelled or removed.
+
+        Unregisters the flow from the pairing server so the idle-stop timer
+        can eventually shut the server down.
+        """
+        from .pairing_server import get_pairing_server
+
+        server = get_pairing_server(self.hass)
+        if server is not None:
+            server.unregister_flow(self.flow_id)
 
     def _pairing_tool_url(self) -> str:
         """Return the URL to the Tuya Cloudless pairing tool running on this HA host.
