@@ -66,6 +66,28 @@ _UI_DIR: Final[Path] = Path(__file__).parent / "pairing_ui"
 #: local_key length in bytes (Tuya standard: 16 bytes → 16 ASCII chars)
 _LOCAL_KEY_BYTES: Final[int] = 16
 
+# ── Security constants ─────────────────────────────────────────────────────
+
+#: Security headers added to every response from the pairing UI (PLAT-725).
+#: These protect the browser-side pairing page against common web attacks.
+_SECURITY_HEADERS: Final[dict[str, str]] = {
+    # Prevent the pairing page from being embedded in an iframe on another origin
+    "X-Frame-Options": "SAMEORIGIN",
+    # Stop browsers guessing content types (helps mitigate XSS via MIME sniffing)
+    "X-Content-Type-Options": "nosniff",
+    # Restrict Referrer header to same-origin only
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    # Basic CSP — allow scripts/styles only from same origin, no inline eval
+    "Content-Security-Policy": (
+        "default-src 'self'; "
+        "script-src 'self'; "
+        "style-src 'self' 'unsafe-inline'; "
+        "connect-src 'self'; "
+        "img-src 'self' data:; "
+        "frame-ancestors 'self';"
+    ),
+}
+
 
 # ── Data classes ────────────────────────────────────────────────────────────
 
@@ -222,11 +244,13 @@ class PairingServer:
             return web.Response(
                 status=404,
                 text="Pairing UI not found. This is a bug — please report it.",
+                headers=_SECURITY_HEADERS,
             )
         return web.Response(
             body=index_path.read_bytes(),
             content_type="text/html",
             charset="utf-8",
+            headers=_SECURITY_HEADERS,
         )
 
     async def _handle_config(self, request: web.Request) -> web.Response:
@@ -311,12 +335,29 @@ class PairingServer:
         version.  We generate a random ``local_key`` and respond in Tuya cloud
         format so the device accepts it.
 
+        CSRF protection (PLAT-725): We reject requests that do not carry a
+        ``Content-Type: application/json`` header.  A browser-initiated CSRF
+        attack via an HTML ``<form>`` can only submit
+        ``application/x-www-form-urlencoded`` or ``multipart/form-data``.
+        Requiring JSON prevents such simple-form attacks while all real Tuya
+        firmware sends JSON payloads.
+
         Args:
             request: Incoming HTTP request from the Tuya device.
 
         Returns:
             JSON response in Tuya cloud activation format.
         """
+        # Reject requests that don't claim to be JSON — blocks simple-form CSRF.
+        # Real Tuya firmware always sends Content-Type: application/json.
+        content_type = request.content_type or ""
+        if not content_type.startswith("application/json"):
+            _LOGGER.warning(
+                "Activate endpoint rejected request with Content-Type: %s (CSRF guard)",
+                content_type or "<none>",
+            )
+            return web.Response(status=415, text="Content-Type must be application/json")
+
         client_ip = request.remote or "unknown"
         _LOGGER.debug("Activation request from %s", client_ip)
 

@@ -245,3 +245,68 @@ class TestGetResult:
         object.__setattr__(old, "timestamp", time.monotonic() - 9999)
         s._results["old_tok"] = old
         assert s.get_result("old_tok") is None
+
+
+# ── CSRF protection (PLAT-725) ────────────────────────────────────────────────
+
+
+class TestCsrfProtection:
+    @pytest.mark.asyncio
+    async def test_activate_rejects_form_urlencoded(self, client: TestClient) -> None:
+        """A browser HTML-form POST (application/x-www-form-urlencoded) must be rejected."""
+        resp = await client.post(
+            "/api/tuya/device/active",
+            data="gw_id=evil&token=tok",
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+        assert resp.status == 415
+
+    @pytest.mark.asyncio
+    async def test_activate_rejects_multipart(self, client: TestClient) -> None:
+        """A multipart/form-data POST (another CSRF vector) must be rejected."""
+        resp = await client.post(
+            "/api/tuya/device/active",
+            data={"gw_id": "x"},
+            headers={"Content-Type": "multipart/form-data"},
+        )
+        assert resp.status == 415
+
+    @pytest.mark.asyncio
+    async def test_activate_rejects_missing_content_type(self, client: TestClient) -> None:
+        """A POST with no Content-Type header must be rejected."""
+        resp = await client.post(
+            "/api/tuya/device/active",
+            data=b"{}",
+        )
+        assert resp.status == 415
+
+    @pytest.mark.asyncio
+    async def test_activate_accepts_json_content_type(self, client: TestClient) -> None:
+        """A legitimate application/json POST must still be accepted."""
+        payload = {"gw_id": "dev1", "token": "tok1", "product_key": "pk"}
+        resp = await client.post(
+            "/api/tuya/device/active",
+            json=payload,
+        )
+        assert resp.status == 200
+
+    @pytest.mark.asyncio
+    async def test_index_has_security_headers(self, client: TestClient) -> None:
+        """The pairing UI page must carry all required security headers."""
+        resp = await client.get("/")
+        # The UI dir may not exist in test env so accept 200 or 404
+        assert resp.status in (200, 404)
+        assert resp.headers.get("X-Frame-Options") == "SAMEORIGIN"
+        assert resp.headers.get("X-Content-Type-Options") == "nosniff"
+        assert "Content-Security-Policy" in resp.headers
+        assert resp.headers.get("Referrer-Policy") == "strict-origin-when-cross-origin"
+
+    @pytest.mark.asyncio
+    async def test_api_json_endpoint_also_rejects_form(self, client: TestClient) -> None:
+        """The /api.json alias endpoint has the same CSRF protection."""
+        resp = await client.post(
+            "/api.json",
+            data="gw_id=evil",
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+        assert resp.status == 415
