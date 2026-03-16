@@ -138,10 +138,13 @@ class TuyaCloudlessRuntimeData:
 
     Frozen to prevent accidental mutation after setup. All fields are set
     once during ``async_setup_entry`` and then treated as read-only.
+
+    Device metadata lives on ``coordinator.device_info`` — the single
+    canonical source (PLAT-771).  Access it via ``entry.runtime_data.coordinator.device_info``
+    rather than storing a second copy here.
     """
 
     coordinator: TuyaCloudlessCoordinator
-    device_info: DeviceInfo
     entity_specs: tuple[EntitySpec, ...]
     profile_name: str
 
@@ -162,8 +165,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """
     _LOGGER.info("Setting up Tuya Cloudless entry: %s", entry.title)
 
-    coordinator = TuyaCloudlessCoordinator.from_config_entry(hass, entry)
-
+    # Resolve profile before creating the coordinator so that device_info
+    # can be built once and passed in — making it the single canonical source
+    # (PLAT-771).  The coordinator stores it as a proper typed attribute;
+    # all entities read it via TuyaCloudlessEntity.device_info.
     profile = await _resolve_profile(hass, entry)
     entity_specs = profile.entities if profile else []
     profile_name = profile.name if profile else ""
@@ -181,11 +186,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             entry.data[CONF_GW_ID],
         )
 
-    coordinator.device_name = entry.title
-    coordinator.profile_name = profile_name
-
-    # Build DeviceInfo exactly once and store it on the coordinator so that
-    # all entities always return the same object (PLAT-714).
+    # Build DeviceInfo exactly once and pass it to the coordinator (PLAT-771).
     protocol_version: str = entry.data.get(CONF_PROTOCOL_VERSION, "3.3")
     device_info = DeviceInfo(
         identifiers={(DOMAIN, entry.data[CONF_GW_ID])},
@@ -195,11 +196,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         sw_version=protocol_version,
         configuration_url=f"http://{entry.data.get(CONF_IP_ADDRESS, '')}",
     )
-    coordinator.device_info = device_info
+
+    coordinator = TuyaCloudlessCoordinator.from_config_entry(hass, entry, device_info=device_info)
+    coordinator.device_name = entry.title
+    coordinator.profile_name = profile_name
 
     entry.runtime_data = TuyaCloudlessRuntimeData(
         coordinator=coordinator,
-        device_info=device_info,
         entity_specs=tuple(entity_specs),
         profile_name=profile_name,
     )

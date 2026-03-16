@@ -72,10 +72,11 @@ class TuyaCloudlessEntity(CoordinatorEntity[TuyaCloudlessCoordinator]):
 
     @property
     def device_info(self) -> DeviceInfo:
-        """Return device registry info from the single canonical source (PLAT-714).
+        """Return device registry info from the single canonical source (PLAT-771).
 
-        DeviceInfo is constructed once in ``async_setup_entry`` and stored on
-        the coordinator so that all entities always return the same object.
+        DeviceInfo is constructed once in ``async_setup_entry``, passed to
+        ``TuyaCloudlessCoordinator.__init__`` as a typed attribute, and exposed
+        here so that every entity always returns the exact same object.
         """
         return self.coordinator.device_info
 

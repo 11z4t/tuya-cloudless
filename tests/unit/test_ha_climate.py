@@ -187,7 +187,6 @@ class TestClimateSetupEntry:
         spec = _make_climate_spec()
         runtime = TuyaCloudlessRuntimeData(
             coordinator=coord,
-            device_info=MagicMock(),
             entity_specs=[spec],
             profile_name="Smart Thermostat",
         )
@@ -208,7 +207,6 @@ class TestClimateSetupEntry:
         sensor_spec = EntitySpec(platform="sensor", name="power")
         runtime = TuyaCloudlessRuntimeData(
             coordinator=coord,
-            device_info=MagicMock(),
             entity_specs=[sensor_spec],
             profile_name="Test",
         )

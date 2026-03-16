@@ -117,7 +117,6 @@ class TestSwitchSetupEntry:
         spec = _make_switch_spec()
         runtime = TuyaCloudlessRuntimeData(
             coordinator=coord,
-            device_info=MagicMock(),
             entity_specs=[spec],
             profile_name="Generic Switch",
         )
@@ -139,7 +138,6 @@ class TestSwitchSetupEntry:
         sensor_spec = EntitySpec(platform="sensor", name="power")
         runtime = TuyaCloudlessRuntimeData(
             coordinator=coord,
-            device_info=MagicMock(),
             entity_specs=[sensor_spec],
             profile_name="Test",
         )

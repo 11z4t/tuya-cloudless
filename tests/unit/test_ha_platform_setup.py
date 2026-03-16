@@ -30,7 +30,6 @@ def _make_coordinator(dps: dict[str, Any] | None = None) -> MagicMock:
 def _make_runtime(specs: list[EntitySpec]) -> TuyaCloudlessRuntimeData:
     return TuyaCloudlessRuntimeData(
         coordinator=_make_coordinator(),
-        device_info=MagicMock(),
         entity_specs=specs,
         profile_name="Test",
     )

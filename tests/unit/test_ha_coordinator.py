@@ -68,6 +68,7 @@ def _make_coordinator(
         ip_address=ip,
         local_key=local_key,
         version=version,
+        device_info=MagicMock(),
         port=port,
     )
 
@@ -96,6 +97,7 @@ class TestCoordinatorInit:
             ip_address="1.2.3.4",
             local_key="0123456789abcdef",
             version="3.3",
+            device_info=MagicMock(),
             heartbeat_interval=30.0,
             command_timeout=10.0,
             reconnect_max_delay=600.0,
@@ -202,7 +204,7 @@ class TestFromConfigEntry:
         }
         entry.options = {}
 
-        coord = TuyaCloudlessCoordinator.from_config_entry(hass, entry)
+        coord = TuyaCloudlessCoordinator.from_config_entry(hass, entry, device_info=MagicMock())
         assert coord.gw_id == "gw001"
         assert coord._ip == "192.168.1.42"
         assert coord.version == "3.3"
@@ -223,7 +225,7 @@ class TestFromConfigEntry:
             "reconnect_max_delay": 600,
         }
 
-        coord = TuyaCloudlessCoordinator.from_config_entry(hass, entry)
+        coord = TuyaCloudlessCoordinator.from_config_entry(hass, entry, device_info=MagicMock())
         assert coord._heartbeat_interval == 30.0
         assert coord._command_timeout == 10.0
         assert coord._reconnect_max_delay == 600.0
@@ -239,7 +241,7 @@ class TestFromConfigEntry:
         }
         entry.options = {}
 
-        coord = TuyaCloudlessCoordinator.from_config_entry(hass, entry)
+        coord = TuyaCloudlessCoordinator.from_config_entry(hass, entry, device_info=MagicMock())
         assert coord.version == "3.3"
 
 

@@ -158,7 +158,6 @@ class TestRuntimeData:
 
         rt = TuyaCloudlessRuntimeData(
             coordinator=MagicMock(),
-            device_info=MagicMock(),
             entity_specs=(),
             profile_name="Test",
         )
@@ -170,7 +169,6 @@ class TestRuntimeData:
 
         rt = TuyaCloudlessRuntimeData(
             coordinator=MagicMock(),
-            device_info=MagicMock(),
             entity_specs=(),
             profile_name="",
         )
@@ -257,7 +255,6 @@ class TestAsyncUnloadEntry:
         mock_coord.async_stop = AsyncMock()
         entry.runtime_data = TuyaCloudlessRuntimeData(
             coordinator=mock_coord,
-            device_info=MagicMock(),
             entity_specs=(),
             profile_name="",
         )

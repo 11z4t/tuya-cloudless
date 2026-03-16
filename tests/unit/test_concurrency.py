@@ -36,6 +36,7 @@ def _make_coordinator(
         ip_address="192.168.1.42",
         local_key="0123456789abcdef",
         version=version,
+        device_info=MagicMock(),
     )
     # Set up a mock writer so the device appears available
     writer = MagicMock()

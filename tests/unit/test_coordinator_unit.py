@@ -345,7 +345,7 @@ class TestCoordinatorFromConfigEntry:
         }
         entry.options = {CONF_OPT_HEARTBEAT_INTERVAL: 30}
 
-        coord = TuyaCloudlessCoordinator.from_config_entry(hass, entry)
+        coord = TuyaCloudlessCoordinator.from_config_entry(hass, entry, device_info=MagicMock())
         assert coord._heartbeat_interval == 30
         assert coord._gw_id == "gw001"
 
@@ -365,6 +365,7 @@ class TestCoordinatorInit:
             "ip_address": "10.0.0.1",
             "local_key": "0123456789abcdef",
             "version": "3.3",
+            "device_info": MagicMock(),
         }
         defaults.update(kwargs)
         return TuyaCloudlessCoordinator(**defaults)  # type: ignore[arg-type]

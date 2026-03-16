@@ -227,7 +227,6 @@ class TestSensorSetupEntry:
         spec = _make_sensor_spec()
         runtime = TuyaCloudlessRuntimeData(
             coordinator=coord,
-            device_info=MagicMock(),
             entity_specs=[spec],
             profile_name="Smart Plug",
         )
@@ -274,7 +273,6 @@ class TestSensorSetupEntry:
         coord = _make_coordinator()
         runtime = TuyaCloudlessRuntimeData(
             coordinator=coord,
-            device_info=MagicMock(),
             entity_specs=[],
             profile_name="Test",
         )

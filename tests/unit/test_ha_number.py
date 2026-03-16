@@ -157,7 +157,6 @@ class TestNumberSetupEntry:
         spec = _make_number_spec()
         runtime = TuyaCloudlessRuntimeData(
             coordinator=coord,
-            device_info=MagicMock(),
             entity_specs=[spec],
             profile_name="Siren / Alarm",
         )
@@ -178,7 +177,6 @@ class TestNumberSetupEntry:
         sensor_spec = EntitySpec(platform="sensor", name="power")
         runtime = TuyaCloudlessRuntimeData(
             coordinator=coord,
-            device_info=MagicMock(),
             entity_specs=[sensor_spec],
             profile_name="Test",
         )

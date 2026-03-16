@@ -22,6 +22,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 from tuya_cloudless.exceptions import TuyaCloudlessError
@@ -99,6 +100,7 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         ip_address: str,
         local_key: str,
         version: str,
+        device_info: DeviceInfo,
         port: int = DEFAULT_TCP_PORT,
         heartbeat_interval: float = DEFAULT_OPT_HEARTBEAT_INTERVAL,
         command_timeout: float = DEFAULT_OPT_COMMAND_TIMEOUT,
@@ -118,6 +120,11 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._heartbeat_interval = heartbeat_interval
         self._command_timeout = command_timeout
         self._reconnect_max_delay = reconnect_max_delay
+
+        # Single canonical source of device metadata — declared here and never
+        # duplicated elsewhere (PLAT-771). All entities read this via
+        # TuyaCloudlessEntity.device_info which delegates to coordinator.device_info.
+        self.device_info: DeviceInfo = device_info
 
         # User-visible device name and profile (set by async_setup_entry after init)
         self.device_name: str = gw_id
@@ -752,12 +759,23 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         return self._sequence
 
     @classmethod
-    def from_config_entry(cls, hass: HomeAssistant, entry: Any) -> TuyaCloudlessCoordinator:
+    def from_config_entry(
+        cls,
+        hass: HomeAssistant,
+        entry: Any,
+        device_info: DeviceInfo,
+    ) -> TuyaCloudlessCoordinator:
         """Construct a coordinator from a config entry.
+
+        ``device_info`` is built exactly once in ``async_setup_entry`` (after
+        the device profile is resolved) and passed here so that it becomes the
+        single canonical source.  All entities read it via
+        ``TuyaCloudlessEntity.device_info`` which delegates to this attribute.
 
         Args:
             hass: Home Assistant instance.
             entry: Config entry with data fields.
+            device_info: Pre-built :class:`DeviceInfo` for this device.
 
         Returns:
             New :class:`TuyaCloudlessCoordinator`.
@@ -770,6 +788,7 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             ip_address=entry.data[CONF_IP_ADDRESS],
             local_key=entry.data[CONF_LOCAL_KEY],
             version=entry.data.get(CONF_PROTOCOL_VERSION, "3.3"),
+            device_info=device_info,
             heartbeat_interval=float(
                 opts.get(CONF_OPT_HEARTBEAT_INTERVAL, DEFAULT_OPT_HEARTBEAT_INTERVAL)
             ),

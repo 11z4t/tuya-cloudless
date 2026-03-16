@@ -38,7 +38,6 @@ def _make_runtime(entity_specs: list[EntitySpec]) -> MagicMock:
 
     runtime = TuyaCloudlessRuntimeData(
         coordinator=coord,
-        device_info=MagicMock(),
         entity_specs=tuple(entity_specs),
         profile_name="Test Profile",
     )

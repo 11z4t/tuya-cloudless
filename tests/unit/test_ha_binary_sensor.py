@@ -94,7 +94,6 @@ class TestBinarySensorSetup:
         spec = _make_binary_sensor_spec()
         runtime = TuyaCloudlessRuntimeData(
             coordinator=coord,
-            device_info=MagicMock(),
             entity_specs=[spec],
             profile_name="Smart Plug",
         )
@@ -115,7 +114,6 @@ class TestBinarySensorSetup:
         switch_spec = EntitySpec(platform="switch", name="sw", dp_power=DPSpec(id="1", type="bool"))
         runtime = TuyaCloudlessRuntimeData(
             coordinator=coord,
-            device_info=MagicMock(),
             entity_specs=[switch_spec],
             profile_name="Test",
         )

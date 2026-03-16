@@ -58,6 +58,7 @@ async def _make_coordinator(
         ip_address="127.0.0.1",
         local_key=local_key.decode(),
         version=version,
+        device_info=MagicMock(),
         port=port,
     )
 

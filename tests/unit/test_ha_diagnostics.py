@@ -64,7 +64,6 @@ def _make_entry(
     }
     entry.runtime_data = TuyaCloudlessRuntimeData(
         coordinator=coord,
-        device_info=MagicMock(),
         entity_specs=[],
         profile_name=profile,
     )

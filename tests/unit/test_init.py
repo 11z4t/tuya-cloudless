@@ -25,10 +25,8 @@ class TestRuntimeData:
         from custom_components.tuya_cloudless import TuyaCloudlessRuntimeData
 
         coord = MagicMock()
-        dev_info = MagicMock()
         runtime = TuyaCloudlessRuntimeData(
             coordinator=coord,
-            device_info=dev_info,
             entity_specs=(),
             profile_name="Test",
         )
@@ -41,7 +39,6 @@ class TestRuntimeData:
         spec = EntitySpec(platform="switch", name="s", dp_power=DPSpec(id="1", type="bool"))
         runtime = TuyaCloudlessRuntimeData(
             coordinator=MagicMock(),
-            device_info=MagicMock(),
             entity_specs=(spec,),
             profile_name="Test",
         )

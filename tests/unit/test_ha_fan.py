@@ -216,7 +216,6 @@ class TestFanSetupEntry:
         spec = _make_full_fan_spec()
         runtime = TuyaCloudlessRuntimeData(
             coordinator=coord,
-            device_info=MagicMock(),
             entity_specs=[spec],
             profile_name="Ceiling Fan",
         )
@@ -237,7 +236,6 @@ class TestFanSetupEntry:
         sensor_spec = EntitySpec(platform="sensor", name="power")
         runtime = TuyaCloudlessRuntimeData(
             coordinator=coord,
-            device_info=MagicMock(),
             entity_specs=[sensor_spec],
             profile_name="Test",
         )

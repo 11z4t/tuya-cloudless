@@ -230,7 +230,6 @@ class TestCoverSetupEntry:
         spec = _make_cover_spec()
         runtime = TuyaCloudlessRuntimeData(
             coordinator=coord,
-            device_info=MagicMock(),
             entity_specs=[spec],
             profile_name="Roller Blind",
         )
@@ -251,7 +250,6 @@ class TestCoverSetupEntry:
         switch_spec = EntitySpec(platform="switch", name="sw", dp_power=DPSpec(id="1", type="bool"))
         runtime = TuyaCloudlessRuntimeData(
             coordinator=coord,
-            device_info=MagicMock(),
             entity_specs=[switch_spec],
             profile_name="Test",
         )
