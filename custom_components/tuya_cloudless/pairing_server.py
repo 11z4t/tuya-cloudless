@@ -322,7 +322,7 @@ class PairingServer:
 
         try:
             body = await request.json()
-        except Exception:
+        except (json.JSONDecodeError, ValueError, UnicodeDecodeError):
             body = {}
 
         # Support both top-level and nested ``data`` field

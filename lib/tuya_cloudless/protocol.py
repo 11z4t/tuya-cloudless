@@ -38,7 +38,6 @@ from tuya_cloudless.const import (
     FRAME_SUFFIX,
     MAX_PAYLOAD_SIZE,
     PROTOCOL_31,
-    VERSIONS_ECB,
     VERSIONS_GCM,
 )
 from tuya_cloudless.crypto import (
@@ -230,7 +229,7 @@ def encode_status_query(
     Returns:
         Wire-format status query frame.
     """
-    cmd = CMD_STATUS if version in VERSIONS_ECB else CMD_DP_QUERY
+    cmd = CMD_DP_QUERY
     return encode_frame(
         cmd,
         b"",
