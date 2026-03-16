@@ -41,6 +41,7 @@ PLATFORMS: list[str] = [
     "button",
     "climate",
     "fan",
+    "update",
 ]
 
 # Config entry keys
