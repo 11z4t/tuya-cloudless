@@ -7,10 +7,23 @@ Local control of Tuya WiFi devices — **no cloud, no registration, no data leav
 
 ## How it works
 
-1. **Web Bluetooth pairing** — A page hosted at `http://your-ha:8099` lets you pair Tuya devices directly from your phone browser using Web Bluetooth. The device's WiFi credentials are configured locally; no Tuya cloud account needed.
-2. **Fake cloud activation** — A minimal local mock of the Tuya activation API intercepts the device's first-boot cloud call and responds with a valid-looking session. The device believes it is registered.
-3. **Local TCP control** — Runtime commands are sent over TCP port 6668 using the Tuya LAN protocol (v3.1–3.5). Responses are parsed locally.
-4. **UDP discovery** — Devices broadcast discovery packets on UDP 6666/6667. The integration listens passively and updates device availability in real time.
+**No Tuya account. No Tuya app. Nothing sent to the cloud.**
+
+1. **BLE pairing** — Put your device in pairing mode. Home Assistant opens a pairing tool in your browser. You select the device over Bluetooth, enter your WiFi password, and the device connects to your network — all locally.
+
+2. **Local activation** — When the device connects to WiFi it sends a one-time activation request. Tuya devices normally send this to Tuya's cloud servers. Tuya Cloudless intercepts it on your local network instead and responds with a randomly generated local key. The device stores the key — it is now fully activated without ever talking to Tuya.
+
+3. **Local TCP control** — After activation, all communication goes directly over TCP port 6668 on your LAN. The local key encrypts every message. No internet connection required.
+
+4. **UDP discovery** — Devices broadcast their presence on UDP 6666/6667. The integration listens and updates device availability in real time.
+
+See the [wiki](https://github.com/11z4t/tuya-cloudless/wiki/How-It-Works) for a detailed technical explanation.
+
+## Requirements
+
+- Home Assistant 2024.4 or later
+- **Chrome or Edge** for BLE pairing (Web Bluetooth — Safari/Firefox not supported)
+- **HTTPS on your HA** — required by the browser for Bluetooth access. [How to set this up →](https://github.com/11z4t/tuya-cloudless/wiki/HTTPS-Setup)
 
 ## Protocol support
 
@@ -25,7 +38,13 @@ Local control of Tuya WiFi devices — **no cloud, no registration, no data leav
 ## Installation
 
 ### HACS (recommended)
-Add this repo as a custom HACS integration repository.
+1. Open HACS → Integrations → ⋮ → Custom repositories
+2. Paste `https://github.com/11z4t/tuya-cloudless`, category **Integration**
+3. Download **Tuya Cloudless** and restart Home Assistant
+4. Go to **Settings → Devices & Services → Add integration → Tuya Cloudless**
+5. Choose **BLE Pairing** and follow the wizard
+
+[Full installation guide →](https://github.com/11z4t/tuya-cloudless/wiki/Installation)
 
 ### Manual
 Copy `custom_components/tuya_cloudless/` to your HA `custom_components/` directory.

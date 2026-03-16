@@ -1,41 +1,65 @@
 # Tuya Cloudless
 
-Control your Tuya smart home devices locally — no cloud required after the first setup.
+Styr dina Tuya-enheter direkt från Home Assistant — **utan molnkonto, utan Tuya-app, utan att data lämnar ditt hem**.
 
-Tuya Cloudless is a Home Assistant integration that communicates directly with your devices over your local network. Once set up, your devices work even if the internet is down.
+Control your Tuya devices directly from Home Assistant — **no cloud account, no Tuya app, no data leaves your home**.
 
 ---
 
-## What can it do?
+## Vad kan det göra? / What can it do?
 
-| What you get | How |
+| Funktion | Hur |
 |---|---|
-| Turn lights and switches on/off | Local TCP connection |
-| Dim lights, change color temperature | Protocol v3.1–3.5 |
-| Read power usage from smart plugs | Real-time DPS updates |
-| Open and close roller blinds | Cover platform |
-| Get alerts when a device overloads | Binary sensor platform |
-| Works without internet | 100% local |
+| Tänd/släck lampor och strömbrytare | Lokal TCP-anslutning |
+| Dimra lampor, ändra färgtemperatur | Protokoll v3.1–3.5 |
+| Läs av strömförbrukning | Realtidsuppdateringar |
+| Öppna och stäng persienner | Cover-plattformen |
+| Funkar utan internet | 100% lokalt |
 
 ---
 
-## Pages
+## Sidor / Pages
 
-- **[Installation](Installation)** — How to install in Home Assistant
-- **[Setup](Setup)** — Step-by-step setup wizard walkthrough
-- **[Supported Devices](Supported-Devices)** — Which devices work out of the box
-- **[Device Profiles](Device-Profiles)** — How device profiles work + how to add your own
-- **[Troubleshooting](Troubleshooting)** — Common problems and solutions
-- **[Protocol Versions](Protocol-Versions)** — v3.1, v3.3, v3.4, v3.5 — what's the difference?
-- **[Security](Security)** — How your device key is stored and used
+### Kom igång / Getting started
+- **[Installation](Installation)** — Installera i Home Assistant / Install in Home Assistant
+- **[Setup](Setup)** — Steg-för-steg: lägg till din enhet / Step-by-step: add your device
+- **[HTTPS Setup](HTTPS-Setup)** — Krävs för BLE-parkopplingen / Required for BLE pairing
+
+### Lär dig mer / Learn more
+- **[How It Works](How-It-Works)** — Teknisk förklaring av BLE, fake-cloud och lokal nyckel / Technical explanation
+- **[Supported Devices](Supported-Devices)** — Vilka enheter stöds / Which devices are supported
+- **[Device Profiles](Device-Profiles)** — Lägg till egna enhetsprofiler / Add your own device profiles
+- **[Protocol Versions](Protocol-Versions)** — v3.1, v3.3, v3.4, v3.5 — vad är skillnaden?
+- **[Security](Security)** — Hur din enhetsnyckel lagras och används / How your device key is stored
+
+### Hjälp / Help
+- **[Troubleshooting](Troubleshooting)** — Vanliga problem och lösningar / Common problems and solutions
 
 ---
 
-## Quick start
+## Snabbstart / Quick start
 
-1. Install via HACS → Custom repositories → `https://github.com/11z4t/tuya-cloudless`
-2. Restart Home Assistant
-3. Go to **Settings → Devices & Services → Add integration → Tuya Cloudless**
-4. Follow the setup wizard
+1. Installera via HACS → Egna förråd → `https://github.com/11z4t/tuya-cloudless`
+2. Starta om Home Assistant
+3. Gå till **Inställningar → Enheter och tjänster → Lägg till integration → Tuya Cloudless**
+4. Välj **BLE Parkoppling** och följ guiden
 
-See **[Setup](Setup)** for the full walkthrough.
+Se **[Setup](Setup)** för en fullständig genomgång.
+
+---
+
+## Varför inget molnkonto? / Why no cloud account?
+
+Tuya-enheter har en inbyggd aktiveringsmekanism: när de ansluts till WiFi första gången anropar de en URL för att registrera sig. Normalt pekar den URL:en på Tuyas servrar.
+
+Tuya Cloudless pekar om den URL:en till din **lokala Home Assistant** istället. HA svarar med en giltig aktiveringssignal och en slumpmässigt genererad lokal nyckel. Enheten lagrar nyckeln och använder den för all framtida kommunikation — direkt mot HA, utan mellanhänder.
+
+**Du har aldrig behövt berätta för Tuya att enheten existerar.**
+
+---
+
+Tuya devices have a built-in activation mechanism: when first connected to WiFi, they call a URL to register themselves. Normally that URL points to Tuya's servers.
+
+Tuya Cloudless redirects that URL to your **local Home Assistant** instead. HA responds with a valid activation response and a randomly generated local key. The device stores the key and uses it for all future communication — directly to HA, no middleman.
+
+**You never had to tell Tuya the device exists.**
