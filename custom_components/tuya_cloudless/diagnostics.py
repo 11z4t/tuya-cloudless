@@ -4,7 +4,13 @@ Provides an exportable JSON snapshot of a device's runtime state for
 troubleshooting. Accessible via Home Assistant → Settings → Devices →
 select device → Download diagnostics.
 
-No secret material (keys, tokens) is included in the export.
+Sensitive data is redacted using async_redact_data():
+- local_key     → **REDACTED** (symmetric encryption key)
+- gw_id         → first 4 chars + **REDACTED** (partial, preserves device family)
+- ip_address    → host prefix preserved, last octet → ** (e.g. 192.168.1.**)
+
+Approach mirrors Shelly (8/10 reference) with additional partial-redaction
+callables for IP and device-ID fields (10/10 target).
 """
 
 from __future__ import annotations
@@ -13,6 +19,33 @@ from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.redact import REDACTED, async_redact_data
+
+
+def _partial_gw_id(value: str) -> str:
+    """Return first 4 chars of gw_id, rest replaced with REDACTED marker."""
+    if len(value) <= 4:
+        return REDACTED
+    return value[:4] + REDACTED
+
+
+def _partial_ip(value: str) -> str:
+    """Redact last octet of an IPv4 address (e.g. 192.168.1.100 → 192.168.1.**)."""
+    parts = value.rsplit(".", 1)
+    if len(parts) == 2:
+        return parts[0] + ".**"
+    return REDACTED
+
+
+# Keys redacted with custom callables for partial visibility
+_CONFIG_REDACT: dict[str, Any] = {
+    "local_key": lambda _: REDACTED,
+    "gw_id": _partial_gw_id,
+    "ip_address": _partial_ip,
+}
+
+# Keys fully redacted in raw entry.as_dict() (safety net)
+_ENTRY_REDACT = {"local_key", "password", "token", "api_key"}
 
 
 async def async_get_config_entry_diagnostics(
@@ -37,13 +70,15 @@ async def async_get_config_entry_diagnostics(
     runtime: TuyaCloudlessRuntimeData = entry.runtime_data
     coord = runtime.coordinator
 
+    raw_config = {
+        "gw_id": entry.data.get(CONF_GW_ID, ""),
+        "ip_address": entry.data.get(CONF_IP_ADDRESS, ""),
+        "protocol_version": entry.data.get(CONF_PROTOCOL_VERSION, ""),
+        "profile": entry.data.get(CONF_PROFILE, runtime.profile_name),
+    }
+
     return {
-        "config": {
-            "gw_id": entry.data.get(CONF_GW_ID, ""),
-            "ip_address": entry.data.get(CONF_IP_ADDRESS, ""),
-            "protocol_version": entry.data.get(CONF_PROTOCOL_VERSION, ""),
-            "profile": entry.data.get(CONF_PROFILE, runtime.profile_name),
-        },
+        "config": async_redact_data(raw_config, _CONFIG_REDACT),
         "state": {
             "available": coord.state.available,
             "last_seen": (coord.state.last_seen.isoformat() if coord.state.last_seen else None),

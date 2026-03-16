@@ -7,11 +7,14 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from homeassistant.helpers.redact import REDACTED
+
 
 def _make_entry(gw_id: str = "gw001") -> MagicMock:
     entry = MagicMock()
     entry.data = {
         "gw_id": gw_id,
+        "local_key": "a1b2c3d4e5f60011223344556677889900aabbcc",  # 40-char key — must never appear
         "ip_address": "192.168.1.100",
         "protocol_version": "3.3",
         "profile": "Smart Plug",
@@ -54,8 +57,6 @@ class TestDiagnostics:
         result = await async_get_config_entry_diagnostics(MagicMock(), entry)
         assert "config" in result
         config = result["config"]
-        assert config["gw_id"] == "gw001"
-        assert config["ip_address"] == "192.168.1.100"
         assert config["protocol_version"] == "3.3"
         assert config["profile"] == "Smart Plug"
 
@@ -121,3 +122,115 @@ class TestDiagnostics:
         entry.runtime_data.coordinator.state.last_seen = None
         result = await async_get_config_entry_diagnostics(MagicMock(), entry)
         assert result["state"]["last_seen"] is None
+
+
+class TestDiagnosticsRedaction:
+    """AC1-AC3: Verify async_redact_data is used and secrets are never exposed."""
+
+    @pytest.mark.asyncio
+    async def test_local_key_never_in_output(self) -> None:
+        """AC2: local_key must never appear anywhere in diagnostics output."""
+        from custom_components.tuya_cloudless.diagnostics import (
+            async_get_config_entry_diagnostics,
+        )
+
+        entry = _make_entry()
+        result = await async_get_config_entry_diagnostics(MagicMock(), entry)
+        result_str = str(result)
+        assert entry.data["local_key"] not in result_str
+        assert "a1b2c3d4e5f60011223344556677889900aabbcc" not in result_str
+
+    @pytest.mark.asyncio
+    async def test_local_key_replaced_with_redacted(self) -> None:
+        """AC1: async_redact_data replaces local_key with REDACTED marker."""
+        from custom_components.tuya_cloudless.diagnostics import (
+            async_get_config_entry_diagnostics,
+            _CONFIG_REDACT,
+        )
+        from homeassistant.helpers.redact import async_redact_data
+
+        raw = {
+            "gw_id": "abcdef1234",
+            "local_key": "secretkey1234567890abcdef12345678",
+            "ip_address": "10.0.0.42",
+        }
+        redacted = async_redact_data(raw, _CONFIG_REDACT)
+        assert redacted["local_key"] == REDACTED
+        assert "secretkey" not in str(redacted)
+
+    @pytest.mark.asyncio
+    async def test_gw_id_partially_redacted(self) -> None:
+        """gw_id: first 4 chars preserved, rest replaced with REDACTED."""
+        from custom_components.tuya_cloudless.diagnostics import (
+            async_get_config_entry_diagnostics,
+        )
+
+        entry = _make_entry(gw_id="abcd1234567890")
+        result = await async_get_config_entry_diagnostics(MagicMock(), entry)
+        gw = result["config"]["gw_id"]
+        # First 4 chars visible
+        assert gw.startswith("abcd")
+        # Rest is redacted
+        assert "1234567890" not in gw
+        assert REDACTED in gw
+
+    @pytest.mark.asyncio
+    async def test_gw_id_short_fully_redacted(self) -> None:
+        """gw_id shorter than 4 chars → fully REDACTED."""
+        from custom_components.tuya_cloudless.diagnostics import (
+            _partial_gw_id,
+        )
+
+        assert _partial_gw_id("abc") == REDACTED
+
+    @pytest.mark.asyncio
+    async def test_ip_address_last_octet_redacted(self) -> None:
+        """IP address last octet must be replaced with **.
+
+        Shelly redacts ssid; we redact IP last octet for privacy equivalence.
+        """
+        from custom_components.tuya_cloudless.diagnostics import (
+            async_get_config_entry_diagnostics,
+        )
+
+        entry = _make_entry()
+        result = await async_get_config_entry_diagnostics(MagicMock(), entry)
+        ip = result["config"]["ip_address"]
+        # Network prefix preserved for debugging
+        assert ip.startswith("192.168.1.")
+        # Last octet gone
+        assert "100" not in ip
+        assert ip.endswith(".**")
+
+    @pytest.mark.asyncio
+    async def test_ip_malformed_fully_redacted(self) -> None:
+        """Malformed IP (no dot) → REDACTED."""
+        from custom_components.tuya_cloudless.diagnostics import _partial_ip
+
+        assert _partial_ip("not-an-ip") == REDACTED
+
+    @pytest.mark.asyncio
+    async def test_non_sensitive_fields_preserved(self) -> None:
+        """protocol_version, profile, dps, connection fields must pass through unchanged."""
+        from custom_components.tuya_cloudless.diagnostics import (
+            async_get_config_entry_diagnostics,
+        )
+
+        entry = _make_entry()
+        result = await async_get_config_entry_diagnostics(MagicMock(), entry)
+        assert result["config"]["protocol_version"] == "3.3"
+        assert result["config"]["profile"] == "Smart Plug"
+        assert result["state"]["dps"] == {"1": True, "19": 1500}
+        assert result["connection"]["sequence_counter"] == 42
+
+    @pytest.mark.asyncio
+    async def test_uses_async_redact_data(self) -> None:
+        """AC1: Verify async_redact_data is imported and used in diagnostics module."""
+        import custom_components.tuya_cloudless.diagnostics as diag_mod
+
+        assert hasattr(diag_mod, "_CONFIG_REDACT"), (
+            "diagnostics must define _CONFIG_REDACT mapping for async_redact_data"
+        )
+        assert "local_key" in diag_mod._CONFIG_REDACT
+        assert "gw_id" in diag_mod._CONFIG_REDACT
+        assert "ip_address" in diag_mod._CONFIG_REDACT

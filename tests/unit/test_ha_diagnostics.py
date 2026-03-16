@@ -83,8 +83,11 @@ class TestDiagnostics:
         entry = _make_entry()
         result = await async_get_config_entry_diagnostics(MagicMock(), entry)
         assert "config" in result
-        assert result["config"]["gw_id"] == "gw001"
-        assert result["config"]["ip_address"] == "192.168.1.42"
+        # gw_id and ip_address are partially redacted (PLAT-772)
+        assert result["config"]["gw_id"].startswith("gw00")
+        assert "**REDACTED**" in result["config"]["gw_id"]
+        assert result["config"]["ip_address"].startswith("192.168.1.")
+        assert result["config"]["ip_address"].endswith(".**")
         assert result["config"]["protocol_version"] == "3.3"
         assert result["config"]["profile"] == "Generic Switch"
 
