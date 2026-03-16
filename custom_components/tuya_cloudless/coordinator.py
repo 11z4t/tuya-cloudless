@@ -703,6 +703,47 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Number of consecutive frame-decode errors since last success (PLAT-720)."""
         return self._consecutive_decode_errors
 
+    @property
+    def dp_values(self) -> dict[str, Any]:
+        """Current DP (data point) snapshot as a plain dict.
+
+        Returns a direct reference to the live state dict; callers must not mutate it.
+        Use this instead of accessing ``coordinator.state.dps`` directly.
+        """
+        return self.state.dps
+
+    @property
+    def is_connected(self) -> bool:
+        """True if the device is available (TCP connected and initial DPS received).
+
+        This reflects the entity-level availability as tracked by ``DeviceState``.
+        Use this instead of accessing ``coordinator.state.available`` directly.
+        """
+        return self.state.available
+
+    @property
+    def ip_address(self) -> str:
+        """IP address of the device."""
+        return self._ip
+
+    @property
+    def last_seen(self) -> datetime | None:
+        """UTC timestamp of the last status update received from the device.
+
+        Returns ``None`` if no update has been received since startup.
+        """
+        return self.state.last_seen
+
+    @property
+    def reconnect_count(self) -> int:
+        """Total number of TCP reconnection attempts since startup."""
+        return self.state.reconnect_count
+
+    @property
+    def last_error(self) -> str | None:
+        """Human-readable description of the last connection error, or ``None``."""
+        return self.state.last_error
+
     # ── Utility ───────────────────────────────────────────────────────────────
 
     def _next_sequence(self) -> int:

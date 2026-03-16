@@ -1051,6 +1051,68 @@ class TestSendLock:
         coord = _make_coordinator(version="3.4")
         assert coord.version == "3.4"
 
+    def test_ip_address_property(self) -> None:
+        """coordinator.ip_address must return the device IP without underscore access."""
+        coord = _make_coordinator(ip="10.0.0.55")
+        assert coord.ip_address == "10.0.0.55"
+
+    def test_dp_values_property_empty(self) -> None:
+        """coordinator.dp_values returns empty dict on init."""
+        coord = _make_coordinator()
+        assert coord.dp_values == {}
+
+    def test_dp_values_property_reflects_state(self) -> None:
+        """coordinator.dp_values is a live reference to state.dps."""
+        coord = _make_coordinator()
+        coord.state.dps["1"] = True
+        assert coord.dp_values == {"1": True}
+        assert coord.dp_values is coord.state.dps
+
+    def test_is_connected_property_false_initially(self) -> None:
+        """coordinator.is_connected is False before any TCP connect."""
+        coord = _make_coordinator()
+        assert coord.is_connected is False
+
+    def test_is_connected_property_reflects_state(self) -> None:
+        """coordinator.is_connected mirrors state.available."""
+        coord = _make_coordinator()
+        coord.state.available = True
+        assert coord.is_connected is True
+
+    def test_last_seen_property_none_initially(self) -> None:
+        """coordinator.last_seen is None before any device update."""
+        coord = _make_coordinator()
+        assert coord.last_seen is None
+
+    def test_last_seen_property_reflects_state(self) -> None:
+        """coordinator.last_seen returns the UTC timestamp from state."""
+        coord = _make_coordinator()
+        ts = datetime(2026, 3, 16, 10, 0, 0, tzinfo=UTC)
+        coord.state.last_seen = ts
+        assert coord.last_seen == ts
+
+    def test_reconnect_count_property_zero_initially(self) -> None:
+        """coordinator.reconnect_count is 0 before any reconnect."""
+        coord = _make_coordinator()
+        assert coord.reconnect_count == 0
+
+    def test_reconnect_count_property_reflects_state(self) -> None:
+        """coordinator.reconnect_count mirrors state.reconnect_count."""
+        coord = _make_coordinator()
+        coord.state.reconnect_count = 7
+        assert coord.reconnect_count == 7
+
+    def test_last_error_property_none_initially(self) -> None:
+        """coordinator.last_error is None when no error has occurred."""
+        coord = _make_coordinator()
+        assert coord.last_error is None
+
+    def test_last_error_property_reflects_state(self) -> None:
+        """coordinator.last_error returns the human-readable error string."""
+        coord = _make_coordinator()
+        coord.state.last_error = "Connection refused"
+        assert coord.last_error == "Connection refused"
+
 
 # ── TestSendInitialDpQuery (PLAT-761) ─────────────────────────────────────────
 

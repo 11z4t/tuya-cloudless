@@ -70,7 +70,7 @@ def _make_sensor(
     entity.coordinator = coord
     entity._dp_id = dp_id
     entity._spec = spec
-    entity._attr_unique_id = f"{coord._gw_id}_{spec.platform}_{spec.name}"
+    entity._attr_unique_id = f"{coord.gw_id}_{spec.platform}_{spec.name}"
     entity._attr_translation_key = spec.name
     return entity
 
@@ -149,7 +149,7 @@ class TestTuyaLastSeenSensor:
         entity = TuyaLastSeenSensor.__new__(TuyaLastSeenSensor)
         entity.coordinator = coord
         entity._dp_id = None
-        entity._attr_unique_id = f"{coord._gw_id}_last_seen"
+        entity._attr_unique_id = f"{coord.gw_id}_last_seen"
         return entity
 
     def test_unique_id(self) -> None:
@@ -185,7 +185,7 @@ class TestTuyaReconnectSensor:
         entity = TuyaReconnectSensor.__new__(TuyaReconnectSensor)
         entity.coordinator = coord
         entity._dp_id = None
-        entity._attr_unique_id = f"{coord._gw_id}_reconnects"
+        entity._attr_unique_id = f"{coord.gw_id}_reconnects"
         entity._attr_name = "Reconnects"
         return entity
 
