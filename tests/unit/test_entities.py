@@ -30,11 +30,9 @@ def _make_coordinator(dps: dict[str, Any] | None = None, gw_id: str = "gw001") -
     from custom_components.tuya_cloudless.const import DOMAIN
 
     coord = MagicMock()
-    coord._gw_id = gw_id
     coord.gw_id = gw_id
     coord.device_name = gw_id
     coord.profile_name = ""
-    coord._version = "3.3"
     coord.version = "3.3"
     coord.state = MagicMock()
     coord.state.available = True
@@ -108,7 +106,7 @@ class TestSwitch:
         entity.coordinator = coord
         entity._dp_id = "1"
         entity._spec = spec
-        entity._attr_unique_id = f"{coord._gw_id}_{spec.platform}_{spec.name}"
+        entity._attr_unique_id = f"{coord.gw_id}_{spec.platform}_{spec.name}"
         return entity
 
     def test_unique_id_includes_platform(self) -> None:
@@ -143,7 +141,7 @@ class TestSensor:
         entity.coordinator = coord
         entity._dp_id = "19"
         entity._spec = spec
-        entity._attr_unique_id = f"{coord._gw_id}_{spec.platform}_{spec.name}"
+        entity._attr_unique_id = f"{coord.gw_id}_{spec.platform}_{spec.name}"
         return entity
 
     def test_unique_id_includes_platform(self) -> None:
@@ -191,7 +189,7 @@ class TestBinarySensor:
         entity.coordinator = coord
         entity._dp_id = "26"
         entity._spec = spec
-        entity._attr_unique_id = f"{coord._gw_id}_{spec.platform}_{spec.name}"
+        entity._attr_unique_id = f"{coord.gw_id}_{spec.platform}_{spec.name}"
         return entity
 
     def test_unique_id_includes_platform(self) -> None:
@@ -229,7 +227,7 @@ class TestCover:
         entity.coordinator = coord
         entity._dp_id = _spec.dp_open.id if _spec.dp_open else None
         entity._spec = _spec
-        entity._attr_unique_id = f"{coord._gw_id}_{_spec.platform}_{_spec.name}"
+        entity._attr_unique_id = f"{coord.gw_id}_{_spec.platform}_{_spec.name}"
         entity._attr_supported_features = MagicMock()
         return entity
 
@@ -320,8 +318,8 @@ class TestUniqueIdNoCollision:
         sw_spec = EntitySpec(platform="switch", name="main", dp_power=DPSpec(id="1", type="bool"))
         sen_spec = EntitySpec(platform="sensor", name="main", dp_value=DPSpec(id="1", type="int"))
 
-        sw_uid = f"{coord._gw_id}_{sw_spec.platform}_{sw_spec.name}"
-        sen_uid = f"{coord._gw_id}_{sen_spec.platform}_{sen_spec.name}"
+        sw_uid = f"{coord.gw_id}_{sw_spec.platform}_{sw_spec.name}"
+        sen_uid = f"{coord.gw_id}_{sen_spec.platform}_{sen_spec.name}"
 
         assert sw_uid != sen_uid
         assert sw_uid == "gw001_switch_main"
@@ -341,7 +339,7 @@ class TestSwitchActions:
         entity.coordinator = coord
         entity._dp_id = "1"
         entity._spec = spec
-        entity._attr_unique_id = f"{coord._gw_id}_{spec.platform}_{spec.name}"
+        entity._attr_unique_id = f"{coord.gw_id}_{spec.platform}_{spec.name}"
         return entity
 
     @pytest.mark.asyncio
@@ -458,7 +456,7 @@ class TestCoverActions:
         entity.coordinator = coord
         entity._dp_id = _spec.dp_open.id if _spec.dp_open else None
         entity._spec = _spec
-        entity._attr_unique_id = f"{coord._gw_id}_{_spec.platform}_{_spec.name}"
+        entity._attr_unique_id = f"{coord.gw_id}_{_spec.platform}_{_spec.name}"
         entity._attr_supported_features = MagicMock()
         return entity
 

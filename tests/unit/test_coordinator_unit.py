@@ -31,6 +31,7 @@ def _make_coord() -> object:
     coord._heartbeat_interval = 20
     coord._command_timeout = 5.0
     coord._reconnect_max_delay = 300
+    coord._send_lock = asyncio.Lock()
     coord._writer = None
     coord._session_key = None
     coord._sequence = 0

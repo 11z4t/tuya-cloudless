@@ -125,6 +125,8 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._consecutive_decode_errors: int = 0
         self._consecutive_connection_failures: int = 0
 
+        self._send_lock: asyncio.Lock = asyncio.Lock()
+
         self._reader: asyncio.StreamReader | None = None
         self._writer: asyncio.StreamWriter | None = None
         self._connect_task: asyncio.Task[None] | None = None
@@ -169,16 +171,17 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 translation_key="device_unavailable",
             )
 
-        try:
-            await asyncio.wait_for(
-                self._do_send_dps(dps),
-                timeout=self._command_timeout,
-            )
-        except TimeoutError as exc:
-            raise HomeAssistantError(
-                translation_domain="tuya_cloudless",
-                translation_key="command_timeout",
-            ) from exc
+        async with self._send_lock:
+            try:
+                await asyncio.wait_for(
+                    self._do_send_dps(dps),
+                    timeout=self._command_timeout,
+                )
+            except TimeoutError as exc:
+                raise HomeAssistantError(
+                    translation_domain="tuya_cloudless",
+                    translation_key="command_timeout",
+                ) from exc
 
     async def _do_send_dps(self, dps: dict[str, Any]) -> None:
         """Internal: encode and write DPS control frame."""
@@ -614,6 +617,26 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     def version(self) -> str:
         """Protocol version string, e.g. '3.3' (public accessor)."""
         return self._version
+
+    @property
+    def tcp_connected(self) -> bool:
+        """True if the TCP writer is open (PLAT-720)."""
+        return self._writer is not None
+
+    @property
+    def sequence_counter(self) -> int:
+        """Current sequence counter value (PLAT-720)."""
+        return self._sequence
+
+    @property
+    def session_key_active(self) -> bool:
+        """True if a v3.4/v3.5 session key has been negotiated (PLAT-720)."""
+        return self._session_key is not None
+
+    @property
+    def consecutive_decode_errors(self) -> int:
+        """Number of consecutive frame-decode errors since last success (PLAT-720)."""
+        return self._consecutive_decode_errors
 
     # ── Utility ───────────────────────────────────────────────────────────────
 

@@ -203,9 +203,9 @@ class TestFromConfigEntry:
         entry.options = {}
 
         coord = TuyaCloudlessCoordinator.from_config_entry(hass, entry)
-        assert coord._gw_id == "gw001"
+        assert coord.gw_id == "gw001"
         assert coord._ip == "192.168.1.42"
-        assert coord._version == "3.3"
+        assert coord.version == "3.3"
 
     def test_uses_options_overrides(self) -> None:
         hass = _make_hass()
@@ -240,7 +240,7 @@ class TestFromConfigEntry:
         entry.options = {}
 
         coord = TuyaCloudlessCoordinator.from_config_entry(hass, entry)
-        assert coord._version == "3.3"
+        assert coord.version == "3.3"
 
 
 class TestRepairIssues:
@@ -1004,3 +1004,49 @@ class TestNegotiateSessionKeyOnce:
             pytest.raises(TuyaCloudlessError, match="too short"),
         ):
             await coord._negotiate_session_key_once(reader, writer)
+
+
+class TestSendLock:
+    """Tests for the write lock that serialises concurrent DPS sends."""
+
+    @pytest.mark.asyncio
+    async def test_concurrent_sends_serialized(self) -> None:
+        """Two concurrent async_send_dps calls must be serialized by _send_lock."""
+        coord = _make_coordinator()
+        coord.state.available = True
+
+        writer = MagicMock()
+        writer.write = MagicMock()
+        writer.drain = AsyncMock()
+        coord._writer = writer
+
+        execution_order: list[int] = []
+
+        async def slow_send(dps: dict) -> None:  # type: ignore[type-arg]
+            execution_order.append(dps["slot"])
+            await asyncio.sleep(0.01)
+            execution_order.append(-dps["slot"])
+
+        coord._do_send_dps = slow_send  # type: ignore[method-assign]
+
+        # Launch two sends concurrently
+        await asyncio.gather(
+            coord.async_send_dps({"slot": 1}),
+            coord.async_send_dps({"slot": 2}),
+        )
+
+        # Serialized: one fully completes before the other starts
+        # Either [1, -1, 2, -2] or [2, -2, 1, -1]
+        assert execution_order in ([1, -1, 2, -2], [2, -2, 1, -1])
+
+    @pytest.mark.asyncio
+    async def test_gw_id_property_accessible(self) -> None:
+        """coordinator.gw_id must return the gateway ID without underscore access."""
+        coord = _make_coordinator(gw_id="device_abc")
+        assert coord.gw_id == "device_abc"
+
+    @pytest.mark.asyncio
+    async def test_version_property_accessible(self) -> None:
+        """coordinator.version must return the protocol version string."""
+        coord = _make_coordinator(version="3.4")
+        assert coord.version == "3.4"
