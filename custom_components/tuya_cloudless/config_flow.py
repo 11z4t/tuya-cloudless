@@ -853,7 +853,11 @@ class TuyaCloudlessConfigFlow(ConfigFlow, domain=DOMAIN):
 
 
 class TuyaCloudlessOptionsFlow(OptionsFlow):
-    """Handle Tuya Cloudless options (IP address, device generation)."""
+    """Handle Tuya Cloudless options -- timing and reconnect behaviour only.
+
+    ``ip_address`` and ``protocol_version`` belong to ``entry.data`` and are
+    changed via the *Reconfigure* flow. They must NOT appear here (PLAT-715).
+    """
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """Show the options form.
@@ -871,16 +875,6 @@ class TuyaCloudlessOptionsFlow(OptionsFlow):
 
         schema = vol.Schema(
             {
-                vol.Optional(
-                    CONF_IP_ADDRESS,
-                    default=self.config_entry.data.get(CONF_IP_ADDRESS, ""),
-                ): str,
-                vol.Optional(
-                    CONF_PROTOCOL_VERSION,
-                    default=self.config_entry.data.get(
-                        CONF_PROTOCOL_VERSION, DEFAULT_PROTOCOL_VERSION
-                    ),
-                ): vol.In(PROTOCOL_VERSIONS),
                 vol.Optional(
                     CONF_OPT_HEARTBEAT_INTERVAL,
                     default=int(
