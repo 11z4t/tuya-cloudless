@@ -1,0 +1,306 @@
+{
+  "config": {
+    "flow_title": "{name}",
+    "step": {
+      "pair": {
+        "title": "Parityökalu",
+        "description": "Laitetiedot tuotiin Tuya Cloudless -parityökalusta. Tarkista, että tiedot ovat oikein, ja napsauta **Seuraava** testataksesi yhteyden.",
+        "data": {
+          "gw_id": "Laitetunnus",
+          "local_key": "Suojausavain",
+          "ip_address": "IP-osoite"
+        }
+      },
+      "ble_pair": {
+        "title": "BLE-paritus",
+        "description": "Parityökalu avautuu selaimessasi. Seuraa vaiheita yhdistääksesi laitteesi Bluetoothin kautta.\n\n**Vaatii Chromen tai Edgen** (työpöytä tai Android) ja **HTTPS:n** — katso [HTTPS-asennusopas](https://github.com/11z4t/tuya-cloudless/wiki/HTTPS-Setup) tarvittaessa."
+      },
+      "ble_confirm": {
+        "title": "Laite paritettu ✓",
+        "description": "Laitteesi osoitteessa **{ip_address}** (tunnus: `{gw_id}`) parittiin onnistuneesti. Anna sille nimi ja valitse laitetyyppi.",
+        "data": {
+          "device_name": "Laitteen nimi",
+          "profile": "Laitetyyppi"
+        },
+        "data_description": {
+          "device_name": "Kutsumanimi, joka näkyy Home Assistantissa",
+          "profile": "Valitse tyyppi, joka vastaa parhaiten laitettasi"
+        }
+      },
+      "user": {
+        "title": "Lisää Tuya-laite",
+        "description": "Valitse, miten haluat lisätä laitteesi.",
+        "data": {
+          "setup_mode": "Asennustapa"
+        },
+        "data_description": {
+          "setup_mode": "BLE-paritus on suositeltava uusille laitteille. Haku löytää laitteet, jotka ovat jo verkossasi. Manuaalinen syöttö antaa sinun kirjoittaa tiedot käsin."
+        }
+      },
+      "select": {
+        "title": "Löydettiin {count} laite(tta)",
+        "description": "Valitse laite, jonka haluat lisätä.",
+        "data": {
+          "device": "Laite"
+        }
+      },
+      "local_key": {
+        "title": "Syötä suojausavain",
+        "description": "Laitteesi osoitteessa **{ip_address}** (laiteohjelmisto {firmware}) tarvitsee suojausavaimen paikalliseen viestintään.\n\nAvain näkyy, kun paritat laitteen [Tuya Cloudless -parityökalulla]({pairing_tool_url}). Se tallennetaan vain Home Assistantiin — mitään ei lähetetä pilveen.",
+        "data": {
+          "local_key": "Suojausavain",
+          "device_name": "Laitteen nimi",
+          "profile": "Laitetyyppi"
+        },
+        "data_description": {
+          "local_key": "16 merkin avain parityökalusta",
+          "device_name": "Kutsumanimi, joka näkyy Home Assistantissa (jätä tyhjäksi käyttääksesi IP-osoitetta)",
+          "profile": "Valitse tyyppi, joka vastaa parhaiten laitettasi"
+        }
+      },
+      "confirm": {
+        "title": "Valmis yhdistämään",
+        "description": "**{device_name}** osoitteessa `{ip_address}` lisätään Home Assistantiin.\n\nNapsauta **Yhdistä** testataksesi yhteyden ja viimeistelläksesi asennuksen.",
+        "data": {}
+      },
+      "manual": {
+        "title": "Lisää laite manuaalisesti",
+        "description": "Syötä Tuya-laitteesi tiedot. Laitetunnus ja suojausavain näkyvät [Tuya Cloudless -parityökalussa]({pairing_tool_url}).",
+        "data": {
+          "gw_id": "Laitetunnus",
+          "local_key": "Suojausavain",
+          "ip_address": "IP-osoite",
+          "protocol_version": "Laitemalli",
+          "profile": "Laitetyyppi",
+          "device_name": "Laitteen nimi"
+        },
+        "data_description": {
+          "gw_id": "Yksilöllinen laitetunniste (näkyy parituksen aikana, esim. abc123def456)",
+          "local_key": "16 merkin suojausavain parityökalusta",
+          "ip_address": "Laitteen IP-osoite (aseta kiinteä osoite reitittimessäsi parhaan luotettavuuden saavuttamiseksi)",
+          "protocol_version": "Malli 3.3 toimii useimmille laitteille, jotka on valmistettu vuoden 2020 jälkeen",
+          "profile": "Valitse tyyppi, joka vastaa parhaiten laitettasi"
+        }
+      },
+      "discovery": {
+        "title": "Tuya-laite löydetty",
+        "description": "Laite havaittiin osoitteessa **{ip_address}** (laiteohjelmisto {firmware}).\n\nSyötä suojausavain [Tuya Cloudless -parityökalusta]({pairing_tool_url}) viimeistelläksesi asennuksen.",
+        "data": {
+          "local_key": "Suojausavain",
+          "profile": "Laitetyyppi",
+          "device_name": "Laitteen nimi"
+        },
+        "data_description": {
+          "local_key": "16 merkin avain Tuya Cloudless -parityökalusta"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Päivitä suojausavain",
+        "description": "Laitteen **{device_name}** suojausavain lakkasi toimimasta. Näin käy, jos laite palautettiin tehdasasetuksiin tai parittiin uudelleen.\n\nHae uusi avain [Tuya Cloudless -parityökalusta]({pairing_tool_url}) ja syötä se alla yhdistääksesi uudelleen.",
+        "data": {
+          "local_key": "Uusi suojausavain",
+          "ip_address": "IP-osoite (jos se on muuttunut)"
+        },
+        "data_description": {
+          "local_key": "16 merkin avain viimeisimmästä parituksesta",
+          "ip_address": "Jätä tyhjäksi, jos osoite ei ole muuttunut"
+        }
+      },
+      "reconfigure": {
+        "title": "Päivitä yhteysasetukset",
+        "description": "Päivitä IP-osoite tai suojausavain laitteelle **{device_name}** poistamatta ja lisäämättä laitetta uudelleen.",
+        "data": {
+          "ip_address": "IP-osoite",
+          "local_key": "Suojausavain"
+        },
+        "data_description": {
+          "ip_address": "Laitteen nykyinen IP-osoite verkossasi",
+          "local_key": "16 merkin suojausavain"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Laitetta ei tavoitettu — tarkista IP-osoite ja että laite on samassa verkossa kuin Home Assistant",
+      "invalid_local_key": "Virheellinen suojausavain — täytyy olla täsmälleen 16 merkkiä",
+      "invalid_auth_key": "Suojausavain on väärä. Tarkista avain ja yritä uudelleen.",
+      "invalid_gw_id": "Virheellinen laitetunnus — ei saa olla tyhjä",
+      "invalid_ip": "Virheellinen IP-osoite — ei saa olla tyhjä",
+      "auth_failed": "Yhteys hylätty — suojausavain saattaa olla väärä tai laite parittiin uudelleen Tuya-sovelluksella",
+      "no_devices_found": "Tuya-laitteita ei löydy verkostasi. Varmista, että laite on käynnistetty ja samassa Wi-Fi-verkossa. Vaihda **Manuaaliseen** yllä kirjoittaaksesi tiedot käsin.",
+      "unknown": "Odottamaton virhe — tarkista Home Assistant -loki yksityiskohtia varten"
+    },
+    "abort": {
+      "already_configured": "Tämä laite on jo määritetty",
+      "not_tuya_device": "Laite ei vastannut odotetulla tavalla",
+      "pairing_server_unavailable": "BLE-paritupalvelinta ei voitu käynnistää portissa 8099 — portti saattaa olla käytössä. Yritä uudelleen tai käytä Haku / Manuaalinen asennus sen sijaan.",
+      "https_required": "BLE-paritus vaatii HTTPS:n. Katso [HTTPS-asennusopas](https://github.com/11z4t/tuya-cloudless/wiki/HTTPS-Setup) varmenteen määrittämiseksi, ja yritä sitten uudelleen.",
+      "reauth_successful": "Suojausavain päivitetty — laite on yhdistetty uudelleen",
+      "reconfigure_successful": "Asetukset päivitetty — laite latautuu uudelleen"
+    }
+  },
+  "exceptions": {
+    "device_unavailable": {
+      "message": "Laite ei ole käytettävissä — yhteys on katkennut"
+    },
+    "command_timeout": {
+      "message": "Komento ei tavoittanut laitetta aikarajan sisällä — yritä uudelleen"
+    },
+    "entry_not_found": {
+      "message": "Määritysmerkintää ei löydy"
+    },
+    "entry_not_loaded": {
+      "message": "Määritysmerkintää ei ole ladattu"
+    },
+    "send_failed": {
+      "message": "Komennon lähettäminen laitteelle epäonnistui"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Laiteasetukset",
+        "data": {
+          "ip_address": "IP-osoite",
+          "protocol_version": "Laitemalli",
+          "heartbeat_interval": "Sydämenlyöntiväli (sekuntia)",
+          "command_timeout": "Komentoaikakatkaisu (sekuntia)",
+          "reconnect_max_delay": "Enimmäisviive uudelleenyhteydessä (sekuntia)"
+        },
+        "data_description": {
+          "ip_address": "Päivitä, jos laitteen IP-osoite on muuttunut",
+          "protocol_version": "Vaihda vain, jos laite lakkasi vastaamasta laiteohjelmistopäivityksen jälkeen",
+          "heartbeat_interval": "Kuinka usein sydämenlyöntisignaali lähetetään pitämään yhteys aktiivisena (5–300 s, oletus 20)",
+          "command_timeout": "Kuinka kauan odotetaan komennon vastausta ennen luovuttamista (1–30 s, oletus 5)",
+          "reconnect_max_delay": "Enimmäisodotusaika uudelleenyhteydenottoyrityksen välillä (10–3600 s, oletus 300)"
+        }
+      }
+    }
+  },
+  "issues": {
+    "auth_failed": {
+      "title": "Todennus epäonnistui laitteelle {device_name}",
+      "description": "Laite **{device_name}** hylkää yhteyden. Suojausavain on todennäköisesti väärä — näin käy, kun laite palautetaan tehdasasetuksiin tai paritetaan uudelleen Tuya-sovelluksella.\n\nNapsauta **Korjaa** syöttääksesi uuden suojausavaimen.",
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "Päivitä suojausavain",
+            "description": "Siirry kohtaan **Asetukset → Integraatiot → Tuya Cloudless → {device_name}** ja valitse **Todenna uudelleen**."
+          }
+        }
+      }
+    },
+    "connectivity": {
+      "title": "Ei voi yhdistää laitteeseen {name}",
+      "description": "Laitetta osoitteessa {ip_address} ei tavoiteta useiden yritysten jälkeen. Laitteen IP-osoite on saattanut muuttua.\n\nNapsauta **Korjaa** päivittääksesi yhteysasetukset.",
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "Päivitä yhteysasetukset",
+            "description": "Avaa laiteasetukset päivittääksesi IP-osoitteen."
+          }
+        }
+      }
+    }
+  },
+  "entity": {
+    "switch": {
+      "main_switch": {
+        "name": "Kytkin"
+      }
+    },
+    "light": {
+      "main_light": {
+        "name": "Valo"
+      },
+      "fan_light": {
+        "name": "Tuuletinvalo"
+      }
+    },
+    "sensor": {
+      "reconnects": {
+        "name": "Uudelleenyhdistymiset"
+      },
+      "last_seen": {
+        "name": "Viimeksi nähty"
+      },
+      "power_consumption": {
+        "name": "Teho"
+      },
+      "current": {
+        "name": "Virta"
+      },
+      "battery": {
+        "name": "Akku"
+      },
+      "co2": {
+        "name": "CO₂"
+      },
+      "temperature": {
+        "name": "Lämpötila"
+      },
+      "humidity": {
+        "name": "Kosteus"
+      },
+      "floor_temp": {
+        "name": "Lattialämpötila"
+      }
+    },
+    "binary_sensor": {
+      "overload": {
+        "name": "Ylikuormitus"
+      },
+      "leak": {
+        "name": "Vesivuoto"
+      },
+      "motion": {
+        "name": "Liike"
+      },
+      "smoke": {
+        "name": "Savu"
+      },
+      "contact": {
+        "name": "Ovi/Ikkuna"
+      },
+      "tamper": {
+        "name": "Peukalointi"
+      }
+    },
+    "cover": {
+      "cover": {
+        "name": "Peite"
+      }
+    },
+    "number": {
+      "volume": {
+        "name": "Äänenvoimakkuus"
+      }
+    },
+    "select": {
+      "siren_mode": {
+        "name": "Sireenin tila"
+      }
+    },
+    "climate": {
+      "heater": {
+        "name": "Lämmitin"
+      },
+      "thermostat": {
+        "name": "Termostaatti"
+      },
+      "ac": {
+        "name": "Ilmastointilaite"
+      },
+      "floor_heater": {
+        "name": "Lattialämmitys"
+      },
+      "heat_pump": {
+        "name": "Lämpöpumppu"
+      }
+    },
+    "fan": {
+      "main_fan": {
+        "name": "Tuuletin"
+      }
+    }
+  }
+}

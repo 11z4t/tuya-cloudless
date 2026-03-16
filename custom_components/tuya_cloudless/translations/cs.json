@@ -1,0 +1,306 @@
+{
+  "config": {
+    "flow_title": "{name}",
+    "step": {
+      "pair": {
+        "title": "Párovací nástroj",
+        "description": "Podrobnosti o zařízení byly importovány z párovacího nástroje Tuya Cloudless. Ověřte správnost údajů a klikněte na **Další** pro otestování připojení.",
+        "data": {
+          "gw_id": "ID zařízení",
+          "local_key": "Bezpečnostní klíč",
+          "ip_address": "IP adresa"
+        }
+      },
+      "ble_pair": {
+        "title": "BLE párování",
+        "description": "Párovací nástroj se otevírá ve vašem prohlížeči. Postupujte podle kroků pro připojení zařízení přes Bluetooth.\n\n**Vyžaduje Chrome nebo Edge** (desktop nebo Android) a **HTTPS** — viz [průvodce nastavením HTTPS](https://github.com/11z4t/tuya-cloudless/wiki/HTTPS-Setup) v případě potřeby."
+      },
+      "ble_confirm": {
+        "title": "Zařízení spárováno ✓",
+        "description": "Vaše zařízení na adrese **{ip_address}** (ID: `{gw_id}`) bylo úspěšně spárováno. Zadejte název a vyberte typ zařízení.",
+        "data": {
+          "device_name": "Název zařízení",
+          "profile": "Typ zařízení"
+        },
+        "data_description": {
+          "device_name": "Přívětivý název zobrazený v Home Assistant",
+          "profile": "Vyberte typ, který nejlépe odpovídá vašemu zařízení"
+        }
+      },
+      "user": {
+        "title": "Přidat zařízení Tuya",
+        "description": "Zvolte, jak chcete přidat své zařízení.",
+        "data": {
+          "setup_mode": "Metoda nastavení"
+        },
+        "data_description": {
+          "setup_mode": "BLE párování se doporučuje pro nová zařízení. Vyhledávání najde zařízení, která jsou již ve vaší síti. Ruční zadání umožňuje zadat podrobnosti ručně."
+        }
+      },
+      "select": {
+        "title": "Nalezeno {count} zařízení",
+        "description": "Vyberte zařízení, které chcete přidat.",
+        "data": {
+          "device": "Zařízení"
+        }
+      },
+      "local_key": {
+        "title": "Zadejte bezpečnostní klíč",
+        "description": "Vaše zařízení na adrese **{ip_address}** (firmware {firmware}) potřebuje bezpečnostní klíč pro lokální komunikaci.\n\nKlíč se zobrazí při párování zařízení pomocí [párovacího nástroje Tuya Cloudless]({pairing_tool_url}). Je uložen pouze v Home Assistant — nic se neodesílá do cloudu.",
+        "data": {
+          "local_key": "Bezpečnostní klíč",
+          "device_name": "Název zařízení",
+          "profile": "Typ zařízení"
+        },
+        "data_description": {
+          "local_key": "16znakový klíč z párovacího nástroje",
+          "device_name": "Přívětivý název zobrazený v Home Assistant (nechte prázdné pro použití IP adresy)",
+          "profile": "Vyberte typ, který nejlépe odpovídá vašemu zařízení"
+        }
+      },
+      "confirm": {
+        "title": "Připraveno k připojení",
+        "description": "**{device_name}** na adrese `{ip_address}` bude přidáno do Home Assistant.\n\nKlikněte na **Připojit** pro otestování připojení a dokončení nastavení.",
+        "data": {}
+      },
+      "manual": {
+        "title": "Přidat zařízení ručně",
+        "description": "Zadejte podrobnosti pro vaše zařízení Tuya. ID zařízení a bezpečnostní klíč jsou zobrazeny v [párovacím nástroji Tuya Cloudless]({pairing_tool_url}).",
+        "data": {
+          "gw_id": "ID zařízení",
+          "local_key": "Bezpečnostní klíč",
+          "ip_address": "IP adresa",
+          "protocol_version": "Model zařízení",
+          "profile": "Typ zařízení",
+          "device_name": "Název zařízení"
+        },
+        "data_description": {
+          "gw_id": "Jedinečný identifikátor zařízení (zobrazí se při párování, např. abc123def456)",
+          "local_key": "16znakový bezpečnostní klíč z párovacího nástroje",
+          "ip_address": "IP adresa zařízení (nastavte pevnou adresu ve směrovači pro nejlepší spolehlivost)",
+          "protocol_version": "Model 3.3 funguje pro většinu zařízení vyrobených po roce 2020",
+          "profile": "Vyberte typ, který nejlépe odpovídá vašemu zařízení"
+        }
+      },
+      "discovery": {
+        "title": "Nalezeno zařízení Tuya",
+        "description": "Zařízení bylo zjištěno na adrese **{ip_address}** (firmware {firmware}).\n\nZadejte bezpečnostní klíč z [párovacího nástroje Tuya Cloudless]({pairing_tool_url}) pro dokončení nastavení.",
+        "data": {
+          "local_key": "Bezpečnostní klíč",
+          "profile": "Typ zařízení",
+          "device_name": "Název zařízení"
+        },
+        "data_description": {
+          "local_key": "16znakový klíč z párovacího nástroje Tuya Cloudless"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Aktualizovat bezpečnostní klíč",
+        "description": "Bezpečnostní klíč pro **{device_name}** přestal fungovat. Stane se to při obnovení továrního nastavení nebo opětovném spárování zařízení.\n\nZískejte nový klíč z [párovacího nástroje Tuya Cloudless]({pairing_tool_url}) a zadejte jej níže pro opětovné připojení.",
+        "data": {
+          "local_key": "Nový bezpečnostní klíč",
+          "ip_address": "IP adresa (pokud se změnila)"
+        },
+        "data_description": {
+          "local_key": "16znakový klíč z posledního párování",
+          "ip_address": "Nechte prázdné, pokud se adresa nezměnila"
+        }
+      },
+      "reconfigure": {
+        "title": "Aktualizovat nastavení připojení",
+        "description": "Aktualizujte IP adresu nebo bezpečnostní klíč pro **{device_name}** bez odebrání a opětovného přidání zařízení.",
+        "data": {
+          "ip_address": "IP adresa",
+          "local_key": "Bezpečnostní klíč"
+        },
+        "data_description": {
+          "ip_address": "Aktuální IP adresa zařízení ve vaší síti",
+          "local_key": "16znakový bezpečnostní klíč"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Zařízení nebylo dosažitelné — zkontrolujte IP adresu a zda je zařízení ve stejné síti jako Home Assistant",
+      "invalid_local_key": "Neplatný bezpečnostní klíč — musí mít přesně 16 znaků",
+      "invalid_auth_key": "Bezpečnostní klíč je nesprávný. Zkontrolujte klíč a zkuste to znovu.",
+      "invalid_gw_id": "Neplatné ID zařízení — nesmí být prázdné",
+      "invalid_ip": "Neplatná IP adresa — nesmí být prázdná",
+      "auth_failed": "Připojení odmítnuto — bezpečnostní klíč může být nesprávný nebo bylo zařízení znovu spárováno pomocí aplikace Tuya",
+      "no_devices_found": "V síti nebyla nalezena žádná zařízení Tuya. Ujistěte se, že zařízení je zapnuté a ve stejné Wi-Fi síti. Přepněte na **Ruční** výše a zadejte podrobnosti ručně.",
+      "unknown": "Neočekávaná chyba — podrobnosti naleznete v protokolu Home Assistant"
+    },
+    "abort": {
+      "already_configured": "Toto zařízení je již nastaveno",
+      "not_tuya_device": "Zařízení neodpovídalo podle očekávání",
+      "pairing_server_unavailable": "Nepodařilo se spustit BLE párovací server na portu 8099 — port může být obsazen. Zkuste to znovu nebo použijte místo toho Vyhledávání / Ruční nastavení.",
+      "https_required": "BLE párování vyžaduje HTTPS. Nakonfigurujte certifikát podle [průvodce nastavením HTTPS](https://github.com/11z4t/tuya-cloudless/wiki/HTTPS-Setup) a zkuste to znovu.",
+      "reauth_successful": "Bezpečnostní klíč aktualizován — zařízení je opět připojeno",
+      "reconfigure_successful": "Nastavení aktualizováno — zařízení se znovu načítá"
+    }
+  },
+  "exceptions": {
+    "device_unavailable": {
+      "message": "Zařízení není dostupné — připojení je nefunkční"
+    },
+    "command_timeout": {
+      "message": "Příkaz nedosáhl zařízení v časovém limitu — zkuste to prosím znovu"
+    },
+    "entry_not_found": {
+      "message": "Záznam konfigurace nebyl nalezen"
+    },
+    "entry_not_loaded": {
+      "message": "Záznam konfigurace není načten"
+    },
+    "send_failed": {
+      "message": "Nepodařilo se odeslat příkaz do zařízení"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Nastavení zařízení",
+        "data": {
+          "ip_address": "IP adresa",
+          "protocol_version": "Model zařízení",
+          "heartbeat_interval": "Interval heartbeatu (sekundy)",
+          "command_timeout": "Časový limit příkazu (sekundy)",
+          "reconnect_max_delay": "Maximální prodleva opětovného připojení (sekundy)"
+        },
+        "data_description": {
+          "ip_address": "Aktualizujte, pokud se IP adresa zařízení změnila",
+          "protocol_version": "Měňte pouze v případě, že zařízení přestalo reagovat po aktualizaci firmwaru",
+          "heartbeat_interval": "Jak často se odesílá heartbeat pro udržení aktivního připojení (5–300 s, výchozí 20)",
+          "command_timeout": "Jak dlouho čekat na odpověď příkazu před vzdáním se (1–30 s, výchozí 5)",
+          "reconnect_max_delay": "Maximální čekání mezi pokusy o opětovné připojení (10–3600 s, výchozí 300)"
+        }
+      }
+    }
+  },
+  "issues": {
+    "auth_failed": {
+      "title": "Ověření selhalo pro {device_name}",
+      "description": "Zařízení **{device_name}** odmítá připojení. Bezpečnostní klíč je pravděpodobně nesprávný — stane se to při obnovení továrního nastavení nebo opětovném spárování pomocí aplikace Tuya.\n\nKlikněte na **Opravit** pro zadání nového bezpečnostního klíče.",
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "Aktualizovat bezpečnostní klíč",
+            "description": "Přejděte do **Nastavení → Integrace → Tuya Cloudless → {device_name}** a vyberte **Znovu ověřit**."
+          }
+        }
+      }
+    },
+    "connectivity": {
+      "title": "Nelze se připojit k {name}",
+      "description": "Zařízení na adrese {ip_address} je nedosažitelné po více pokusech. Zařízení mohlo změnit IP adresu.\n\nKlikněte na **Opravit** pro aktualizaci nastavení připojení.",
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "Aktualizovat nastavení připojení",
+            "description": "Otevřete nastavení zařízení a aktualizujte IP adresu."
+          }
+        }
+      }
+    }
+  },
+  "entity": {
+    "switch": {
+      "main_switch": {
+        "name": "Přepínač"
+      }
+    },
+    "light": {
+      "main_light": {
+        "name": "Světlo"
+      },
+      "fan_light": {
+        "name": "Světlo ventilátoru"
+      }
+    },
+    "sensor": {
+      "reconnects": {
+        "name": "Opětovná připojení"
+      },
+      "last_seen": {
+        "name": "Naposledy viděno"
+      },
+      "power_consumption": {
+        "name": "Výkon"
+      },
+      "current": {
+        "name": "Proud"
+      },
+      "battery": {
+        "name": "Baterie"
+      },
+      "co2": {
+        "name": "CO₂"
+      },
+      "temperature": {
+        "name": "Teplota"
+      },
+      "humidity": {
+        "name": "Vlhkost"
+      },
+      "floor_temp": {
+        "name": "Teplota podlahy"
+      }
+    },
+    "binary_sensor": {
+      "overload": {
+        "name": "Přetížení"
+      },
+      "leak": {
+        "name": "Únik vody"
+      },
+      "motion": {
+        "name": "Pohyb"
+      },
+      "smoke": {
+        "name": "Kouř"
+      },
+      "contact": {
+        "name": "Dveře/Okno"
+      },
+      "tamper": {
+        "name": "Sabotáž"
+      }
+    },
+    "cover": {
+      "cover": {
+        "name": "Kryt"
+      }
+    },
+    "number": {
+      "volume": {
+        "name": "Hlasitost"
+      }
+    },
+    "select": {
+      "siren_mode": {
+        "name": "Režim sirény"
+      }
+    },
+    "climate": {
+      "heater": {
+        "name": "Ohřívač"
+      },
+      "thermostat": {
+        "name": "Termostat"
+      },
+      "ac": {
+        "name": "Klimatizace"
+      },
+      "floor_heater": {
+        "name": "Podlahové vytápění"
+      },
+      "heat_pump": {
+        "name": "Tepelné čerpadlo"
+      }
+    },
+    "fan": {
+      "main_fan": {
+        "name": "Ventilátor"
+      }
+    }
+  }
+}

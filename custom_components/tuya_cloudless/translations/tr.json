@@ -1,0 +1,306 @@
+{
+  "config": {
+    "flow_title": "{name}",
+    "step": {
+      "pair": {
+        "title": "Eşleştirme Aracı",
+        "description": "Cihaz ayrıntıları Tuya Cloudless eşleştirme aracından içe aktarıldı. Ayrıntıların doğru olduğunu kontrol edin ve bağlantıyı test etmek için **İleri**'ye tıklayın.",
+        "data": {
+          "gw_id": "Cihaz Kimliği",
+          "local_key": "Güvenlik Anahtarı",
+          "ip_address": "IP Adresi"
+        }
+      },
+      "ble_pair": {
+        "title": "BLE Eşleştirme",
+        "description": "Eşleştirme aracı tarayıcınızda açılıyor. Cihazınızı Bluetooth üzerinden bağlamak için adımları izleyin.\n\n**Chrome veya Edge gerektirir** (masaüstü veya Android) ve **HTTPS** — gerekirse [HTTPS kurulum kılavuzuna](https://github.com/11z4t/tuya-cloudless/wiki/HTTPS-Setup) bakın."
+      },
+      "ble_confirm": {
+        "title": "Cihaz Eşleştirildi ✓",
+        "description": "**{ip_address}** adresindeki cihazınız (Kimlik: `{gw_id}`) başarıyla eşleştirildi. Bir ad verin ve cihaz türünü seçin.",
+        "data": {
+          "device_name": "Cihaz Adı",
+          "profile": "Cihaz Türü"
+        },
+        "data_description": {
+          "device_name": "Home Assistant'ta gösterilen kullanıcı dostu bir ad",
+          "profile": "Cihazınıza en iyi uyan türü seçin"
+        }
+      },
+      "user": {
+        "title": "Tuya Cihazı Ekle",
+        "description": "Cihazınızı nasıl eklemek istediğinizi seçin.",
+        "data": {
+          "setup_mode": "Kurulum Yöntemi"
+        },
+        "data_description": {
+          "setup_mode": "Yeni cihazlar için BLE Eşleştirme önerilir. Arama, ağınızda zaten bulunan cihazları bulur. Manuel giriş, ayrıntıları elle girmenizi sağlar."
+        }
+      },
+      "select": {
+        "title": "{count} cihaz bulundu",
+        "description": "Eklemek istediğiniz cihazı seçin.",
+        "data": {
+          "device": "Cihaz"
+        }
+      },
+      "local_key": {
+        "title": "Güvenlik Anahtarını Girin",
+        "description": "**{ip_address}** adresindeki cihazınız (firmware {firmware}) yerel iletişim için bir güvenlik anahtarına ihtiyaç duyuyor.\n\nAnahtar, [Tuya Cloudless eşleştirme aracı]({pairing_tool_url}) kullanılarak cihaz eşleştirildiğinde görüntülenir. Yalnızca Home Assistant'ta saklanır — buluta hiçbir şey gönderilmez.",
+        "data": {
+          "local_key": "Güvenlik Anahtarı",
+          "device_name": "Cihaz Adı",
+          "profile": "Cihaz Türü"
+        },
+        "data_description": {
+          "local_key": "Eşleştirme aracından 16 karakterli anahtar",
+          "device_name": "Home Assistant'ta gösterilen kullanıcı dostu bir ad (IP adresini kullanmak için boş bırakın)",
+          "profile": "Cihazınıza en iyi uyan türü seçin"
+        }
+      },
+      "confirm": {
+        "title": "Bağlanmaya Hazır",
+        "description": "`{ip_address}` adresindeki **{device_name}** Home Assistant'a eklenecek.\n\nBağlantıyı test etmek ve kurulumu tamamlamak için **Bağlan**'a tıklayın.",
+        "data": {}
+      },
+      "manual": {
+        "title": "Cihazı Manuel Olarak Ekle",
+        "description": "Tuya cihazınızın ayrıntılarını girin. Cihaz Kimliği ve güvenlik anahtarı [Tuya Cloudless eşleştirme aracında]({pairing_tool_url}) gösterilir.",
+        "data": {
+          "gw_id": "Cihaz Kimliği",
+          "local_key": "Güvenlik Anahtarı",
+          "ip_address": "IP Adresi",
+          "protocol_version": "Cihaz Modeli",
+          "profile": "Cihaz Türü",
+          "device_name": "Cihaz Adı"
+        },
+        "data_description": {
+          "gw_id": "Benzersiz cihaz tanımlayıcısı (eşleştirme sırasında görüntülenir, örn. abc123def456)",
+          "local_key": "Eşleştirme aracından 16 karakterli güvenlik anahtarı",
+          "ip_address": "Cihaz IP adresi (en iyi güvenilirlik için yönlendiricinizde sabit bir adres ayarlayın)",
+          "protocol_version": "Model 3.3, 2020 sonrası üretilen çoğu cihazda çalışır",
+          "profile": "Cihazınıza en iyi uyan türü seçin"
+        }
+      },
+      "discovery": {
+        "title": "Tuya Cihazı Bulundu",
+        "description": "**{ip_address}** adresinde bir cihaz algılandı (firmware {firmware}).\n\nKurulumu tamamlamak için [Tuya Cloudless eşleştirme aracından]({pairing_tool_url}) güvenlik anahtarını girin.",
+        "data": {
+          "local_key": "Güvenlik Anahtarı",
+          "profile": "Cihaz Türü",
+          "device_name": "Cihaz Adı"
+        },
+        "data_description": {
+          "local_key": "Tuya Cloudless eşleştirme aracından 16 karakterli anahtar"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Güvenlik Anahtarını Güncelle",
+        "description": "**{device_name}** için güvenlik anahtarı çalışmayı durdurdu. Bu, cihaz fabrika ayarlarına sıfırlandığında veya yeniden eşleştirildiğinde olur.\n\nYeniden bağlanmak için [Tuya Cloudless eşleştirme aracından]({pairing_tool_url}) yeni anahtarı alın ve aşağıya girin.",
+        "data": {
+          "local_key": "Yeni Güvenlik Anahtarı",
+          "ip_address": "IP Adresi (değiştiyse)"
+        },
+        "data_description": {
+          "local_key": "Son eşleştirmeden 16 karakterli anahtar",
+          "ip_address": "Adres değişmediyse boş bırakın"
+        }
+      },
+      "reconfigure": {
+        "title": "Bağlantı Ayarlarını Güncelle",
+        "description": "Cihazı kaldırıp yeniden eklemeden **{device_name}** için IP adresini veya güvenlik anahtarını güncelleyin.",
+        "data": {
+          "ip_address": "IP Adresi",
+          "local_key": "Güvenlik Anahtarı"
+        },
+        "data_description": {
+          "ip_address": "Ağınızdaki cihazın mevcut IP adresi",
+          "local_key": "16 karakterli güvenlik anahtarı"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Cihaza ulaşılamadı — IP adresini ve cihazın Home Assistant ile aynı ağda olduğunu kontrol edin",
+      "invalid_local_key": "Geçersiz güvenlik anahtarı — tam olarak 16 karakter olmalıdır",
+      "invalid_auth_key": "Güvenlik anahtarı yanlış. Anahtarı kontrol edip tekrar deneyin.",
+      "invalid_gw_id": "Geçersiz cihaz kimliği — boş olamaz",
+      "invalid_ip": "Geçersiz IP adresi — boş olamaz",
+      "auth_failed": "Bağlantı reddedildi — güvenlik anahtarı yanlış olabilir veya cihaz Tuya uygulaması kullanılarak yeniden eşleştirilmiş olabilir",
+      "no_devices_found": "Ağınızda Tuya cihazı bulunamadı. Cihazın açık ve aynı Wi-Fi'de olduğundan emin olun. Ayrıntıları elle girmek için yukarıdaki **Manuel**'e geçin.",
+      "unknown": "Beklenmedik hata — ayrıntılar için Home Assistant günlüğünü kontrol edin"
+    },
+    "abort": {
+      "already_configured": "Bu cihaz zaten kurulmuş",
+      "not_tuya_device": "Cihaz beklendiği gibi yanıt vermedi",
+      "pairing_server_unavailable": "BLE eşleştirme sunucusu 8099 numaralı portta başlatılamadı — port kullanımda olabilir. Tekrar deneyin veya bunun yerine Arama / Manuel kurulum kullanın.",
+      "https_required": "BLE Eşleştirme HTTPS gerektirir. Bir sertifika yapılandırmak için [HTTPS kurulum kılavuzuna](https://github.com/11z4t/tuya-cloudless/wiki/HTTPS-Setup) bakın, ardından tekrar deneyin.",
+      "reauth_successful": "Güvenlik anahtarı güncellendi — cihaz yeniden bağlandı",
+      "reconfigure_successful": "Ayarlar güncellendi — cihaz yeniden yükleniyor"
+    }
+  },
+  "exceptions": {
+    "device_unavailable": {
+      "message": "Cihaz kullanılamıyor — bağlantı kesildi"
+    },
+    "command_timeout": {
+      "message": "Komut zaman aşımı içinde cihaza ulaşmadı — lütfen tekrar deneyin"
+    },
+    "entry_not_found": {
+      "message": "Yapılandırma girişi bulunamadı"
+    },
+    "entry_not_loaded": {
+      "message": "Yapılandırma girişi yüklenmedi"
+    },
+    "send_failed": {
+      "message": "Cihaza komut gönderilemedi"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Cihaz Ayarları",
+        "data": {
+          "ip_address": "IP Adresi",
+          "protocol_version": "Cihaz Modeli",
+          "heartbeat_interval": "Kalp Atışı Aralığı (saniye)",
+          "command_timeout": "Komut Zaman Aşımı (saniye)",
+          "reconnect_max_delay": "Maksimum Yeniden Bağlanma Gecikmesi (saniye)"
+        },
+        "data_description": {
+          "ip_address": "Cihaz IP adresi değiştiyse güncelleyin",
+          "protocol_version": "Yalnızca bir firmware güncellemesinden sonra cihaz yanıt vermeyi durdurduysa değiştirin",
+          "heartbeat_interval": "Bağlantıyı canlı tutmak için kalp atışı gönderme sıklığı (5–300 s, varsayılan 20)",
+          "command_timeout": "Vazgeçmeden önce komut yanıtı için beklenecek süre (1–30 s, varsayılan 5)",
+          "reconnect_max_delay": "Yeniden bağlanma denemeleri arasındaki maksimum bekleme süresi (10–3600 s, varsayılan 300)"
+        }
+      }
+    }
+  },
+  "issues": {
+    "auth_failed": {
+      "title": "{device_name} için kimlik doğrulama başarısız oldu",
+      "description": "**{device_name}** cihazı bağlantıyı reddediyor. Güvenlik anahtarı büyük olasılıkla yanlış — bu, cihaz fabrika ayarlarına sıfırlandığında veya Tuya uygulaması kullanılarak yeniden eşleştirildiğinde olur.\n\nYeni bir güvenlik anahtarı girmek için **Düzelt**'e tıklayın.",
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "Güvenlik Anahtarını Güncelle",
+            "description": "**Ayarlar → Entegrasyonlar → Tuya Cloudless → {device_name}** bölümüne gidin ve **Yeniden Kimlik Doğrula**'yı seçin."
+          }
+        }
+      }
+    },
+    "connectivity": {
+      "title": "{name} cihazına bağlanılamıyor",
+      "description": "Birden fazla denemeden sonra {ip_address} adresindeki cihaza ulaşılamıyor. Cihazın IP adresi değişmiş olabilir.\n\nBağlantı ayarlarını güncellemek için **Düzelt**'e tıklayın.",
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "Bağlantı Ayarlarını Güncelle",
+            "description": "IP adresini güncellemek için cihaz ayarlarını açın."
+          }
+        }
+      }
+    }
+  },
+  "entity": {
+    "switch": {
+      "main_switch": {
+        "name": "Anahtar"
+      }
+    },
+    "light": {
+      "main_light": {
+        "name": "Işık"
+      },
+      "fan_light": {
+        "name": "Fan Işığı"
+      }
+    },
+    "sensor": {
+      "reconnects": {
+        "name": "Yeniden Bağlantılar"
+      },
+      "last_seen": {
+        "name": "Son Görülme"
+      },
+      "power_consumption": {
+        "name": "Güç"
+      },
+      "current": {
+        "name": "Akım"
+      },
+      "battery": {
+        "name": "Pil"
+      },
+      "co2": {
+        "name": "CO₂"
+      },
+      "temperature": {
+        "name": "Sıcaklık"
+      },
+      "humidity": {
+        "name": "Nem"
+      },
+      "floor_temp": {
+        "name": "Zemin Sıcaklığı"
+      }
+    },
+    "binary_sensor": {
+      "overload": {
+        "name": "Aşırı Yük"
+      },
+      "leak": {
+        "name": "Su Sızıntısı"
+      },
+      "motion": {
+        "name": "Hareket"
+      },
+      "smoke": {
+        "name": "Duman"
+      },
+      "contact": {
+        "name": "Kapı/Pencere"
+      },
+      "tamper": {
+        "name": "Kurcalama"
+      }
+    },
+    "cover": {
+      "cover": {
+        "name": "Örtü"
+      }
+    },
+    "number": {
+      "volume": {
+        "name": "Ses"
+      }
+    },
+    "select": {
+      "siren_mode": {
+        "name": "Siren Modu"
+      }
+    },
+    "climate": {
+      "heater": {
+        "name": "Isıtıcı"
+      },
+      "thermostat": {
+        "name": "Termostat"
+      },
+      "ac": {
+        "name": "Klima"
+      },
+      "floor_heater": {
+        "name": "Yerden Isıtma"
+      },
+      "heat_pump": {
+        "name": "Isı Pompası"
+      }
+    },
+    "fan": {
+      "main_fan": {
+        "name": "Fan"
+      }
+    }
+  }
+}

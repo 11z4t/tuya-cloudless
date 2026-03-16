@@ -1,0 +1,306 @@
+{
+  "config": {
+    "flow_title": "{name}",
+    "step": {
+      "pair": {
+        "title": "Paringsværktøj",
+        "description": "Enhedsoplysninger blev importeret fra Tuya Cloudless paringsværktøjet. Bekræft at oplysningerne er korrekte, og klik **Næste** for at teste forbindelsen.",
+        "data": {
+          "gw_id": "Enheds-ID",
+          "local_key": "Sikkerhedsnøgle",
+          "ip_address": "IP-adresse"
+        }
+      },
+      "ble_pair": {
+        "title": "BLE-paring",
+        "description": "Paringsværktøjet åbner i din browser. Følg trinene for at forbinde din enhed via Bluetooth.\n\n**Kræver Chrome eller Edge** (desktop eller Android) og **HTTPS** — se [HTTPS-opsætningsguiden](https://github.com/11z4t/tuya-cloudless/wiki/HTTPS-Setup) om nødvendigt."
+      },
+      "ble_confirm": {
+        "title": "Enhed paret ✓",
+        "description": "Din enhed på **{ip_address}** (ID: `{gw_id}`) blev paret. Giv den et navn og vælg enhedstype.",
+        "data": {
+          "device_name": "Enhedsnavn",
+          "profile": "Enhedstype"
+        },
+        "data_description": {
+          "device_name": "Et venligt navn vist i Home Assistant",
+          "profile": "Vælg den type, der bedst matcher din enhed"
+        }
+      },
+      "user": {
+        "title": "Tilføj en Tuya-enhed",
+        "description": "Vælg, hvordan du vil tilføje din enhed.",
+        "data": {
+          "setup_mode": "Opsætningsmetode"
+        },
+        "data_description": {
+          "setup_mode": "BLE-paring anbefales til nye enheder. Søgning finder enheder, der allerede er på dit netværk. Manuel indtastning lader dig indtaste oplysninger i hånden."
+        }
+      },
+      "select": {
+        "title": "Fandt {count} enhed(er)",
+        "description": "Vælg den enhed, du vil tilføje.",
+        "data": {
+          "device": "Enhed"
+        }
+      },
+      "local_key": {
+        "title": "Indtast sikkerhedsnøglen",
+        "description": "Din enhed på **{ip_address}** (firmware {firmware}) har brug for en sikkerhedsnøgle til lokal kommunikation.\n\nNøglen vises, når du parer enheden med [Tuya Cloudless paringsværktøjet]({pairing_tool_url}). Den gemmes kun i Home Assistant — intet sendes til skyen.",
+        "data": {
+          "local_key": "Sikkerhedsnøgle",
+          "device_name": "Enhedsnavn",
+          "profile": "Enhedstype"
+        },
+        "data_description": {
+          "local_key": "16-tegns nøgle fra paringsværktøjet",
+          "device_name": "Et venligt navn vist i Home Assistant (lad stå tomt for at bruge IP-adressen)",
+          "profile": "Vælg den type, der bedst matcher din enhed"
+        }
+      },
+      "confirm": {
+        "title": "Klar til at forbinde",
+        "description": "**{device_name}** på `{ip_address}` vil blive tilføjet til Home Assistant.\n\nKlik **Forbind** for at teste forbindelsen og afslutte opsætningen.",
+        "data": {}
+      },
+      "manual": {
+        "title": "Tilføj enhed manuelt",
+        "description": "Indtast oplysningerne for din Tuya-enhed. Enheds-ID og sikkerhedsnøgle vises i [Tuya Cloudless paringsværktøjet]({pairing_tool_url}).",
+        "data": {
+          "gw_id": "Enheds-ID",
+          "local_key": "Sikkerhedsnøgle",
+          "ip_address": "IP-adresse",
+          "protocol_version": "Enhedsmodel",
+          "profile": "Enhedstype",
+          "device_name": "Enhedsnavn"
+        },
+        "data_description": {
+          "gw_id": "Unik enhedsidentifikator (vises under paring, f.eks. abc123def456)",
+          "local_key": "16-tegns sikkerhedsnøgle fra paringsværktøjet",
+          "ip_address": "Enhedens IP-adresse (angiv en fast adresse i din router for bedste pålidelighed)",
+          "protocol_version": "Model 3.3 virker for de fleste enheder fremstillet efter 2020",
+          "profile": "Vælg den type, der bedst matcher din enhed"
+        }
+      },
+      "discovery": {
+        "title": "Tuya-enhed fundet",
+        "description": "En enhed blev opdaget på **{ip_address}** (firmware {firmware}).\n\nIndtast sikkerhedsnøglen fra [Tuya Cloudless paringsværktøjet]({pairing_tool_url}) for at afslutte opsætningen.",
+        "data": {
+          "local_key": "Sikkerhedsnøgle",
+          "profile": "Enhedstype",
+          "device_name": "Enhedsnavn"
+        },
+        "data_description": {
+          "local_key": "16-tegns nøgle fra Tuya Cloudless paringsværktøjet"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Opdater sikkerhedsnøgle",
+        "description": "Sikkerhedsnøglen til **{device_name}** holdt op med at virke. Dette sker, hvis enheden blev nulstillet til fabriksindstillinger eller paret igen.\n\nHent den nye nøgle fra [Tuya Cloudless paringsværktøjet]({pairing_tool_url}) og indtast den nedenfor for at genoprette forbindelsen.",
+        "data": {
+          "local_key": "Ny sikkerhedsnøgle",
+          "ip_address": "IP-adresse (hvis den er ændret)"
+        },
+        "data_description": {
+          "local_key": "16-tegns nøgle fra den seneste paring",
+          "ip_address": "Lad stå tomt, hvis adressen ikke er ændret"
+        }
+      },
+      "reconfigure": {
+        "title": "Opdater forbindelsesindstillinger",
+        "description": "Opdater IP-adressen eller sikkerhedsnøglen til **{device_name}** uden at fjerne og tilføje enheden igen.",
+        "data": {
+          "ip_address": "IP-adresse",
+          "local_key": "Sikkerhedsnøgle"
+        },
+        "data_description": {
+          "ip_address": "Enhedens aktuelle IP-adresse på dit netværk",
+          "local_key": "16-tegns sikkerhedsnøgle"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Kunne ikke nå enheden — kontroller IP-adressen og at enheden er på det samme netværk som Home Assistant",
+      "invalid_local_key": "Ugyldig sikkerhedsnøgle — skal være præcis 16 tegn",
+      "invalid_auth_key": "Sikkerhedsnøglen er forkert. Kontroller nøglen og prøv igen.",
+      "invalid_gw_id": "Ugyldigt enheds-ID — må ikke være tomt",
+      "invalid_ip": "Ugyldig IP-adresse — må ikke være tom",
+      "auth_failed": "Forbindelse afvist — sikkerhedsnøglen kan være forkert, eller enheden blev paret igen med Tuya-appen",
+      "no_devices_found": "Ingen Tuya-enheder fundet på dit netværk. Sørg for at enheden er tændt og på samme Wi-Fi. Skift til **Manuel** ovenfor for at indtaste oplysninger i hånden.",
+      "unknown": "Uventet fejl — tjek Home Assistant-loggen for detaljer"
+    },
+    "abort": {
+      "already_configured": "Denne enhed er allerede konfigureret",
+      "not_tuya_device": "Enheden svarede ikke som forventet",
+      "pairing_server_unavailable": "Kunne ikke starte BLE-paringsserveren på port 8099 — porten er muligvis i brug. Prøv igen, eller brug Søg / Manuel opsætning i stedet.",
+      "https_required": "BLE-paring kræver HTTPS. Se [HTTPS-opsætningsguiden](https://github.com/11z4t/tuya-cloudless/wiki/HTTPS-Setup) for at konfigurere et certifikat, og prøv derefter igen.",
+      "reauth_successful": "Sikkerhedsnøgle opdateret — enheden er forbundet igen",
+      "reconfigure_successful": "Indstillinger opdateret — enheden genindlæses"
+    }
+  },
+  "exceptions": {
+    "device_unavailable": {
+      "message": "Enheden er ikke tilgængelig — forbindelsen er nede"
+    },
+    "command_timeout": {
+      "message": "Kommandoen nåede ikke enheden inden for tidsfristen — prøv venligst igen"
+    },
+    "entry_not_found": {
+      "message": "Konfigurationspost ikke fundet"
+    },
+    "entry_not_loaded": {
+      "message": "Konfigurationsposten er ikke indlæst"
+    },
+    "send_failed": {
+      "message": "Det lykkedes ikke at sende kommando til enheden"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Enhedsindstillinger",
+        "data": {
+          "ip_address": "IP-adresse",
+          "protocol_version": "Enhedsmodel",
+          "heartbeat_interval": "Hjerteslagsinterval (sekunder)",
+          "command_timeout": "Kommandotimeout (sekunder)",
+          "reconnect_max_delay": "Maks. genforbindelsesforsinkelse (sekunder)"
+        },
+        "data_description": {
+          "ip_address": "Opdater hvis enhedens IP-adresse er ændret",
+          "protocol_version": "Skift kun hvis enheden holdt op med at svare efter en firmwareopdatering",
+          "heartbeat_interval": "Hvor ofte et hjerteslagssignal sendes for at holde forbindelsen i live (5–300 s, standard 20)",
+          "command_timeout": "Hvor længe der ventes på kommandosvar, før der gives op (1–30 s, standard 5)",
+          "reconnect_max_delay": "Maksimal ventetid mellem genforbindelsesforsøg (10–3600 s, standard 300)"
+        }
+      }
+    }
+  },
+  "issues": {
+    "auth_failed": {
+      "title": "Godkendelse mislykkedes for {device_name}",
+      "description": "Enheden **{device_name}** afviser forbindelsen. Sikkerhedsnøglen er sandsynligvis forkert — dette sker, når enheden nulstilles til fabriksindstillinger eller pares igen med Tuya-appen.\n\nKlik **Ret** for at angive en ny sikkerhedsnøgle.",
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "Opdater sikkerhedsnøglen",
+            "description": "Gå til **Indstillinger → Integrationer → Tuya Cloudless → {device_name}** og vælg **Genanmeld**."
+          }
+        }
+      }
+    },
+    "connectivity": {
+      "title": "Kan ikke oprette forbindelse til {name}",
+      "description": "Kan ikke nå enheden på {ip_address} efter flere forsøg. Enheden kan have skiftet IP-adresse.\n\nKlik **Ret** for at opdatere forbindelsesindstillingerne.",
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "Opdater forbindelsesindstillinger",
+            "description": "Åbn enhedsindstillingerne for at opdatere IP-adressen."
+          }
+        }
+      }
+    }
+  },
+  "entity": {
+    "switch": {
+      "main_switch": {
+        "name": "Afbryder"
+      }
+    },
+    "light": {
+      "main_light": {
+        "name": "Lys"
+      },
+      "fan_light": {
+        "name": "Viftelys"
+      }
+    },
+    "sensor": {
+      "reconnects": {
+        "name": "Genforbindelser"
+      },
+      "last_seen": {
+        "name": "Sidst set"
+      },
+      "power_consumption": {
+        "name": "Effekt"
+      },
+      "current": {
+        "name": "Strøm"
+      },
+      "battery": {
+        "name": "Batteri"
+      },
+      "co2": {
+        "name": "CO₂"
+      },
+      "temperature": {
+        "name": "Temperatur"
+      },
+      "humidity": {
+        "name": "Luftfugtighed"
+      },
+      "floor_temp": {
+        "name": "Gulvtemperatur"
+      }
+    },
+    "binary_sensor": {
+      "overload": {
+        "name": "Overbelastning"
+      },
+      "leak": {
+        "name": "Vandlæk"
+      },
+      "motion": {
+        "name": "Bevægelse"
+      },
+      "smoke": {
+        "name": "Røg"
+      },
+      "contact": {
+        "name": "Dør/Vindue"
+      },
+      "tamper": {
+        "name": "Sabotage"
+      }
+    },
+    "cover": {
+      "cover": {
+        "name": "Dæksel"
+      }
+    },
+    "number": {
+      "volume": {
+        "name": "Lydstyrke"
+      }
+    },
+    "select": {
+      "siren_mode": {
+        "name": "Sirenetilstand"
+      }
+    },
+    "climate": {
+      "heater": {
+        "name": "Varmeapparat"
+      },
+      "thermostat": {
+        "name": "Termostat"
+      },
+      "ac": {
+        "name": "Klimaanlæg"
+      },
+      "floor_heater": {
+        "name": "Gulvvarme"
+      },
+      "heat_pump": {
+        "name": "Varmepumpe"
+      }
+    },
+    "fan": {
+      "main_fan": {
+        "name": "Blæser"
+      }
+    }
+  }
+}
