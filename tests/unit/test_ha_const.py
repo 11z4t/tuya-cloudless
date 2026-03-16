@@ -69,7 +69,7 @@ class TestConstants:
         assert DEFAULT_OPT_RECONNECT_MAX_DELAY == 300
 
     def test_config_entry_version(self) -> None:
-        assert CONFIG_ENTRY_VERSION == 1
+        assert CONFIG_ENTRY_VERSION == 2
 
     def test_conf_keys_are_strings(self) -> None:
         for key in (

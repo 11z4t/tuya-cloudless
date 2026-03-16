@@ -6,6 +6,7 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from homeassistant.helpers.device_registry import DeviceInfo
 
 from custom_components.tuya_cloudless.const import DOMAIN
 from custom_components.tuya_cloudless.coordinator import DeviceState, TuyaCloudlessCoordinator
@@ -21,21 +22,29 @@ def _make_coordinator(
     device_name: str = "",
     profile_name: str = "",
 ) -> MagicMock:
-    """Create a mock coordinator."""
+    """Create a mock coordinator with a pre-built DeviceInfo (mirrors async_setup_entry)."""
     coord = MagicMock(spec=TuyaCloudlessCoordinator)
     coord._gw_id = gw_id
     coord.gw_id = gw_id
     coord._version = version
     coord.version = version
-    coord.gw_id = gw_id
-    coord.version = version
-    coord.device_name = device_name or gw_id
+    resolved_name = device_name or gw_id
+    coord.device_name = resolved_name
     coord.profile_name = profile_name
     coord.state = DeviceState(
         available=available,
         dps=dps or {},
     )
     coord.async_send_dps = AsyncMock()
+    # Build DeviceInfo matching what async_setup_entry produces (PLAT-714)
+    coord.device_info = DeviceInfo(
+        identifiers={(DOMAIN, gw_id)},
+        name=resolved_name,
+        manufacturer="Tuya",
+        model=profile_name or "Tuya Cloudless",
+        sw_version=version,
+        configuration_url="http://",
+    )
     return coord
 
 

@@ -317,18 +317,62 @@ class TestMigrateEntry:
         from custom_components.tuya_cloudless import async_migrate_entry
 
         entry = MagicMock()
-        entry.version = 2  # > 1
+        entry.version = 3  # > 2 (current max)
         result = await async_migrate_entry(MagicMock(), entry)
         assert result is False
 
     @pytest.mark.asyncio
-    async def test_migrate_entry_version_1_returns_true(self) -> None:
+    async def test_migrate_entry_version_2_returns_true(self) -> None:
+        """Version 2 is the current version — migration is a no-op."""
+        from custom_components.tuya_cloudless import async_migrate_entry
+
+        entry = MagicMock()
+        entry.version = 2
+        hass = MagicMock()
+        result = await async_migrate_entry(hass, entry)
+        assert result is True
+        hass.config_entries.async_update_entry.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_migrate_entry_version_1_upgrades_to_2(self) -> None:
+        """v1 → v2 moves ip_address/protocol_version from options to data."""
         from custom_components.tuya_cloudless import async_migrate_entry
 
         entry = MagicMock()
         entry.version = 1
-        result = await async_migrate_entry(MagicMock(), entry)
+        entry.options = {
+            "ip_address": "10.0.0.1",
+            "protocol_version": "3.4",
+            "heartbeat_interval": 30,
+        }
+        entry.data = {"gw_id": "abc", "local_key": "0123456789abcdef"}
+
+        hass = MagicMock()
+        result = await async_migrate_entry(hass, entry)
         assert result is True
+        hass.config_entries.async_update_entry.assert_called_once()
+        call_kwargs = hass.config_entries.async_update_entry.call_args[1]
+        assert call_kwargs["version"] == 2
+        assert call_kwargs["data"]["ip_address"] == "10.0.0.1"
+        assert call_kwargs["data"]["protocol_version"] == "3.4"
+        assert "heartbeat_interval" in call_kwargs["options"]
+        assert "ip_address" not in call_kwargs["options"]
+        assert "protocol_version" not in call_kwargs["options"]
+
+    @pytest.mark.asyncio
+    async def test_migrate_entry_version_1_no_stray_options(self) -> None:
+        """v1 → v2: version bumped even when options contain no strays."""
+        from custom_components.tuya_cloudless import async_migrate_entry
+
+        entry = MagicMock()
+        entry.version = 1
+        entry.options = {"heartbeat_interval": 20}
+        entry.data = {"gw_id": "abc", "ip_address": "1.2.3.4"}
+
+        hass = MagicMock()
+        result = await async_migrate_entry(hass, entry)
+        assert result is True
+        hass.config_entries.async_update_entry.assert_called_once()
 
 
 # ── async_unload_entry ──────────────────────────────────────────────────────────

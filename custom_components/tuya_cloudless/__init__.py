@@ -50,7 +50,9 @@ from tuya_cloudless.profiles import (
 from .const import (
     CONF_DEVICE_TYPE,
     CONF_GW_ID,
+    CONF_IP_ADDRESS,
     CONF_PROFILE,
+    CONF_PROTOCOL_VERSION,
     DEVICE_TYPE_TO_PROFILE,
     DOMAIN,
     PLATFORMS,
@@ -173,13 +175,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     coordinator = TuyaCloudlessCoordinator.from_config_entry(hass, entry)
 
-    device_info = DeviceInfo(
-        identifiers={(DOMAIN, entry.data[CONF_GW_ID])},
-        name=entry.title,
-        manufacturer="Tuya",
-        model=f"Tuya Cloudless ({entry.data.get('protocol_version', '3.3')})",
-    )
-
     profile = await _resolve_profile(hass, entry)
     entity_specs = profile.entities if profile else []
     profile_name = profile.name if profile else ""
@@ -199,6 +194,19 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     coordinator.device_name = entry.title
     coordinator.profile_name = profile_name
+
+    # Build DeviceInfo exactly once and store it on the coordinator so that
+    # all entities always return the same object (PLAT-714).
+    protocol_version: str = entry.data.get(CONF_PROTOCOL_VERSION, "3.3")
+    device_info = DeviceInfo(
+        identifiers={(DOMAIN, entry.data[CONF_GW_ID])},
+        name=entry.title,
+        manufacturer="Tuya",
+        model=profile_name or "Tuya Cloudless",
+        sw_version=protocol_version,
+        configuration_url=f"http://{entry.data.get(CONF_IP_ADDRESS, '')}",
+    )
+    coordinator.device_info = device_info
 
     entry.runtime_data = TuyaCloudlessRuntimeData(
         coordinator=coordinator,
@@ -316,8 +324,62 @@ async def async_remove_config_entry_device(
 
 
 async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Migrate config entry to latest version."""
-    if entry.version > 1:
+    """Migrate config entry to the current schema version.
+
+    Versions:
+        1 -> 2: Move ``ip_address`` and ``protocol_version`` from
+               ``entry.options`` (if present there) into ``entry.data`` where
+               they exclusively belong.  The options flow no longer exposes
+               these fields (PLAT-715).
+
+    Args:
+        hass: Home Assistant instance.
+        entry: Config entry to migrate.
+
+    Returns:
+        True if the migration succeeded (or was a no-op), False if the
+        entry version is newer than this code knows about.
+    """
+    current_version: int = entry.version
+
+    if current_version > 2:
+        _LOGGER.error(
+            "Cannot migrate config entry %s from version %d -- unknown version",
+            entry.entry_id,
+            current_version,
+        )
         return False
-    _LOGGER.debug("No migration needed for entry %s (v%s)", entry.entry_id, entry.version)
+
+    if current_version == 1:
+        _LOGGER.info(
+            "Migrating config entry %s from v1 to v2 (options -> data boundary fix)",
+            entry.entry_id,
+        )
+        options: dict[str, object] = dict(entry.options or {})
+        new_data: dict[str, object] = dict(entry.data)
+
+        # Move ip_address and protocol_version out of options into data.
+        # They were never supposed to be in options; this cleans up any
+        # entries that were inadvertently written there.
+        migrated_fields: list[str] = []
+        for field_key in (CONF_IP_ADDRESS, CONF_PROTOCOL_VERSION):
+            if field_key in options:
+                new_data.setdefault(field_key, options.pop(field_key))
+                migrated_fields.append(field_key)
+
+        if migrated_fields:
+            _LOGGER.debug(
+                "[%s] Moved fields from options -> data: %s",
+                entry.entry_id,
+                migrated_fields,
+            )
+
+        hass.config_entries.async_update_entry(
+            entry,
+            data=new_data,
+            options=options,
+            version=2,
+        )
+
+    _LOGGER.debug("Migration complete for entry %s (now v%s)", entry.entry_id, entry.version)
     return True

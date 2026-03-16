@@ -25,6 +25,10 @@ from tuya_cloudless.profiles import DPSpec, EntitySpec  # noqa: E402
 
 def _make_coordinator(dps: dict[str, Any] | None = None, gw_id: str = "gw001") -> MagicMock:
     """Return a minimal coordinator mock with pre-set DPS state."""
+    from homeassistant.helpers.device_registry import DeviceInfo
+
+    from custom_components.tuya_cloudless.const import DOMAIN
+
     coord = MagicMock()
     coord._gw_id = gw_id
     coord.gw_id = gw_id
@@ -36,6 +40,15 @@ def _make_coordinator(dps: dict[str, Any] | None = None, gw_id: str = "gw001") -
     coord.state.available = True
     coord.state.dps = dps or {}
     coord.async_send_dps = AsyncMock()
+    # Build DeviceInfo matching what async_setup_entry produces (PLAT-714)
+    coord.device_info = DeviceInfo(
+        identifiers={(DOMAIN, gw_id)},
+        name=gw_id,
+        manufacturer="Tuya",
+        model="Tuya Cloudless",
+        sw_version="3.3",
+        configuration_url="http://",
+    )
     return coord
 
 

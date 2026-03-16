@@ -99,4 +99,10 @@ DEFAULT_OPT_COMMAND_TIMEOUT = 5
 DEFAULT_OPT_RECONNECT_MAX_DELAY = 300
 
 # Config entry version
-CONFIG_ENTRY_VERSION = 1
+# v1: initial
+# v2: ip_address and protocol_version moved exclusively to entry.data;
+#     options flow only exposes timing/behaviour parameters (PLAT-715).
+CONFIG_ENTRY_VERSION = 2
+
+# Number of consecutive connection failures before raising a connectivity repair issue
+CONNECTIVITY_ISSUE_THRESHOLD: int = 10

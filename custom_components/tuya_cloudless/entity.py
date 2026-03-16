@@ -13,7 +13,6 @@ from typing import Any
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DOMAIN
 from .coordinator import TuyaCloudlessCoordinator
 
 
@@ -51,14 +50,12 @@ class TuyaCloudlessEntity(CoordinatorEntity[TuyaCloudlessCoordinator]):
 
     @property
     def device_info(self) -> DeviceInfo:
-        """Return device registry info linking all entities for this device."""
-        return DeviceInfo(
-            identifiers={(DOMAIN, self.coordinator.gw_id)},
-            name=self.coordinator.device_name,
-            manufacturer="Tuya",
-            model=self.coordinator.profile_name or "Tuya Cloudless",
-            sw_version=self.coordinator.version,
-        )
+        """Return device registry info from the single canonical source (PLAT-714).
+
+        DeviceInfo is constructed once in ``async_setup_entry`` and stored on
+        the coordinator so that all entities always return the same object.
+        """
+        return self.coordinator.device_info
 
     def get_dp(self, dp_id: str | None = None) -> Any:
         """Return the current value of a data point.

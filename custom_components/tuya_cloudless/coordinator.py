@@ -34,6 +34,7 @@ from .const import (
     CONF_OPT_HEARTBEAT_INTERVAL,
     CONF_OPT_RECONNECT_MAX_DELAY,
     CONF_PROTOCOL_VERSION,
+    CONNECTIVITY_ISSUE_THRESHOLD,
     DEFAULT_OPT_COMMAND_TIMEOUT,
     DEFAULT_OPT_HEARTBEAT_INTERVAL,
     DEFAULT_OPT_RECONNECT_MAX_DELAY,
@@ -122,6 +123,7 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._sequence: int = 0
         self._session_key: bytes | None = None
         self._consecutive_decode_errors: int = 0
+        self._consecutive_connection_failures: int = 0
 
         self._reader: asyncio.StreamReader | None = None
         self._writer: asyncio.StreamWriter | None = None
@@ -217,17 +219,22 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             try:
                 await self._connect()
                 delay = RECONNECT_INITIAL_DELAY  # Reset on success
+                self._consecutive_connection_failures = 0
+                self._clear_connectivity_repair_issue()
             except asyncio.CancelledError:
                 return
             except (TimeoutError, OSError, TuyaCloudlessError) as exc:
                 self.state.available = False
                 self.state.last_error = str(exc)
+                self._consecutive_connection_failures += 1
                 _LOGGER.warning(
                     "[%s] Connection failed: %s — retrying in %.0fs",
                     self._gw_id,
                     exc,
                     delay,
                 )
+                if self._consecutive_connection_failures >= CONNECTIVITY_ISSUE_THRESHOLD:
+                    self._raise_connectivity_repair_issue()
                 self.async_update_listeners()
                 await asyncio.sleep(delay)
                 delay = min(delay * 2, self._reconnect_max_delay)
@@ -338,11 +345,20 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 break
 
     async def _receive_loop(self, reader: asyncio.StreamReader) -> None:
-        """Read TCP frames and update DPS state until connection drops."""
-        from tuya_cloudless.const import TCP_READ_BUFFER_SIZE, TCP_RECEIVE_TIMEOUT
-        from tuya_cloudless.protocol import decode_frame, split_frames
+        """Read TCP frames and update DPS state until connection drops.
 
-        buffer = b""
+        Uses :class:`~tuya_cloudless.message.MessageBuffer` for proper partial-frame
+        TCP reassembly, then decrypts each message payload before dispatching.
+        """
+        from tuya_cloudless.const import PROTOCOL_31, TCP_READ_BUFFER_SIZE, TCP_RECEIVE_TIMEOUT
+        from tuya_cloudless.crypto import ProtocolVersion, decrypt_payload
+        from tuya_cloudless.message import MessageBuffer
+        from tuya_cloudless.protocol import TuyaFrame
+
+        msg_buf = MessageBuffer(
+            version=ProtocolVersion(self._version),
+            local_key=self._local_key,
+        )
         while True:
             try:
                 chunk = await asyncio.wait_for(
@@ -355,8 +371,8 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 _LOGGER.info("[%s] TCP connection closed by device", self._gw_id)
                 break
 
-            buffer += chunk
-            if len(buffer) > _MAX_BUFFER_BYTES:
+            msg_buf.feed(chunk)
+            if msg_buf.pending_bytes > _MAX_BUFFER_BYTES:
                 _LOGGER.warning(
                     "[%s] Receive buffer exceeded %d bytes — forcing reconnect",
                     self._gw_id,
@@ -365,15 +381,23 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 if self._writer is not None:
                     self._writer.close()
                 return
-            frames, buffer = split_frames(buffer)
 
-            for raw_frame in frames:
+            for tuya_msg in msg_buf.messages():
                 try:
-                    frame = decode_frame(
-                        raw_frame,
+                    if tuya_msg.payload and self._version != PROTOCOL_31:
+                        decrypted = decrypt_payload(
+                            self._version,
+                            self._local_key,
+                            tuya_msg.payload,
+                            self._session_key,
+                        )
+                    else:
+                        decrypted = tuya_msg.payload
+                    frame = TuyaFrame(
+                        sequence=tuya_msg.sequence,
+                        command=int(tuya_msg.command),
                         version=self._version,
-                        local_key=self._local_key,
-                        session_key=self._session_key,
+                        payload=decrypted,
                     )
                     if self._consecutive_decode_errors > 0:
                         self._consecutive_decode_errors = 0
@@ -418,6 +442,26 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         from homeassistant.helpers.issue_registry import async_delete_issue
 
         async_delete_issue(self.hass, DOMAIN, f"auth_failed_{self._entry_id}")
+
+    def _raise_connectivity_repair_issue(self) -> None:
+        """Create an HA repair issue directing the user to check the device IP address."""
+        from homeassistant.helpers.issue_registry import IssueSeverity, async_create_issue
+
+        async_create_issue(
+            self.hass,
+            DOMAIN,
+            f"connectivity_{self._entry_id}",
+            is_fixable=True,
+            severity=IssueSeverity.WARNING,
+            translation_key="connectivity",
+            translation_placeholders={"ip_address": self._ip, "name": self._gw_id},
+        )
+
+    def _clear_connectivity_repair_issue(self) -> None:
+        """Remove the connectivity repair issue once the device connects successfully."""
+        from homeassistant.helpers.issue_registry import async_delete_issue
+
+        async_delete_issue(self.hass, DOMAIN, f"connectivity_{self._entry_id}")
 
     @callback
     def _on_frame(self, frame: Any) -> None:

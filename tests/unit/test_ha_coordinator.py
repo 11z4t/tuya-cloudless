@@ -259,6 +259,132 @@ class TestRepairIssues:
             coord._clear_auth_repair_issue()
             mock_delete.assert_called_once()
 
+    def test_raise_connectivity_repair_issue(self) -> None:
+        coord = _make_coordinator()
+        with patch("homeassistant.helpers.issue_registry.async_create_issue") as mock_create:
+            coord._raise_connectivity_repair_issue()
+            mock_create.assert_called_once()
+            call_kwargs = mock_create.call_args[1]
+            assert call_kwargs["is_fixable"] is True
+            assert call_kwargs["translation_key"] == "connectivity"
+            assert "connectivity_" in mock_create.call_args[0][2]
+
+    def test_clear_connectivity_repair_issue(self) -> None:
+        coord = _make_coordinator()
+        with patch("homeassistant.helpers.issue_registry.async_delete_issue") as mock_delete:
+            coord._clear_connectivity_repair_issue()
+            mock_delete.assert_called_once()
+            issue_id = mock_delete.call_args[0][2]
+            assert issue_id.startswith("connectivity_")
+
+
+class TestConnectivityRepair:
+    @pytest.mark.asyncio
+    async def test_connectivity_issue_raised_after_threshold(self) -> None:
+        """After CONNECTIVITY_ISSUE_THRESHOLD failures the repair issue should be created."""
+        from custom_components.tuya_cloudless.const import CONNECTIVITY_ISSUE_THRESHOLD
+
+        coord = _make_coordinator()
+        call_count = 0
+
+        async def mock_connect() -> None:
+            nonlocal call_count
+            call_count += 1
+            if call_count <= CONNECTIVITY_ISSUE_THRESHOLD + 1:
+                raise OSError("Connection refused")
+            raise asyncio.CancelledError
+
+        coord._connect = mock_connect
+
+        with (
+            patch("asyncio.sleep", new_callable=AsyncMock),
+            patch.object(coord, "_raise_connectivity_repair_issue") as mock_raise,
+            patch.object(coord, "_clear_connectivity_repair_issue"),
+        ):
+            await coord._connection_loop()
+
+        mock_raise.assert_called()
+
+    @pytest.mark.asyncio
+    async def test_connectivity_issue_not_raised_below_threshold(self) -> None:
+        """Below the threshold, no repair issue should be created."""
+        from custom_components.tuya_cloudless.const import CONNECTIVITY_ISSUE_THRESHOLD
+
+        coord = _make_coordinator()
+        call_count = 0
+
+        async def mock_connect() -> None:
+            nonlocal call_count
+            call_count += 1
+            if call_count < CONNECTIVITY_ISSUE_THRESHOLD:
+                raise OSError("Connection refused")
+            raise asyncio.CancelledError
+
+        coord._connect = mock_connect
+
+        with (
+            patch("asyncio.sleep", new_callable=AsyncMock),
+            patch.object(coord, "_raise_connectivity_repair_issue") as mock_raise,
+            patch.object(coord, "_clear_connectivity_repair_issue"),
+        ):
+            await coord._connection_loop()
+
+        mock_raise.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_connectivity_issue_cleared_on_success(self) -> None:
+        """Successful connection should clear any existing connectivity repair issue."""
+        coord = _make_coordinator()
+        call_count = 0
+
+        async def mock_connect() -> None:
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                return  # Success on first attempt
+            raise asyncio.CancelledError
+
+        coord._connect = mock_connect
+
+        with (
+            patch("asyncio.sleep", new_callable=AsyncMock),
+            patch.object(coord, "_raise_connectivity_repair_issue"),
+            patch.object(coord, "_clear_connectivity_repair_issue") as mock_clear,
+        ):
+            await coord._connection_loop()
+
+        mock_clear.assert_called()
+
+    @pytest.mark.asyncio
+    async def test_consecutive_failures_reset_on_success(self) -> None:
+        """Failure counter should reset to zero after a successful connection."""
+        coord = _make_coordinator()
+        coord._consecutive_connection_failures = 5
+        call_count = 0
+
+        async def mock_connect() -> None:
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                return  # Success
+            raise asyncio.CancelledError
+
+        coord._connect = mock_connect
+
+        with (
+            patch("asyncio.sleep", new_callable=AsyncMock),
+            patch.object(coord, "_raise_connectivity_repair_issue"),
+            patch.object(coord, "_clear_connectivity_repair_issue"),
+        ):
+            await coord._connection_loop()
+
+        assert coord._consecutive_connection_failures == 0
+
+    def test_connectivity_issue_threshold_constant(self) -> None:
+        from custom_components.tuya_cloudless.const import CONNECTIVITY_ISSUE_THRESHOLD
+
+        assert CONNECTIVITY_ISSUE_THRESHOLD == 10
+
 
 class TestDisconnect:
     @pytest.mark.asyncio
@@ -549,8 +675,9 @@ class TestReceiveLoop:
 
     @pytest.mark.asyncio
     async def test_decode_errors_trigger_reconnect(self) -> None:
-        """5 consecutive decode errors should close the connection."""
+        """5 consecutive decrypt errors should close the connection."""
         from tuya_cloudless.exceptions import TuyaCloudlessError
+        from tuya_cloudless.message import MessageBuffer
 
         coord = _make_coordinator()
         writer = MagicMock()
@@ -558,25 +685,29 @@ class TestReceiveLoop:
         coord._writer = writer
         coord._consecutive_decode_errors = 0
 
-        # Build a fake frame that will fail to decode
-        fake_frame = b"\x00\x00\x55\xaa" + b"\x00" * 16 + b"\x00\x00\xaa\x55"
+        fake_chunk = b"some_data"
         call_count = 0
 
         async def mock_wait_for(coro: Any, timeout: float = 0) -> bytes:
             nonlocal call_count
             call_count += 1
             if call_count <= 1:
-                return fake_frame
+                return fake_chunk
             return b""
+
+        # Build fake TuyaMessage objects that will fail decryption
+        fake_msg = MagicMock()
+        fake_msg.payload = b"encrypted_payload"
 
         with (
             patch("asyncio.wait_for", side_effect=mock_wait_for),
-            patch(
-                "tuya_cloudless.protocol.split_frames",
-                return_value=([fake_frame] * _MAX_CONSECUTIVE_ERRORS, b""),
+            patch.object(
+                MessageBuffer,
+                "messages",
+                return_value=[fake_msg] * _MAX_CONSECUTIVE_ERRORS,
             ),
             patch(
-                "tuya_cloudless.protocol.decode_frame",
+                "tuya_cloudless.crypto.decrypt_payload",
                 side_effect=TuyaCloudlessError("bad frame"),
             ),
             patch.object(coord, "_raise_auth_repair_issue"),
@@ -587,11 +718,13 @@ class TestReceiveLoop:
 
     @pytest.mark.asyncio
     async def test_successful_frame_clears_errors(self) -> None:
+        from tuya_cloudless.message import MessageBuffer
+
         coord = _make_coordinator()
         coord._consecutive_decode_errors = 3
 
-        frame = MagicMock()
-        frame.dps = {"dps": {"1": True}}
+        fake_msg = MagicMock()
+        fake_msg.payload = b'{"dps": {"1": true}}'
 
         call_count = 0
 
@@ -604,8 +737,11 @@ class TestReceiveLoop:
 
         with (
             patch("asyncio.wait_for", side_effect=mock_wait_for),
-            patch("tuya_cloudless.protocol.split_frames", return_value=([b"frame"], b"")),
-            patch("tuya_cloudless.protocol.decode_frame", return_value=frame),
+            patch.object(MessageBuffer, "messages", return_value=[fake_msg]),
+            patch(
+                "tuya_cloudless.crypto.decrypt_payload",
+                return_value=b'{"dps": {"1": true}}',
+            ),
             patch.object(coord, "_clear_auth_repair_issue"),
         ):
             await coord._receive_loop(AsyncMock())
@@ -628,6 +764,46 @@ class TestReceiveLoop:
 
         with patch("asyncio.wait_for", side_effect=mock_wait_for):
             await coord._receive_loop(AsyncMock())
+
+    @pytest.mark.asyncio
+    async def test_partial_frame_reassembly(self) -> None:
+        """MessageBuffer must reassemble a frame split across two TCP reads."""
+        from tuya_cloudless.const import CMD_STATUS
+        from tuya_cloudless.protocol import encode_frame
+
+        coord = _make_coordinator(version="3.1")
+
+        # Build a valid v3.1 frame (plaintext, no encryption)
+        local_key = coord._local_key
+        valid_frame = encode_frame(
+            CMD_STATUS,
+            b'{"dps": {"1": true}}',
+            sequence=1,
+            version="3.1",
+            local_key=local_key,
+        )
+
+        # Split the frame into two halves to simulate TCP fragmentation
+        mid = len(valid_frame) // 2
+        first_half = valid_frame[:mid]
+        second_half = valid_frame[mid:]
+
+        call_count = 0
+
+        async def mock_wait_for(coro: Any, timeout: float = 0) -> bytes:
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                return first_half
+            if call_count == 2:
+                return second_half
+            return b""  # EOF
+
+        with patch("asyncio.wait_for", side_effect=mock_wait_for):
+            await coord._receive_loop(AsyncMock())
+
+        # The frame should have been reassembled and DPS state updated
+        assert coord.state.dps.get("1") is True
 
 
 class TestNegotiateSessionKey:

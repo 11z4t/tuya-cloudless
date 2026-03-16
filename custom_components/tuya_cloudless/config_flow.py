@@ -102,9 +102,7 @@ class TuyaCloudlessConfigFlow(ConfigFlow, domain=DOMAIN):
 
     # ── Step 0: Pairing tool deep-link ─────────────────────────────────────────
 
-    async def async_step_pair(
-        self, user_input: dict[str, Any] | None = None
-    ) -> ConfigFlowResult:
+    async def async_step_pair(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """Import device data pre-filled from the Tuya Cloudless pairing tool.
 
         The pairing tool (served at ``http://ha-host:8099``) links back to HA

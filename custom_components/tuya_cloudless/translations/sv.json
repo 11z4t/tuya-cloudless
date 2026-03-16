@@ -169,6 +169,18 @@
           }
         }
       }
+    },
+    "connectivity": {
+      "title": "Kan inte ansluta till {name}",
+      "description": "Det gick inte att nå enheten på {ip_address} efter upprepade försök. Enheten kan ha fått en ny IP-adress.\n\nKlicka på **Åtgärda** för att uppdatera anslutningsinställningarna.",
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "Uppdatera anslutningsinställningar",
+            "description": "Öppna enhetsinställningarna för att uppdatera IP-adressen."
+          }
+        }
+      }
     }
   },
   "entity": {

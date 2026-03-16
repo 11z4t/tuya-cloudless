@@ -169,6 +169,18 @@
           }
         }
       }
+    },
+    "connectivity": {
+      "title": "Cannot connect to {name}",
+      "description": "Unable to reach device at {ip_address} after multiple attempts. The device may have changed IP address.\n\nClick **Fix** to update the connection settings.",
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "Update connection settings",
+            "description": "Open the device settings to update the IP address."
+          }
+        }
+      }
     }
   },
   "entity": {
