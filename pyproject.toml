@@ -11,6 +11,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+ble = [
+    "bleak>=0.21",
+]
 test = [
     "pytest>=7.0",
     "pytest-asyncio>=0.23",
@@ -52,6 +55,7 @@ asyncio_mode = "auto"
 markers = [
     "integration: requires real hardware or network",
     "requires_ha: requires Home Assistant dependencies",
+    "requires_ble: requires Bluetooth hardware and bleak installed",
 ]
 
 [tool.bandit]
