@@ -35,6 +35,7 @@ PLATFORMS: list[str] = [
     "cover",
     "number",
     "select",
+    "button",
     "climate",
     "fan",
 ]
