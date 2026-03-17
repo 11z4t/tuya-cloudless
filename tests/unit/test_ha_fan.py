@@ -505,131 +505,104 @@ class TestFanOptimisticState:
 # ── Restore state tests ────────────────────────────────────────────────────────
 
 
+# Helper: run the real async_added_to_hass with a mocked last state.
+async def _run_restore(entity: TuyaCloudlessFan, state_str: str | None) -> None:
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    from homeassistant.helpers.update_coordinator import CoordinatorEntity
+
+    mock_state = MagicMock() if state_str is not None else None
+    if mock_state is not None:
+        mock_state.state = state_str
+    entity.async_get_last_state = AsyncMock(return_value=mock_state)
+    with patch.object(CoordinatorEntity, "async_added_to_hass", AsyncMock()):
+        await entity.async_added_to_hass()
+
+
 class TestFanRestoreState:
     @pytest.mark.asyncio
-    async def test_restore_on_state(self) -> None:
-        """Restoring 'on' state sets optimistic_is_on=True."""
+    async def test_restore_on_sets_optimistic_is_on(self) -> None:
+        """Real async_added_to_hass: 'on' → optimistic_is_on=True."""
         from homeassistant.const import STATE_ON
 
         e = _make_fan({})
-        e._restored_state = STATE_ON
-
-        if e._restored_state == STATE_ON:
-            e._optimistic_is_on = True
-
+        await _run_restore(e, STATE_ON)
         assert e._optimistic_is_on is True
         assert e.is_on is True
 
     @pytest.mark.asyncio
-    async def test_restore_off_state(self) -> None:
-        """Restoring 'off' state sets optimistic_is_on=False."""
+    async def test_restore_off_sets_optimistic_is_off(self) -> None:
+        """Real async_added_to_hass: 'off' → optimistic_is_on=False."""
         from homeassistant.const import STATE_OFF
 
         e = _make_fan({})
-        e._restored_state = STATE_OFF
-
-        if e._restored_state == STATE_OFF:
-            e._optimistic_is_on = False
-
+        await _run_restore(e, STATE_OFF)
         assert e._optimistic_is_on is False
         assert e.is_on is False
 
     @pytest.mark.asyncio
     async def test_restore_unknown_state_is_ignored(self) -> None:
-        """Non-on/off states (e.g. 'unavailable') must not change optimistic."""
-        from homeassistant.const import STATE_OFF, STATE_ON
-
+        """Real async_added_to_hass: 'unavailable' must not touch optimistic."""
         e = _make_fan({})
-        e._restored_state = "unavailable"
-
-        if e._restored_state == STATE_ON:
-            e._optimistic_is_on = True
-        elif e._restored_state == STATE_OFF:
-            e._optimistic_is_on = False
-
+        await _run_restore(e, "unavailable")
         assert e._optimistic_is_on is None
 
     @pytest.mark.asyncio
-    async def test_restore_none_state_is_ignored(self) -> None:
-        """None restored state must not change optimistic."""
-        from homeassistant.const import STATE_OFF, STATE_ON
-
+    async def test_restore_none_last_state_is_ignored(self) -> None:
+        """Real async_added_to_hass: no recorded state → optimistic untouched."""
         e = _make_fan({})
-        e._restored_state = None
-
-        if e._restored_state == STATE_ON:
-            e._optimistic_is_on = True
-        elif e._restored_state == STATE_OFF:
-            e._optimistic_is_on = False
-
+        await _run_restore(e, None)
         assert e._optimistic_is_on is None
 
     @pytest.mark.asyncio
-    async def test_restore_full_flow_via_async_get_last_state(self) -> None:
-        """Full restore flow sets is_on from last_state mock."""
-        from unittest.mock import AsyncMock, MagicMock
-
+    async def test_restore_on_wins_over_stale_off_dp(self) -> None:
+        """Restored 'on' via real method takes priority over stale off DP."""
         from homeassistant.const import STATE_ON
 
-        e = _make_fan({})
-
-        mock_state = MagicMock()
-        mock_state.state = STATE_ON
-        e.async_get_last_state = AsyncMock(return_value=mock_state)
-
-        last = await e.async_get_last_state()
-        if last is not None:
-            e._restored_state = last.state
-        if e._restored_state == STATE_ON:
-            e._optimistic_is_on = True
-
-        assert e._optimistic_is_on is True
-        assert e.is_on is True
-
-    @pytest.mark.asyncio
-    async def test_restore_on_state_wins_over_stale_off_dp(self) -> None:
-        """Restored on state takes priority over stale off DP."""
-        from homeassistant.const import STATE_ON
-
-        e = _make_fan({"1": False})  # DP says off
-        e._restored_state = STATE_ON
-        e._optimistic_is_on = True  # Set by async_added_to_hass
-
+        e = _make_fan({"1": False})  # live DP says off
+        await _run_restore(e, STATE_ON)
         assert e.is_on is True
 
     @pytest.mark.asyncio
     async def test_restore_off_wins_over_stale_on_dp(self) -> None:
-        """Restored off state takes priority over stale on DP."""
+        """Restored 'off' via real method takes priority over stale on DP."""
         from homeassistant.const import STATE_OFF
 
-        e = _make_fan({"1": True})  # DP says on
-        e._restored_state = STATE_OFF
-        e._optimistic_is_on = False  # Set by async_added_to_hass
-
+        e = _make_fan({"1": True})  # live DP says on
+        await _run_restore(e, STATE_OFF)
         assert e.is_on is False
 
     @pytest.mark.asyncio
     async def test_coordinator_update_clears_restored_optimistic(self) -> None:
-        """Coordinator update clears restored optimistic so live DP takes over."""
+        """After coordinator update, live DP takes over from restored optimistic."""
         from homeassistant.const import STATE_ON
 
         e = _make_fan({"1": False})
-        e._restored_state = STATE_ON
-        e._optimistic_is_on = True
-
+        await _run_restore(e, STATE_ON)
         assert e.is_on is True
 
-        # Simulate coordinator delivering live data → clears optimistic
-        e._optimistic_is_on = None
-        assert e.is_on is False  # Live DP (False) takes over
+        e._optimistic_is_on = None  # cleared by _handle_coordinator_update
+        assert e.is_on is False  # live DP wins
+
+    @pytest.mark.asyncio
+    async def test_restore_sets_restored_state_attribute(self) -> None:
+        """RestoreStateMixin must populate _restored_state from last HA state."""
+        from homeassistant.const import STATE_ON
+
+        e = _make_fan({})
+        await _run_restore(e, STATE_ON)
+        assert e._restored_state == STATE_ON
+
+    @pytest.mark.asyncio
+    async def test_restore_off_restored_state_attribute(self) -> None:
+        """_restored_state is 'off' after restoring an off fan."""
+        from homeassistant.const import STATE_OFF
+
+        e = _make_fan({})
+        await _run_restore(e, STATE_OFF)
+        assert e._restored_state == STATE_OFF
 
     def test_restored_state_initialised_to_none(self) -> None:
-        """_restored_state must start as None (set by RestoreStateMixin)."""
+        """_restored_state must start as None before async_added_to_hass runs."""
         e = _make_fan({})
         assert e._restored_state is None
-
-    def test_restore_mixin_importable(self) -> None:
-        """RestoreStateMixin must be importable from entity module."""
-        from custom_components.tuya_cloudless.entity import RestoreStateMixin
-
-        assert RestoreStateMixin is not None

@@ -408,135 +408,96 @@ class TestCoverOptimisticState:
 # ── Restore state tests ────────────────────────────────────────────────────────
 
 
+# Helper: run the real async_added_to_hass with a mocked last state.
+# Patches CoordinatorEntity.async_added_to_hass to avoid real HA setup;
+# RestoreStateMixin and the platform method execute for real.
+async def _run_restore(entity: TuyaCloudlessCover, state_str: str | None) -> None:
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    from homeassistant.helpers.update_coordinator import CoordinatorEntity
+
+    mock_state = MagicMock() if state_str is not None else None
+    if mock_state is not None:
+        mock_state.state = state_str
+    entity.async_get_last_state = AsyncMock(return_value=mock_state)
+    with patch.object(CoordinatorEntity, "async_added_to_hass", AsyncMock()):
+        await entity.async_added_to_hass()
+
+
 class TestCoverRestoreState:
     @pytest.mark.asyncio
-    async def test_restore_open_state(self) -> None:
-        """Restoring 'open' state sets optimistic_open=True."""
+    async def test_restore_open_sets_optimistic_open(self) -> None:
+        """Real async_added_to_hass: 'open' → optimistic_open=True."""
         e = _make_cover({})
-        e._restored_state = "open"
-
-        if e._restored_state == "open":
-            e._optimistic_open = True
-
+        await _run_restore(e, "open")
         assert e._optimistic_open is True
         assert e.is_closed is False
 
     @pytest.mark.asyncio
-    async def test_restore_closed_state_sets_position_zero(self) -> None:
-        """Restoring 'closed' state sets optimistic_open=False and position=0."""
+    async def test_restore_closed_sets_optimistic_closed_and_position(self) -> None:
+        """Real async_added_to_hass: 'closed' → optimistic_open=False, position=0."""
         e = _make_cover({})
-        e._restored_state = "closed"
-
-        if e._restored_state == "closed":
-            e._optimistic_open = False
-            if e._spec.dp_position is not None:
-                e._optimistic_position = 0
-
+        await _run_restore(e, "closed")
         assert e._optimistic_open is False
         assert e._optimistic_position == 0
         assert e.is_closed is True
 
     @pytest.mark.asyncio
     async def test_restore_closed_no_position_dp(self) -> None:
-        """Restoring 'closed' without dp_position leaves position as None."""
+        """Real async_added_to_hass: 'closed' without dp_position leaves position=None."""
         spec = _make_cover_spec(dp_position_id=None)
         e = _make_cover({}, spec=spec)
-        e._restored_state = "closed"
-
-        if e._restored_state == "closed":
-            e._optimistic_open = False
-            if e._spec.dp_position is not None:
-                e._optimistic_position = 0
-
+        await _run_restore(e, "closed")
         assert e._optimistic_open is False
         assert e._optimistic_position is None
         assert e.is_closed is True
 
     @pytest.mark.asyncio
     async def test_restore_open_does_not_set_position(self) -> None:
-        """Restoring 'open' does not set a specific position (position unknown)."""
+        """Real async_added_to_hass: 'open' does not guess a position value."""
         e = _make_cover({})
-        e._restored_state = "open"
-
-        if e._restored_state == "open":
-            e._optimistic_open = True
-
+        await _run_restore(e, "open")
         assert e._optimistic_open is True
         assert e._optimistic_position is None
 
     @pytest.mark.asyncio
     async def test_restore_unknown_state_is_ignored(self) -> None:
-        """Non-open/closed states (e.g. 'unavailable') must not change optimistic."""
+        """Real async_added_to_hass: 'unavailable' must not touch optimistic state."""
         e = _make_cover({})
-        e._restored_state = "unavailable"
-
-        if e._restored_state in ("open", "closed"):
-            e._optimistic_open = e._restored_state == "open"
-
+        await _run_restore(e, "unavailable")
         assert e._optimistic_open is None
         assert e.is_closed is None
 
     @pytest.mark.asyncio
-    async def test_restore_none_state_is_ignored(self) -> None:
-        """None restored state must not change optimistic."""
+    async def test_restore_opening_state_is_ignored(self) -> None:
+        """Real async_added_to_hass: transient 'opening' state must not restore."""
         e = _make_cover({})
-        e._restored_state = None
-
-        if e._restored_state in ("open", "closed"):
-            e._optimistic_open = e._restored_state == "open"
-
+        await _run_restore(e, "opening")
         assert e._optimistic_open is None
 
     @pytest.mark.asyncio
-    async def test_restore_full_flow_via_async_added_to_hass(self) -> None:
-        """async_added_to_hass restores open state from last_state mock."""
-        from unittest.mock import AsyncMock, MagicMock
-
+    async def test_restore_none_last_state_is_ignored(self) -> None:
+        """Real async_added_to_hass: no recorded state → optimistic untouched."""
         e = _make_cover({})
-
-        mock_state = MagicMock()
-        mock_state.state = "open"
-        e.async_get_last_state = AsyncMock(return_value=mock_state)
-
-        last = await e.async_get_last_state()
-        if last is not None:
-            e._restored_state = last.state
-        if e._restored_state == "open":
-            e._optimistic_open = True
-
-        assert e._optimistic_open is True
-        assert e.is_closed is False
+        await _run_restore(e, None)
+        assert e._optimistic_open is None
+        assert e._optimistic_position is None
 
     @pytest.mark.asyncio
-    async def test_restore_closed_full_flow(self) -> None:
-        """async_added_to_hass restores closed state and position=0."""
-        from unittest.mock import AsyncMock, MagicMock
-
+    async def test_restore_sets_restored_state_attribute(self) -> None:
+        """RestoreStateMixin must populate _restored_state from last HA state."""
         e = _make_cover({})
+        await _run_restore(e, "open")
+        assert e._restored_state == "open"
 
-        mock_state = MagicMock()
-        mock_state.state = "closed"
-        e.async_get_last_state = AsyncMock(return_value=mock_state)
-
-        last = await e.async_get_last_state()
-        if last is not None:
-            e._restored_state = last.state
-        if e._restored_state == "closed":
-            e._optimistic_open = False
-            if e._spec.dp_position is not None:
-                e._optimistic_position = 0
-
-        assert e._optimistic_open is False
-        assert e._optimistic_position == 0
-        assert e.is_closed is True
+    @pytest.mark.asyncio
+    async def test_restore_closed_restored_state_attribute(self) -> None:
+        """_restored_state is 'closed' after restoring a closed cover."""
+        e = _make_cover({})
+        await _run_restore(e, "closed")
+        assert e._restored_state == "closed"
 
     def test_restored_state_initialised_to_none(self) -> None:
-        """_restored_state must start as None (set by RestoreStateMixin)."""
+        """_restored_state must start as None before async_added_to_hass runs."""
         e = _make_cover({})
         assert e._restored_state is None
-
-    def test_restore_mixin_importable(self) -> None:
-        """RestoreStateMixin must be importable from entity module."""
-        from custom_components.tuya_cloudless.entity import RestoreStateMixin
-
-        assert RestoreStateMixin is not None

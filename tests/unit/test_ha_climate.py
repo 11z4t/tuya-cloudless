@@ -398,147 +398,86 @@ class TestClimateOptimisticState:
 # ── Restore state tests ────────────────────────────────────────────────────────
 
 
+# Helper: run the real async_added_to_hass with a mocked last state.
+async def _run_restore(entity: TuyaCloudlessClimate, state_str: str | None) -> None:
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    from homeassistant.helpers.update_coordinator import CoordinatorEntity
+
+    mock_state = MagicMock() if state_str is not None else None
+    if mock_state is not None:
+        mock_state.state = state_str
+    entity.async_get_last_state = AsyncMock(return_value=mock_state)
+    with patch.object(CoordinatorEntity, "async_added_to_hass", AsyncMock()):
+        await entity.async_added_to_hass()
+
+
 class TestClimateRestoreState:
     @pytest.mark.asyncio
     async def test_restore_heat_mode(self) -> None:
-        """Restoring 'heat' state sets optimistic_hvac_mode=HVACMode.HEAT."""
+        """Real async_added_to_hass: 'heat' → optimistic_hvac_mode=HVACMode.HEAT."""
         e = _make_climate({})
-        e._restored_state = "heat"
-
-        try:
-            restored = HVACMode(e._restored_state)
-            if restored in e._attr_hvac_modes:
-                e._optimistic_hvac_mode = restored
-        except ValueError:
-            pass
-
+        await _run_restore(e, "heat")
         assert e._optimistic_hvac_mode == HVACMode.HEAT
         assert e.hvac_mode == HVACMode.HEAT
 
     @pytest.mark.asyncio
     async def test_restore_cool_mode(self) -> None:
-        """Restoring 'cool' state sets optimistic_hvac_mode=HVACMode.COOL."""
+        """Real async_added_to_hass: 'cool' → optimistic_hvac_mode=HVACMode.COOL."""
         e = _make_climate({}, options=("heat", "cool", "auto"))
-        e._restored_state = "cool"
-
-        try:
-            restored = HVACMode(e._restored_state)
-            if restored in e._attr_hvac_modes:
-                e._optimistic_hvac_mode = restored
-        except ValueError:
-            pass
-
+        await _run_restore(e, "cool")
         assert e._optimistic_hvac_mode == HVACMode.COOL
 
     @pytest.mark.asyncio
     async def test_restore_off_mode(self) -> None:
-        """Restoring 'off' state sets optimistic_hvac_mode=HVACMode.OFF."""
+        """Real async_added_to_hass: 'off' → optimistic_hvac_mode=HVACMode.OFF."""
         e = _make_climate({})
-        e._restored_state = "off"
-
-        try:
-            restored = HVACMode(e._restored_state)
-            if restored in e._attr_hvac_modes:
-                e._optimistic_hvac_mode = restored
-        except ValueError:
-            pass
-
+        await _run_restore(e, "off")
         assert e._optimistic_hvac_mode == HVACMode.OFF
 
     @pytest.mark.asyncio
-    async def test_restore_invalid_state_is_ignored(self) -> None:
-        """Non-HVAC state string (e.g. 'unavailable') must not change optimistic."""
+    async def test_restore_auto_mode(self) -> None:
+        """Real async_added_to_hass: 'auto' → optimistic_hvac_mode=HVACMode.AUTO."""
         e = _make_climate({})
-        e._restored_state = "unavailable"
+        await _run_restore(e, "auto")
+        assert e._optimistic_hvac_mode == HVACMode.AUTO
 
-        try:
-            restored = HVACMode(e._restored_state)
-            if restored in e._attr_hvac_modes:
-                e._optimistic_hvac_mode = restored
-        except ValueError:
-            pass
-
+    @pytest.mark.asyncio
+    async def test_restore_invalid_state_is_ignored(self) -> None:
+        """Real async_added_to_hass: 'unavailable' must not touch optimistic."""
+        e = _make_climate({})
+        await _run_restore(e, "unavailable")
         assert e._optimistic_hvac_mode is None
 
     @pytest.mark.asyncio
-    async def test_restore_none_state_is_ignored(self) -> None:
-        """None restored state must not change optimistic."""
+    async def test_restore_none_last_state_is_ignored(self) -> None:
+        """Real async_added_to_hass: no recorded state → optimistic untouched."""
         e = _make_climate({})
-        e._restored_state = None
-
-        if e._restored_state is not None:
-            try:
-                restored = HVACMode(e._restored_state)
-                if restored in e._attr_hvac_modes:
-                    e._optimistic_hvac_mode = restored
-            except ValueError:
-                pass
-
+        await _run_restore(e, None)
         assert e._optimistic_hvac_mode is None
 
     @pytest.mark.asyncio
     async def test_restore_mode_not_in_supported_modes_ignored(self) -> None:
-        """A valid HVACMode not in the device's supported modes must be ignored."""
-        # Device only supports heat + off
-        e = _make_climate({}, options=("heat",))
-        e._restored_state = "cool"  # cool not in device's modes
-
-        try:
-            restored = HVACMode(e._restored_state)
-            if restored in e._attr_hvac_modes:
-                e._optimistic_hvac_mode = restored
-        except ValueError:
-            pass
-
+        """Real async_added_to_hass: valid HVACMode not in device's modes is ignored."""
+        e = _make_climate({}, options=("heat",))  # only heat + off supported
+        await _run_restore(e, "cool")
         assert e._optimistic_hvac_mode is None
 
     @pytest.mark.asyncio
-    async def test_restore_full_flow_via_async_get_last_state(self) -> None:
-        """Full restore flow sets hvac_mode from last_state mock."""
-        from unittest.mock import AsyncMock, MagicMock
-
+    async def test_restore_sets_restored_state_attribute(self) -> None:
+        """RestoreStateMixin must populate _restored_state from last HA state."""
         e = _make_climate({})
-
-        mock_state = MagicMock()
-        mock_state.state = "heat"
-        e.async_get_last_state = AsyncMock(return_value=mock_state)
-
-        last = await e.async_get_last_state()
-        if last is not None:
-            e._restored_state = last.state
-        if e._restored_state is not None:
-            try:
-                restored = HVACMode(e._restored_state)
-                if restored in e._attr_hvac_modes:
-                    e._optimistic_hvac_mode = restored
-            except ValueError:
-                pass
-
-        assert e._optimistic_hvac_mode == HVACMode.HEAT
-        assert e.hvac_mode == HVACMode.HEAT
+        await _run_restore(e, "heat")
+        assert e._restored_state == "heat"
 
     @pytest.mark.asyncio
-    async def test_restore_auto_mode(self) -> None:
-        """Restoring 'auto' state sets optimistic_hvac_mode=HVACMode.AUTO."""
+    async def test_restore_off_restored_state_attribute(self) -> None:
+        """_restored_state is 'off' after restoring an off climate entity."""
         e = _make_climate({})
-        e._restored_state = "auto"
-
-        try:
-            restored = HVACMode(e._restored_state)
-            if restored in e._attr_hvac_modes:
-                e._optimistic_hvac_mode = restored
-        except ValueError:
-            pass
-
-        assert e._optimistic_hvac_mode == HVACMode.AUTO
+        await _run_restore(e, "off")
+        assert e._restored_state == "off"
 
     def test_restored_state_initialised_to_none(self) -> None:
-        """_restored_state must start as None (set by RestoreStateMixin)."""
+        """_restored_state must start as None before async_added_to_hass runs."""
         e = _make_climate({})
         assert e._restored_state is None
-
-    def test_restore_mixin_importable(self) -> None:
-        """RestoreStateMixin must be importable from entity module."""
-        from custom_components.tuya_cloudless.entity import RestoreStateMixin
-
-        assert RestoreStateMixin is not None
