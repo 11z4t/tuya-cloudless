@@ -506,7 +506,11 @@ class TestFanOptimisticState:
 
 
 # Helper: run the real async_added_to_hass with a mocked last state.
-async def _run_restore(entity: TuyaCloudlessFan, state_str: str | None) -> None:
+async def _run_restore(
+    entity: TuyaCloudlessFan,
+    state_str: str | None,
+    attributes: dict[str, object] | None = None,
+) -> None:
     from unittest.mock import AsyncMock, MagicMock, patch
 
     from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -514,6 +518,7 @@ async def _run_restore(entity: TuyaCloudlessFan, state_str: str | None) -> None:
     mock_state = MagicMock() if state_str is not None else None
     if mock_state is not None:
         mock_state.state = state_str
+        mock_state.attributes = attributes or {}
     entity.async_get_last_state = AsyncMock(return_value=mock_state)
     with patch.object(CoordinatorEntity, "async_added_to_hass", AsyncMock()):
         await entity.async_added_to_hass()
@@ -606,3 +611,74 @@ class TestFanRestoreState:
         """_restored_state must start as None before async_added_to_hass runs."""
         e = _make_fan({})
         assert e._restored_state is None
+
+
+class TestFanRestoreExtraData:
+    """PLAT-726: restore percentage, preset_mode, oscillating, direction from attributes."""
+
+    @pytest.mark.asyncio
+    async def test_restore_percentage(self) -> None:
+        """percentage attribute is restored to _optimistic_percentage."""
+        e = _make_fan({})
+        await _run_restore(e, "on", {"percentage": 75})
+        assert e._optimistic_percentage == 75
+
+    @pytest.mark.asyncio
+    async def test_restore_percentage_and_is_on_together(self) -> None:
+        """Both is_on and percentage are restored from the same last state."""
+        e = _make_fan({})
+        await _run_restore(e, "on", {"percentage": 60})
+        assert e._optimistic_is_on is True
+        assert e._optimistic_percentage == 60
+
+    @pytest.mark.asyncio
+    async def test_restore_preset_mode(self) -> None:
+        """A valid preset_mode attribute is restored to _optimistic_preset_mode."""
+        e = _make_fan({})
+        await _run_restore(e, "on", {"preset_mode": "sleep"})
+        assert e._optimistic_preset_mode == "sleep"
+
+    @pytest.mark.asyncio
+    async def test_restore_invalid_preset_mode_ignored(self) -> None:
+        """A preset_mode not in dp_options must be ignored (never set optimistic)."""
+        e = _make_fan({})
+        await _run_restore(e, "on", {"preset_mode": "turbo"})  # not in options
+        assert e._optimistic_preset_mode is None
+
+    @pytest.mark.asyncio
+    async def test_restore_oscillating_true(self) -> None:
+        """oscillating=True attribute is restored to _optimistic_oscillating."""
+        e = _make_fan({})
+        await _run_restore(e, "on", {"oscillating": True})
+        assert e._optimistic_oscillating is True
+
+    @pytest.mark.asyncio
+    async def test_restore_oscillating_false(self) -> None:
+        """oscillating=False (falsy but not None) must be restored correctly."""
+        e = _make_fan({})
+        await _run_restore(e, "on", {"oscillating": False})
+        assert e._optimistic_oscillating is False
+
+    @pytest.mark.asyncio
+    async def test_restore_direction(self) -> None:
+        """direction attribute is restored to _optimistic_direction."""
+        e = _make_fan({})
+        await _run_restore(e, "on", {"direction": "reverse"})
+        assert e._optimistic_direction == "reverse"
+
+    @pytest.mark.asyncio
+    async def test_restore_percentage_skipped_when_no_dp_value(self) -> None:
+        """percentage is NOT restored when the fan spec has no dp_value."""
+        e = _make_fan({}, spec=_make_power_only_fan_spec())
+        await _run_restore(e, "on", {"percentage": 75})
+        assert e._optimistic_percentage is None
+
+    @pytest.mark.asyncio
+    async def test_restore_empty_attributes_leaves_extras_none(self) -> None:
+        """No saved attributes → all optimistic extras remain None after restore."""
+        e = _make_fan({})
+        await _run_restore(e, "on", {})
+        assert e._optimistic_percentage is None
+        assert e._optimistic_preset_mode is None
+        assert e._optimistic_oscillating is None
+        assert e._optimistic_direction is None

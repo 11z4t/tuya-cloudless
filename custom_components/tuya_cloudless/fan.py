@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import logging
 from typing import Any
 
@@ -92,17 +93,41 @@ class TuyaCloudlessFan(RestoreStateMixin, TuyaCloudlessEntity, FanEntity):
         self._attr_supported_features = features
 
     async def async_added_to_hass(self) -> None:
-        """Register with HA and restore last known fan on/off state if available.
+        """Register with HA and restore last known fan state if available.
 
-        Restores ``_optimistic_is_on`` so the entity shows its previous
-        state immediately after an HA restart, before the device sends its
-        first state push.
+        Restores on/off from the HA state string so the entity is never stuck
+        as ``unavailable`` after a restart.  Then refines with the exact speed
+        percentage, preset mode, oscillation and direction saved in the last
+        state attributes, overriding the coarse on/off guess with real values.
         """
         await super().async_added_to_hass()
+        # Coarse restore from state string
         if self._restored_state == STATE_ON:
             self._optimistic_is_on = True
         elif self._restored_state == STATE_OFF:
             self._optimistic_is_on = False
+        # Fine restore from saved attributes
+        last_state = await self.async_get_last_state()
+        if last_state is not None:
+            attrs = last_state.attributes
+            raw_pct = attrs.get("percentage")
+            if raw_pct is not None and self._spec.dp_value is not None:
+                with contextlib.suppress(ValueError, TypeError):
+                    self._optimistic_percentage = int(raw_pct)
+            raw_preset = attrs.get("preset_mode")
+            if (
+                raw_preset is not None
+                and self._spec.dp_mode is not None
+                and str(raw_preset) in (self._attr_preset_modes or [])
+            ):
+                self._optimistic_preset_mode = str(raw_preset)
+            raw_osc = attrs.get("oscillating")
+            if raw_osc is not None and self._spec.dp_oscillate is not None:
+                with contextlib.suppress(ValueError, TypeError):
+                    self._optimistic_oscillating = bool(raw_osc)
+            raw_dir = attrs.get("direction")
+            if raw_dir is not None and self._spec.dp_direction is not None:
+                self._optimistic_direction = str(raw_dir)
 
     @callback
     def _handle_coordinator_update(self) -> None:
