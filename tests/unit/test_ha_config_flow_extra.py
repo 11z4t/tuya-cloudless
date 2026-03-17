@@ -359,49 +359,13 @@ class TestOptionsFlowDefaults:
 
 class TestUserStepErrorPaths:
     @pytest.mark.asyncio
-    async def test_discovery_exception_maps_to_no_devices(self) -> None:
-        """Generic Exception during discovery must map to no_devices_found error."""
+    async def test_always_delegates_to_ble_pair(self) -> None:
+        """async_step_user must always go to BLE pairing regardless of input."""
         flow = _make_flow()
-
-        async def broken_discovery() -> list:
-            raise RuntimeError("network error")
-
-        flow._run_discovery = broken_discovery  # type: ignore[assignment]
-
-        # RuntimeError is not OSError or TimeoutError so it propagates —
-        # verify the flow handles it gracefully by wrapping in OSError path
-        # The current implementation only catches TimeoutError and OSError,
-        # so RuntimeError would propagate — confirm the exact behaviour here.
-        try:
-            await flow.async_step_user({"setup_mode": "search"})
-            # If we get here the flow handled it — check for error
-            if flow.async_show_form.called:
-                call_kwargs = flow.async_show_form.call_args[1]
-                assert "errors" in call_kwargs
-        except RuntimeError:
-            # RuntimeError is not caught by the flow — this is expected behaviour
-            pass
-
-    @pytest.mark.asyncio
-    async def test_none_input_shows_form(self) -> None:
-        """None user_input on first render must show the setup mode form."""
-        flow = _make_flow()
+        flow.async_step_ble_pair = AsyncMock(return_value={"type": "external"})
         await flow.async_step_user(None)
-        flow.async_show_form.assert_called_once()
-        call_kwargs = flow.async_show_form.call_args[1]
-        assert call_kwargs["step_id"] == "user"
-        assert call_kwargs.get("errors", {}) == {}
-
-    @pytest.mark.asyncio
-    async def test_search_with_oserror_shows_no_devices(self) -> None:
-        """OSError during discovery must show no_devices_found error."""
-        flow = _make_flow()
-        flow._run_discovery = AsyncMock(side_effect=OSError("socket error"))
-
-        await flow.async_step_user({"setup_mode": "search"})
-
-        call_kwargs = flow.async_show_form.call_args[1]
-        assert call_kwargs["errors"]["base"] == "no_devices_found"
+        flow.async_step_ble_pair.assert_awaited_once()
+        flow.async_show_form.assert_not_called()
 
 
 # ── Validate local key ─────────────────────────────────────────────────────────

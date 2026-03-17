@@ -84,10 +84,13 @@ class TestHaLocalUrl:
         assert "8099" in url
 
     def test_fallback_when_no_internal_url(self) -> None:
+        """When no internal_url is set, returns a valid http URL with the correct port."""
         hass = MagicMock()
         hass.config.internal_url = None
         server = PairingServer(hass, port=8099)
-        assert "homeassistant.local:8099" in server.ha_local_url()
+        url = server.ha_local_url()
+        assert url.startswith("http://")
+        assert ":8099" in url
 
     def test_custom_port(self) -> None:
         server = PairingServer(_make_hass(), port=1234)

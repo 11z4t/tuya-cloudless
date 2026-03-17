@@ -305,64 +305,20 @@ class TuyaCloudlessConfigFlow(ConfigFlow, domain=DOMAIN):
     # ── Step 1: Search ─────────────────────────────────────────────────────────
 
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
-        """Step 1: Present setup options and optionally scan the network.
+        """Step 1: Jump straight to BLE pairing (the primary setup path).
 
-        Offers two paths: automatic network scan or manual device entry.
-        When *Search* is selected, the integration listens for device
-        announcements on the local network for a few seconds.
+        The BLE pairing web tool at port 8099 handles WiFi credential entry
+        and local-key provisioning in a single browser flow.  Advanced users
+        who already have their device on the network can reach the manual
+        entry path via :meth:`async_step_manual` directly.
 
         Args:
-            user_input: Submitted form data, or ``None`` on first render.
+            user_input: Unused — kept for HA config-flow protocol compatibility.
 
         Returns:
-            Config flow result directing to the next step.
+            Config flow result — external step pointing to the pairing UI.
         """
-        errors: dict[str, str] = {}
-
-        if user_input is not None:
-            if user_input.get("setup_mode") == "ble":
-                return await self.async_step_ble_pair()
-
-            if user_input.get("setup_mode") == "manual":
-                return await self.async_step_manual()
-
-            # Run UDP discovery
-            try:
-                self._discovered = await asyncio.wait_for(
-                    self._run_discovery(),
-                    timeout=_DISCOVERY_TIMEOUT,
-                )
-            except TimeoutError:
-                self._discovered = []
-            except OSError as exc:
-                _LOGGER.debug("Discovery socket error: %s", exc)
-                self._discovered = []
-
-            if self._discovered:
-                return await self.async_step_select()
-
-            errors["base"] = "no_devices_found"
-
-        schema = vol.Schema(
-            {
-                vol.Required("setup_mode", default="ble"): SelectSelector(
-                    SelectSelectorConfig(
-                        options=[
-                            SelectOptionDict(value="ble", label="BLE Pairing (recommended)"),
-                            SelectOptionDict(value="search", label="Search network"),
-                            SelectOptionDict(value="manual", label="Manual entry"),
-                        ],
-                        mode=SelectSelectorMode.LIST,
-                    )
-                ),
-            }
-        )
-
-        return self.async_show_form(
-            step_id="user",
-            data_schema=schema,
-            errors=errors,
-        )
+        return await self.async_step_ble_pair()
 
     # ── Step 2: Select ─────────────────────────────────────────────────────────
 

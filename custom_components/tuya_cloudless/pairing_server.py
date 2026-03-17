@@ -198,23 +198,42 @@ class PairingServer:
     def ha_local_url(self) -> str:
         """Return the HA host URL for use in the pairing tool deep-link.
 
-        Extracts the HA internal URL hostname and appends port 8099.
+        Uses HA's network helper to resolve the actual local address, with
+        a sequence of fallbacks so the link works in every install type.
 
         Returns:
             Absolute ``http://`` URL string for the pairing server.
         """
+        from urllib.parse import urlparse
+
+        # 1. Try HA's network helper (respects internal_url + mDNS hostname)
+        try:
+            from homeassistant.helpers.network import get_url
+
+            base = get_url(self._hass, allow_internal=True, allow_external=False)
+            parsed = urlparse(base)
+            host = parsed.hostname or ""
+            if host:
+                return f"http://{host}:{self._port}"
+        except Exception:  # broad catch intentional — URL resolution must never crash
+            pass
+
+        # 2. Fall back to hass.config.internal_url
         try:
             internal = getattr(self._hass.config, "internal_url", None)
-        except AttributeError:
-            internal = None
+            if isinstance(internal, str) and internal:
+                parsed = urlparse(internal)
+                host = parsed.hostname or ""
+                if host:
+                    return f"http://{host}:{self._port}"
+        except Exception:  # broad catch intentional — URL resolution must never crash
+            pass
 
-        if isinstance(internal, str) and internal:
-            from urllib.parse import urlparse
+        # 3. Use the machine's actual hostname as last resort
+        import socket
 
-            parsed = urlparse(internal)
-            host = parsed.hostname or "homeassistant.local"
-            return f"http://{host}:{self._port}"
-        return f"http://homeassistant.local:{self._port}"
+        hostname = socket.getfqdn() or socket.gethostname() or "homeassistant.local"
+        return f"http://{hostname}:{self._port}"
 
     def register_flow(self, flow_id: str) -> None:
         """Register a config flow to be notified when a device activates.

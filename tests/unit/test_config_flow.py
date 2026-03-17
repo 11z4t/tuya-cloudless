@@ -213,77 +213,21 @@ def _make_config_flow() -> Any:
 
 class TestConfigFlowStepUser:
     @pytest.mark.asyncio
-    async def test_no_input_shows_form(self) -> None:
+    async def test_no_input_goes_to_ble_pair(self) -> None:
+        """async_step_user must immediately delegate to BLE pairing."""
         flow = _make_config_flow()
+        flow.async_step_ble_pair = AsyncMock(return_value={"type": "external"})
         await flow.async_step_user(user_input=None)
-        flow.async_show_form.assert_called_once()
+        flow.async_step_ble_pair.assert_awaited_once()
+        flow.async_show_form.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_manual_mode_delegates_to_manual(self) -> None:
+    async def test_any_input_goes_to_ble_pair(self) -> None:
+        """Any user_input is ignored — BLE pairing is always the entry point."""
         flow = _make_config_flow()
+        flow.async_step_ble_pair = AsyncMock(return_value={"type": "external"})
         await flow.async_step_user(user_input={"setup_mode": "manual"})
-        flow.async_step_manual.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_search_finds_devices_goes_to_select(self) -> None:
-        flow = _make_config_flow()
-        from custom_components.tuya_cloudless.const import (
-            CONF_GW_ID,
-            CONF_IP_ADDRESS,
-            CONF_PROTOCOL_VERSION,
-        )
-
-        device = {CONF_GW_ID: "gw001", CONF_IP_ADDRESS: "10.0.0.1", CONF_PROTOCOL_VERSION: "3.3"}
-        with patch.object(
-            flow,
-            "_run_discovery",
-            return_value=[device],
-        ):
-            await flow.async_step_user(user_input={"setup_mode": "search"})
-
-        flow.async_step_select.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_search_no_devices_shows_form_with_error(self) -> None:
-        flow = _make_config_flow()
-
-        with patch.object(flow, "_run_discovery", return_value=[]):
-            await flow.async_step_user(user_input={"setup_mode": "search"})
-
-        flow.async_show_form.assert_called_once()
-        call_kwargs = flow.async_show_form.call_args[1]
-        assert "no_devices_found" in str(call_kwargs.get("errors", ""))
-
-    @pytest.mark.asyncio
-    async def test_search_timeout_shows_form(self) -> None:
-        """asyncio.wait_for raises TimeoutError → empty discovered list."""
-        flow = _make_config_flow()
-
-        async def _slow_discovery() -> list:
-            import asyncio as _asyncio
-
-            await _asyncio.sleep(999)
-            return []
-
-        with (
-            patch.object(flow, "_run_discovery", side_effect=_slow_discovery),
-            patch(
-                "custom_components.tuya_cloudless.config_flow.asyncio.wait_for",
-                side_effect=TimeoutError(),
-            ),
-        ):
-            await flow.async_step_user(user_input={"setup_mode": "search"})
-
-        flow.async_show_form.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_search_discovery_os_error_shows_form(self) -> None:
-        flow = _make_config_flow()
-
-        with patch.object(flow, "_run_discovery", side_effect=OSError("socket error")):
-            await flow.async_step_user(user_input={"setup_mode": "search"})
-
-        flow.async_show_form.assert_called_once()
+        flow.async_step_ble_pair.assert_awaited_once()
 
 
 def _restore_method(flow: Any, method_name: str) -> None:

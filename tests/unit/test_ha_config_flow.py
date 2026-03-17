@@ -91,63 +91,21 @@ class TestGetProfileOptions:
 
 class TestStepUser:
     @pytest.mark.asyncio
-    async def test_show_form_first_render(self) -> None:
+    async def test_goes_directly_to_ble_pair(self) -> None:
+        """async_step_user must immediately launch BLE pairing — no selection form."""
         flow = _make_flow()
+        flow.async_step_ble_pair = AsyncMock(return_value={"type": "external"})
         await flow.async_step_user(None)
-        flow.async_show_form.assert_called_once()
-        call_kwargs = flow.async_show_form.call_args[1]
-        assert call_kwargs["step_id"] == "user"
+        flow.async_step_ble_pair.assert_awaited_once()
+        flow.async_show_form.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_manual_mode_goes_to_manual(self) -> None:
+    async def test_ignores_user_input(self) -> None:
+        """Any user_input is ignored — flow still goes to BLE pairing."""
         flow = _make_flow()
-        flow.async_step_manual = AsyncMock(return_value={"type": "form"})
+        flow.async_step_ble_pair = AsyncMock(return_value={"type": "external"})
         await flow.async_step_user({"setup_mode": "manual"})
-        flow.async_step_manual.assert_awaited_once()
-
-    @pytest.mark.asyncio
-    async def test_search_no_devices(self) -> None:
-        flow = _make_flow()
-        flow._run_discovery = AsyncMock(return_value=[])
-        await flow.async_step_user({"setup_mode": "search"})
-        call_kwargs = flow.async_show_form.call_args[1]
-        assert call_kwargs["errors"]["base"] == "no_devices_found"
-
-    @pytest.mark.asyncio
-    async def test_search_timeout(self) -> None:
-        flow = _make_flow()
-
-        async def slow_discovery() -> list:
-            raise TimeoutError
-
-        flow._run_discovery = slow_discovery  # type: ignore[assignment]
-        await flow.async_step_user({"setup_mode": "search"})
-        call_kwargs = flow.async_show_form.call_args[1]
-        assert call_kwargs["errors"]["base"] == "no_devices_found"
-
-    @pytest.mark.asyncio
-    async def test_search_oserror(self) -> None:
-        flow = _make_flow()
-        flow._run_discovery = AsyncMock(side_effect=OSError("bind failed"))
-        await flow.async_step_user({"setup_mode": "search"})
-        call_kwargs = flow.async_show_form.call_args[1]
-        assert call_kwargs["errors"]["base"] == "no_devices_found"
-
-    @pytest.mark.asyncio
-    async def test_search_found_devices(self) -> None:
-        flow = _make_flow()
-        flow._run_discovery = AsyncMock(
-            return_value=[
-                {
-                    CONF_GW_ID: "dev1",
-                    CONF_IP_ADDRESS: "1.2.3.4",
-                    CONF_PROTOCOL_VERSION: "3.3",
-                }
-            ]
-        )
-        flow.async_step_select = AsyncMock(return_value={"type": "form"})
-        await flow.async_step_user({"setup_mode": "search"})
-        flow.async_step_select.assert_awaited_once()
+        flow.async_step_ble_pair.assert_awaited_once()
 
 
 # ── Step: select ───────────────────────────────────────────────────────────────
