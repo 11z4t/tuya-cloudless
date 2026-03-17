@@ -227,7 +227,17 @@ class TuyaCloudlessConfigFlow(ConfigFlow, domain=DOMAIN):
 
         server.register_flow(self.flow_id)
 
-        url = f"{server.ha_local_url()}/?flow_id={self.flow_id}"
+        # Use a redirect view on HA's own HTTP server so the browser follows
+        # the link using the same hostname/IP it is already on, then gets
+        # redirected to port 8099 with the correct host.
+        try:
+            from homeassistant.helpers.network import get_url
+
+            ha_base = get_url(self.hass, allow_internal=True, allow_external=False)
+        except Exception:  # broad catch — URL resolution must never crash config flow
+            ha_base = server.ha_local_url().rsplit(":", 1)[0] + ":8123"
+
+        url = f"{ha_base}/api/tuya_cloudless/pair/{self.flow_id}"
         return self.async_external_step(
             step_id="ble_pair",
             url=url,

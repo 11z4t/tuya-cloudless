@@ -167,6 +167,7 @@ class PairingServer:
         self._site = web.TCPSite(self._runner, "0.0.0.0", self._port)
         await self._site.start()
         _LOGGER.info("Tuya Cloudless pairing server listening on port %d", self._port)
+        await register_redirect_view(self._hass, self._port)
 
     async def stop(self) -> None:
         """Stop the HTTP server and clean up resources."""
@@ -679,6 +680,48 @@ async def ensure_pairing_server(hass: HomeAssistant) -> PairingServer:
         domain_data[_KEY_PAIRING_SERVER] = server
 
     return server
+
+
+class PairingRedirectView:
+    """HA HTTP view that redirects to the pairing server using the browser's host.
+
+    Registered at ``/api/tuya_cloudless/pair/{flow_id}``.  Because this path
+    lives on HA's own HTTP server, the browser hits it with the *same*
+    hostname/IP it used to reach HA.  The view reads ``request.url.host``
+    and redirects to ``http://{host}:{port}/?flow_id={flow_id}`` so the
+    pairing UI opens at the correct address regardless of whether the user
+    is on a local IP, mDNS name, or Nabu Casa proxy.
+    """
+
+    requires_auth = False
+    url = "/api/tuya_cloudless/pair/{flow_id}"
+    name = "api:tuya_cloudless:pair"
+
+    def __init__(self, port: int = PAIRING_SERVER_PORT) -> None:
+        self._port = port
+
+    async def get(self, request: web.Request, flow_id: str) -> web.Response:
+        """Redirect browser to the pairing server on the correct host."""
+        host = request.url.host or "homeassistant.local"
+        target = f"http://{host}:{self._port}/?flow_id={flow_id}"
+        raise web.HTTPFound(location=target)
+
+
+async def register_redirect_view(hass: HomeAssistant, port: int = PAIRING_SERVER_PORT) -> None:
+    """Register :class:`PairingRedirectView` with HA's HTTP component.
+
+    Safe to call multiple times — HA deduplicates by view name.
+
+    Args:
+        hass: Home Assistant instance.
+        port: Port the pairing server listens on.
+    """
+    from homeassistant.components.http import HomeAssistantView
+
+    class _View(PairingRedirectView, HomeAssistantView):
+        pass
+
+    hass.http.register_view(_View(port=port))
 
 
 async def stop_pairing_server(hass: HomeAssistant) -> None:
