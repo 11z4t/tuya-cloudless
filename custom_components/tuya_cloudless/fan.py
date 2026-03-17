@@ -7,13 +7,15 @@ from typing import Any
 
 from homeassistant.components.fan import FanEntity, FanEntityFeature
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from homeassistant.const import STATE_OFF, STATE_ON
+from homeassistant.core import HomeAssistant, callback
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from tuya_cloudless.profiles import EntitySpec
 
 from .coordinator import TuyaCloudlessCoordinator
-from .entity import TuyaCloudlessEntity
+from .entity import RestoreStateMixin, TuyaCloudlessEntity
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -43,7 +45,7 @@ async def async_setup_entry(
     async_add_entities([TuyaCloudlessFan(runtime.coordinator, spec) for spec in specs])
 
 
-class TuyaCloudlessFan(TuyaCloudlessEntity, FanEntity):
+class TuyaCloudlessFan(RestoreStateMixin, TuyaCloudlessEntity, FanEntity):
     """Tuya Cloudless fan entity.
 
     Supports on/off, speed percentage, preset modes, oscillation, and direction.
@@ -70,6 +72,13 @@ class TuyaCloudlessFan(TuyaCloudlessEntity, FanEntity):
         else:
             self._attr_preset_modes = None
 
+        # Optimistic state — set before command, cleared by coordinator update.
+        self._optimistic_is_on: bool | None = None
+        self._optimistic_percentage: int | None = None
+        self._optimistic_preset_mode: str | None = None
+        self._optimistic_oscillating: bool | None = None
+        self._optimistic_direction: str | None = None
+
         # Only advertise features that have corresponding DPs
         features = FanEntityFeature.TURN_ON | FanEntityFeature.TURN_OFF
         if spec.dp_value is not None:
@@ -82,9 +91,37 @@ class TuyaCloudlessFan(TuyaCloudlessEntity, FanEntity):
             features |= FanEntityFeature.DIRECTION
         self._attr_supported_features = features
 
+    async def async_added_to_hass(self) -> None:
+        """Register with HA and restore last known fan on/off state if available.
+
+        Restores ``_optimistic_is_on`` so the entity shows its previous
+        state immediately after an HA restart, before the device sends its
+        first state push.
+        """
+        await super().async_added_to_hass()
+        if self._restored_state == STATE_ON:
+            self._optimistic_is_on = True
+        elif self._restored_state == STATE_OFF:
+            self._optimistic_is_on = False
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        """Clear optimistic state when the coordinator delivers live device data."""
+        self._optimistic_is_on = None
+        self._optimistic_percentage = None
+        self._optimistic_preset_mode = None
+        self._optimistic_oscillating = None
+        self._optimistic_direction = None
+        super()._handle_coordinator_update()
+
     @property
     def is_on(self) -> bool | None:
-        """Return True if the fan is running."""
+        """Return True if the fan is running.
+
+        Optimistic state takes priority until the coordinator delivers live data.
+        """
+        if self._optimistic_is_on is not None:
+            return self._optimistic_is_on
         if self._spec.dp_power is None:
             return None
         value = self.get_dp(self._spec.dp_power.id)
@@ -117,9 +154,14 @@ class TuyaCloudlessFan(TuyaCloudlessEntity, FanEntity):
 
     @property
     def percentage(self) -> int | None:
-        """Return the current speed as a 0-100% value, or None if unavailable."""
+        """Return the current speed as a 0-100% value, or None if unavailable.
+
+        Returns optimistic percentage when set, then falls back to live DP.
+        """
         if self._spec.dp_value is None:
             return None
+        if self._optimistic_percentage is not None:
+            return self._optimistic_percentage
         value = self.get_dp(self._spec.dp_value.id)
         if value is None:
             return None
@@ -127,9 +169,14 @@ class TuyaCloudlessFan(TuyaCloudlessEntity, FanEntity):
 
     @property
     def preset_mode(self) -> str | None:
-        """Return the active preset mode string, or None."""
+        """Return the active preset mode string, or None.
+
+        Returns optimistic preset mode when set, then falls back to live DP.
+        """
         if self._spec.dp_mode is None:
             return None
+        if self._optimistic_preset_mode is not None:
+            return self._optimistic_preset_mode
         value = self.get_dp(self._spec.dp_mode.id)
         if value is None:
             return None
@@ -137,9 +184,14 @@ class TuyaCloudlessFan(TuyaCloudlessEntity, FanEntity):
 
     @property
     def oscillating(self) -> bool | None:
-        """Return True if the fan is oscillating, or None."""
+        """Return True if the fan is oscillating, or None.
+
+        Returns optimistic oscillating when set, then falls back to live DP.
+        """
         if self._spec.dp_oscillate is None:
             return None
+        if self._optimistic_oscillating is not None:
+            return self._optimistic_oscillating
         value = self.get_dp(self._spec.dp_oscillate.id)
         if value is None:
             return None
@@ -147,9 +199,14 @@ class TuyaCloudlessFan(TuyaCloudlessEntity, FanEntity):
 
     @property
     def current_direction(self) -> str | None:
-        """Return the current fan direction string, or None."""
+        """Return the current fan direction string, or None.
+
+        Returns optimistic direction when set, then falls back to live DP.
+        """
         if self._spec.dp_direction is None:
             return None
+        if self._optimistic_direction is not None:
+            return self._optimistic_direction
         value = self.get_dp(self._spec.dp_direction.id)
         if value is None:
             return None
@@ -161,7 +218,7 @@ class TuyaCloudlessFan(TuyaCloudlessEntity, FanEntity):
         preset_mode: str | None = None,
         **kwargs: Any,
     ) -> None:
-        """Turn the fan on, optionally setting speed or preset mode.
+        """Turn the fan on with optimistic state update.
 
         Args:
             percentage: Optional speed percentage to set on turn-on.
@@ -170,59 +227,107 @@ class TuyaCloudlessFan(TuyaCloudlessEntity, FanEntity):
         """
         if self._spec.dp_power is None:
             return
+        self._optimistic_is_on = True
+        if percentage is not None:
+            self._optimistic_percentage = percentage
+        if preset_mode is not None:
+            self._optimistic_preset_mode = preset_mode
+        self.async_write_ha_state()
         dps: dict[str, Any] = {self._spec.dp_power.id: True}
         if percentage is not None and self._spec.dp_value is not None:
             dps[self._spec.dp_value.id] = self._percentage_to_raw(percentage)
         if preset_mode is not None and self._spec.dp_mode is not None:
             dps[self._spec.dp_mode.id] = preset_mode
-        await self.coordinator.async_send_dps(dps)
+        try:
+            await self.coordinator.async_send_dps(dps)
+        except HomeAssistantError:
+            self._optimistic_is_on = None
+            self._optimistic_percentage = None
+            self._optimistic_preset_mode = None
+            self.async_write_ha_state()
+            raise
 
     async def async_turn_off(self, **kwargs: Any) -> None:
-        """Turn the fan off."""
+        """Turn the fan off with optimistic state update."""
         if self._spec.dp_power is None:
             return
-        await self.coordinator.async_send_dps({self._spec.dp_power.id: False})
+        self._optimistic_is_on = False
+        self.async_write_ha_state()
+        try:
+            await self.coordinator.async_send_dps({self._spec.dp_power.id: False})
+        except HomeAssistantError:
+            self._optimistic_is_on = None
+            self.async_write_ha_state()
+            raise
 
     async def async_set_percentage(self, percentage: int) -> None:
-        """Set the fan speed percentage (0-100), mapped to the raw DP range.
+        """Set the fan speed percentage (0-100) with optimistic update.
 
         Args:
             percentage: Speed as 0-100% — mapped to dp_value min/max raw range.
         """
         if self._spec.dp_value is None:
             return
+        self._optimistic_percentage = percentage
+        self.async_write_ha_state()
         raw = self._percentage_to_raw(percentage)
-        await self.coordinator.async_send_dps({self._spec.dp_value.id: raw})
+        try:
+            await self.coordinator.async_send_dps({self._spec.dp_value.id: raw})
+        except HomeAssistantError:
+            self._optimistic_percentage = None
+            self.async_write_ha_state()
+            raise
 
     async def async_set_preset_mode(self, preset_mode: str) -> None:
-        """Set the fan preset mode.
+        """Set the fan preset mode with optimistic update.
 
         Args:
             preset_mode: Preset mode string to send to the device DP.
         """
         if self._spec.dp_mode is None:
             return
-        await self.coordinator.async_send_dps({self._spec.dp_mode.id: preset_mode})
+        self._optimistic_preset_mode = preset_mode
+        self.async_write_ha_state()
+        try:
+            await self.coordinator.async_send_dps({self._spec.dp_mode.id: preset_mode})
+        except HomeAssistantError:
+            self._optimistic_preset_mode = None
+            self.async_write_ha_state()
+            raise
 
     async def async_oscillate(self, oscillating: bool) -> None:
-        """Control fan oscillation.
+        """Control fan oscillation with optimistic update.
 
         Args:
             oscillating: True to enable, False to disable oscillation.
         """
         if self._spec.dp_oscillate is None:
             return
-        await self.coordinator.async_send_dps({self._spec.dp_oscillate.id: oscillating})
+        self._optimistic_oscillating = oscillating
+        self.async_write_ha_state()
+        try:
+            await self.coordinator.async_send_dps({self._spec.dp_oscillate.id: oscillating})
+        except HomeAssistantError:
+            self._optimistic_oscillating = None
+            self.async_write_ha_state()
+            raise
 
     async def async_set_direction(self, direction: str) -> None:
-        """Set the fan rotation direction.
+        """Set the fan rotation direction with optimistic update.
 
         Args:
             direction: Direction string (e.g. "forward" or "reverse").
         """
         if self._spec.dp_direction is None:
             return
-        await self.coordinator.async_send_dps({self._spec.dp_direction.id: direction})
+        self._optimistic_direction = direction
+        self.async_write_ha_state()
+        try:
+            await self.coordinator.async_send_dps({self._spec.dp_direction.id: direction})
+        except HomeAssistantError:
+            self._optimistic_direction = None
+            self.async_write_ha_state()
+            raise
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:

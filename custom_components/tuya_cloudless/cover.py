@@ -13,18 +13,21 @@ from typing import Any
 from homeassistant.components.cover import (
     ATTR_POSITION,
     ATTR_TILT_POSITION,
+    STATE_CLOSED,
+    STATE_OPEN,
     CoverDeviceClass,
     CoverEntity,
     CoverEntityFeature,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from tuya_cloudless.profiles import EntitySpec
 
 from .coordinator import TuyaCloudlessCoordinator
-from .entity import TuyaCloudlessEntity
+from .entity import RestoreStateMixin, TuyaCloudlessEntity
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -54,7 +57,7 @@ async def async_setup_entry(
     async_add_entities([TuyaCloudlessCover(runtime.coordinator, spec) for spec in specs])
 
 
-class TuyaCloudlessCover(TuyaCloudlessEntity, CoverEntity):
+class TuyaCloudlessCover(RestoreStateMixin, TuyaCloudlessEntity, CoverEntity):
     """Tuya Cloudless cover entity (blinds, curtains, garage doors).
 
     Supports:
@@ -97,13 +100,49 @@ class TuyaCloudlessCover(TuyaCloudlessEntity, CoverEntity):
             with contextlib.suppress(ValueError):
                 self._attr_device_class = CoverDeviceClass(spec.device_class)
 
+        # Optimistic state — set before command, cleared by coordinator update.
+        # Optimistic takes priority over live DPs until the device confirms.
+        self._optimistic_open: bool | None = None
+        self._optimistic_position: int | None = None
+        self._optimistic_tilt: int | None = None
+
+    async def async_added_to_hass(self) -> None:
+        """Register with HA and restore last known cover state if available.
+
+        Restores open/closed state so the entity is never stuck as
+        ``unavailable`` after an HA restart before the device sends its
+        first state push.
+        """
+        await super().async_added_to_hass()
+        if self._restored_state == STATE_OPEN:
+            self._optimistic_open = True
+        elif self._restored_state == STATE_CLOSED:
+            self._optimistic_open = False
+            if self._spec.dp_position is not None:
+                self._optimistic_position = 0
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        """Clear optimistic state when the coordinator delivers live device data."""
+        self._optimistic_open = None
+        self._optimistic_position = None
+        self._optimistic_tilt = None
+        super()._handle_coordinator_update()
+
     @property
     def is_closed(self) -> bool | None:
         """Return True if the cover is fully closed.
 
-        Uses position DP when available (position == 0 = closed).
-        Falls back to boolean open DP when no position DP is configured.
+        Optimistic state (set before a command is confirmed) takes priority.
+        Falls back to live DPs once the coordinator delivers a device update.
         """
+        # Optimistic takes priority
+        if self._optimistic_position is not None:
+            return self._optimistic_position == 0
+        if self._optimistic_open is not None:
+            return not self._optimistic_open
+
+        # Live DPs
         if self._spec.dp_position is not None:
             pos = self.current_cover_position
             if pos is None:
@@ -120,9 +159,15 @@ class TuyaCloudlessCover(TuyaCloudlessEntity, CoverEntity):
 
     @property
     def current_cover_position(self) -> int | None:
-        """Return current position (0 = closed, 100 = fully open), or None."""
+        """Return current position (0 = closed, 100 = fully open), or None.
+
+        Returns optimistic position when set (before device confirms), then
+        falls back to the live DP value.
+        """
         if self._spec.dp_position is None:
             return None
+        if self._optimistic_position is not None:
+            return self._optimistic_position
         raw = self.get_dp(self._spec.dp_position.id)
         if raw is None:
             return None
@@ -130,31 +175,68 @@ class TuyaCloudlessCover(TuyaCloudlessEntity, CoverEntity):
 
     @property
     def current_cover_tilt_position(self) -> int | None:
-        """Return current tilt position (0 = closed, 100 = open), or None."""
+        """Return current tilt position (0 = closed, 100 = open), or None.
+
+        Returns optimistic tilt when set, then falls back to the live DP.
+        """
         if self._spec.dp_tilt is None:
             return None
+        if self._optimistic_tilt is not None:
+            return self._optimistic_tilt
         raw = self.get_dp(self._spec.dp_tilt.id)
         if raw is None:
             return None
         return int(raw)
 
     async def async_open_cover(self, **kwargs: Any) -> None:
-        """Open the cover."""
-        if self._spec.dp_open is not None:
+        """Open the cover with optimistic state update.
+
+        Sets optimistic state immediately so the UI reflects the change without
+        waiting for device confirmation.  Reverts on send failure.
+        """
+        if self._spec.dp_open is None:
+            return
+        self._optimistic_open = True
+        self._optimistic_position = 100 if self._spec.dp_position is not None else None
+        self.async_write_ha_state()
+        try:
             await self.async_send_dp(self._spec.dp_open.id, True)
+        except HomeAssistantError:
+            self._optimistic_open = None
+            self._optimistic_position = None
+            self.async_write_ha_state()
+            raise
 
     async def async_close_cover(self, **kwargs: Any) -> None:
-        """Close the cover."""
-        if self._spec.dp_open is not None:
+        """Close the cover with optimistic state update.
+
+        Sets optimistic state immediately so the UI reflects the change without
+        waiting for device confirmation.  Reverts on send failure.
+        """
+        if self._spec.dp_open is None:
+            return
+        self._optimistic_open = False
+        self._optimistic_position = 0 if self._spec.dp_position is not None else None
+        self.async_write_ha_state()
+        try:
             await self.async_send_dp(self._spec.dp_open.id, False)
+        except HomeAssistantError:
+            self._optimistic_open = None
+            self._optimistic_position = None
+            self.async_write_ha_state()
+            raise
 
     async def async_stop_cover(self, **kwargs: Any) -> None:
-        """Stop the cover motor mid-movement."""
+        """Stop the cover motor mid-movement.
+
+        No optimistic state is set for stop — the final position is unknown
+        until the device reports it.
+        """
         if self._spec.dp_stop is not None:
             await self.async_send_dp(self._spec.dp_stop.id, True)
 
     async def async_set_cover_position(self, **kwargs: Any) -> None:
-        """Move the cover to a specific position (0-100).
+        """Move the cover to a specific position (0-100) with optimistic update.
 
         Args:
             **kwargs: Must include ``ATTR_POSITION`` (int 0-100).
@@ -162,10 +244,19 @@ class TuyaCloudlessCover(TuyaCloudlessEntity, CoverEntity):
         if self._spec.dp_position is None:
             return
         position: int = max(0, min(100, int(kwargs[ATTR_POSITION])))
-        await self.async_send_dp(self._spec.dp_position.id, position)
+        self._optimistic_position = position
+        self._optimistic_open = position > 0
+        self.async_write_ha_state()
+        try:
+            await self.async_send_dp(self._spec.dp_position.id, position)
+        except HomeAssistantError:
+            self._optimistic_position = None
+            self._optimistic_open = None
+            self.async_write_ha_state()
+            raise
 
     async def async_set_cover_tilt_position(self, **kwargs: Any) -> None:
-        """Set the tilt position (0-100).
+        """Set the tilt position (0-100) with optimistic update.
 
         Args:
             **kwargs: Must include ``ATTR_TILT_POSITION`` (int 0-100).
@@ -173,4 +264,11 @@ class TuyaCloudlessCover(TuyaCloudlessEntity, CoverEntity):
         if self._spec.dp_tilt is None:
             return
         tilt: int = max(0, min(100, int(kwargs[ATTR_TILT_POSITION])))
-        await self.async_send_dp(self._spec.dp_tilt.id, tilt)
+        self._optimistic_tilt = tilt
+        self.async_write_ha_state()
+        try:
+            await self.async_send_dp(self._spec.dp_tilt.id, tilt)
+        except HomeAssistantError:
+            self._optimistic_tilt = None
+            self.async_write_ha_state()
+            raise

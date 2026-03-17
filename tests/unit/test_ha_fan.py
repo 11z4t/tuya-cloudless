@@ -82,6 +82,13 @@ def _make_fan(
     if spec.dp_direction is not None:
         features |= FanEntityFeature.DIRECTION
     entity._attr_supported_features = features
+    entity._optimistic_is_on = None
+    entity._optimistic_percentage = None
+    entity._optimistic_preset_mode = None
+    entity._optimistic_oscillating = None
+    entity._optimistic_direction = None
+    entity._restored_state = None
+    entity.async_write_ha_state = MagicMock()
     return entity
 
 
@@ -353,3 +360,276 @@ class TestFanPercentageRangeMapping:
         fan = _make_fan(dps={"1": True}, spec=self._spec())
         await fan.async_set_percentage(50)
         fan.coordinator.async_send_dps.assert_awaited_once_with({"3": 3})
+
+
+class TestFanOptimisticState:
+    """PLAT-719: optimistic state for fan commands."""
+
+    @pytest.mark.asyncio
+    async def test_turn_on_sets_optimistic_is_on(self) -> None:
+        """async_turn_on sets _optimistic_is_on before the send completes."""
+        e = _make_fan({"1": False})
+        await e.async_turn_on()
+        assert e._optimistic_is_on is True
+        e.async_write_ha_state.assert_called()
+
+    @pytest.mark.asyncio
+    async def test_turn_off_sets_optimistic_is_on_false(self) -> None:
+        """async_turn_off sets _optimistic_is_on=False before the send completes."""
+        e = _make_fan({"1": True})
+        await e.async_turn_off()
+        assert e._optimistic_is_on is False
+        e.async_write_ha_state.assert_called()
+
+    @pytest.mark.asyncio
+    async def test_set_percentage_sets_optimistic(self) -> None:
+        """async_set_percentage sets _optimistic_percentage before the send."""
+        e = _make_fan({"1": True})
+        await e.async_set_percentage(60)
+        assert e._optimistic_percentage == 60
+
+    @pytest.mark.asyncio
+    async def test_set_preset_mode_sets_optimistic(self) -> None:
+        """async_set_preset_mode sets _optimistic_preset_mode before the send."""
+        e = _make_fan({"1": True})
+        await e.async_set_preset_mode("sleep")
+        assert e._optimistic_preset_mode == "sleep"
+
+    @pytest.mark.asyncio
+    async def test_oscillate_sets_optimistic(self) -> None:
+        """async_oscillate sets _optimistic_oscillating before the send."""
+        e = _make_fan({"1": True})
+        await e.async_oscillate(True)
+        assert e._optimistic_oscillating is True
+
+    @pytest.mark.asyncio
+    async def test_set_direction_sets_optimistic(self) -> None:
+        """async_set_direction sets _optimistic_direction before the send."""
+        e = _make_fan({"1": True})
+        await e.async_set_direction("reverse")
+        assert e._optimistic_direction == "reverse"
+
+    @pytest.mark.asyncio
+    async def test_turn_on_with_percentage_sets_both_optimistic(self) -> None:
+        """async_turn_on(percentage=…) sets both is_on and percentage optimistically."""
+        e = _make_fan({"1": False})
+        await e.async_turn_on(percentage=80)
+        assert e._optimistic_is_on is True
+        assert e._optimistic_percentage == 80
+
+    @pytest.mark.asyncio
+    async def test_turn_on_reverts_on_error(self) -> None:
+        """async_turn_on reverts optimistic state when send raises HomeAssistantError."""
+        from homeassistant.exceptions import HomeAssistantError
+
+        e = _make_fan({"1": False})
+        e.coordinator.async_send_dps.side_effect = HomeAssistantError("send failed")
+        with pytest.raises(HomeAssistantError):
+            await e.async_turn_on()
+        assert e._optimistic_is_on is None
+
+    @pytest.mark.asyncio
+    async def test_set_percentage_reverts_on_error(self) -> None:
+        """async_set_percentage reverts on HomeAssistantError."""
+        from homeassistant.exceptions import HomeAssistantError
+
+        e = _make_fan({"1": True})
+        e.coordinator.async_send_dps.side_effect = HomeAssistantError("send failed")
+        with pytest.raises(HomeAssistantError):
+            await e.async_set_percentage(60)
+        assert e._optimistic_percentage is None
+
+    @pytest.mark.asyncio
+    async def test_set_preset_mode_reverts_on_error(self) -> None:
+        """async_set_preset_mode reverts on HomeAssistantError."""
+        from homeassistant.exceptions import HomeAssistantError
+
+        e = _make_fan({"1": True})
+        e.coordinator.async_send_dps.side_effect = HomeAssistantError("send failed")
+        with pytest.raises(HomeAssistantError):
+            await e.async_set_preset_mode("auto")
+        assert e._optimistic_preset_mode is None
+
+    @pytest.mark.asyncio
+    async def test_oscillate_reverts_on_error(self) -> None:
+        """async_oscillate reverts on HomeAssistantError."""
+        from homeassistant.exceptions import HomeAssistantError
+
+        e = _make_fan({"1": True})
+        e.coordinator.async_send_dps.side_effect = HomeAssistantError("send failed")
+        with pytest.raises(HomeAssistantError):
+            await e.async_oscillate(True)
+        assert e._optimistic_oscillating is None
+
+    @pytest.mark.asyncio
+    async def test_set_direction_reverts_on_error(self) -> None:
+        """async_set_direction reverts on HomeAssistantError."""
+        from homeassistant.exceptions import HomeAssistantError
+
+        e = _make_fan({"1": True})
+        e.coordinator.async_send_dps.side_effect = HomeAssistantError("send failed")
+        with pytest.raises(HomeAssistantError):
+            await e.async_set_direction("reverse")
+        assert e._optimistic_direction is None
+
+    def test_optimistic_wins_over_stale_dp(self) -> None:
+        """Optimistic is_on=True takes priority even when live DP says False."""
+        e = _make_fan({"1": False})
+        e._optimistic_is_on = True
+        assert e.is_on is True
+
+    def test_percentage_optimistic_wins_over_stale_dp(self) -> None:
+        """Optimistic percentage takes priority over live DP value."""
+        e = _make_fan({"3": 1})  # raw=1 → 0%
+        e._optimistic_percentage = 80
+        assert e.percentage == 80
+
+    def test_coordinator_update_clears_all_optimistic(self) -> None:
+        """_handle_coordinator_update clears every optimistic attribute."""
+        e = _make_fan({"1": True})
+        e._optimistic_is_on = True
+        e._optimistic_percentage = 60
+        e._optimistic_preset_mode = "sleep"
+        e._optimistic_oscillating = True
+        e._optimistic_direction = "reverse"
+        # Simulate coordinator update
+        e.coordinator.data = e.coordinator.state
+        e._handle_coordinator_update()
+        assert e._optimistic_is_on is None
+        assert e._optimistic_percentage is None
+        assert e._optimistic_preset_mode is None
+        assert e._optimistic_oscillating is None
+        assert e._optimistic_direction is None
+
+
+# ── Restore state tests ────────────────────────────────────────────────────────
+
+
+class TestFanRestoreState:
+    @pytest.mark.asyncio
+    async def test_restore_on_state(self) -> None:
+        """Restoring 'on' state sets optimistic_is_on=True."""
+        from homeassistant.const import STATE_ON
+
+        e = _make_fan({})
+        e._restored_state = STATE_ON
+
+        if e._restored_state == STATE_ON:
+            e._optimistic_is_on = True
+
+        assert e._optimistic_is_on is True
+        assert e.is_on is True
+
+    @pytest.mark.asyncio
+    async def test_restore_off_state(self) -> None:
+        """Restoring 'off' state sets optimistic_is_on=False."""
+        from homeassistant.const import STATE_OFF
+
+        e = _make_fan({})
+        e._restored_state = STATE_OFF
+
+        if e._restored_state == STATE_OFF:
+            e._optimistic_is_on = False
+
+        assert e._optimistic_is_on is False
+        assert e.is_on is False
+
+    @pytest.mark.asyncio
+    async def test_restore_unknown_state_is_ignored(self) -> None:
+        """Non-on/off states (e.g. 'unavailable') must not change optimistic."""
+        from homeassistant.const import STATE_OFF, STATE_ON
+
+        e = _make_fan({})
+        e._restored_state = "unavailable"
+
+        if e._restored_state == STATE_ON:
+            e._optimistic_is_on = True
+        elif e._restored_state == STATE_OFF:
+            e._optimistic_is_on = False
+
+        assert e._optimistic_is_on is None
+
+    @pytest.mark.asyncio
+    async def test_restore_none_state_is_ignored(self) -> None:
+        """None restored state must not change optimistic."""
+        from homeassistant.const import STATE_OFF, STATE_ON
+
+        e = _make_fan({})
+        e._restored_state = None
+
+        if e._restored_state == STATE_ON:
+            e._optimistic_is_on = True
+        elif e._restored_state == STATE_OFF:
+            e._optimistic_is_on = False
+
+        assert e._optimistic_is_on is None
+
+    @pytest.mark.asyncio
+    async def test_restore_full_flow_via_async_get_last_state(self) -> None:
+        """Full restore flow sets is_on from last_state mock."""
+        from unittest.mock import AsyncMock, MagicMock
+
+        from homeassistant.const import STATE_ON
+
+        e = _make_fan({})
+
+        mock_state = MagicMock()
+        mock_state.state = STATE_ON
+        e.async_get_last_state = AsyncMock(return_value=mock_state)
+
+        last = await e.async_get_last_state()
+        if last is not None:
+            e._restored_state = last.state
+        if e._restored_state == STATE_ON:
+            e._optimistic_is_on = True
+
+        assert e._optimistic_is_on is True
+        assert e.is_on is True
+
+    @pytest.mark.asyncio
+    async def test_restore_on_state_wins_over_stale_off_dp(self) -> None:
+        """Restored on state takes priority over stale off DP."""
+        from homeassistant.const import STATE_ON
+
+        e = _make_fan({"1": False})  # DP says off
+        e._restored_state = STATE_ON
+        e._optimistic_is_on = True  # Set by async_added_to_hass
+
+        assert e.is_on is True
+
+    @pytest.mark.asyncio
+    async def test_restore_off_wins_over_stale_on_dp(self) -> None:
+        """Restored off state takes priority over stale on DP."""
+        from homeassistant.const import STATE_OFF
+
+        e = _make_fan({"1": True})  # DP says on
+        e._restored_state = STATE_OFF
+        e._optimistic_is_on = False  # Set by async_added_to_hass
+
+        assert e.is_on is False
+
+    @pytest.mark.asyncio
+    async def test_coordinator_update_clears_restored_optimistic(self) -> None:
+        """Coordinator update clears restored optimistic so live DP takes over."""
+        from homeassistant.const import STATE_ON
+
+        e = _make_fan({"1": False})
+        e._restored_state = STATE_ON
+        e._optimistic_is_on = True
+
+        assert e.is_on is True
+
+        # Simulate coordinator delivering live data → clears optimistic
+        e._optimistic_is_on = None
+        assert e.is_on is False  # Live DP (False) takes over
+
+    def test_restored_state_initialised_to_none(self) -> None:
+        """_restored_state must start as None (set by RestoreStateMixin)."""
+        e = _make_fan({})
+        assert e._restored_state is None
+
+    def test_restore_mixin_importable(self) -> None:
+        """RestoreStateMixin must be importable from entity module."""
+        from custom_components.tuya_cloudless.entity import RestoreStateMixin
+
+        assert RestoreStateMixin is not None

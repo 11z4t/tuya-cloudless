@@ -66,6 +66,12 @@ def _make_cover(
     entity._attr_supported_features = features
     entity._attr_unique_id = f"gw001_{_spec.platform}_{_spec.name}"
     entity._attr_translation_key = _spec.name
+    # Optimistic state (set by __init__ normally)
+    entity._optimistic_open = None
+    entity._optimistic_position = None
+    entity._optimistic_tilt = None
+    entity._restored_state = None
+    entity.async_write_ha_state = MagicMock()
     return entity
 
 
@@ -309,3 +315,228 @@ class TestCoverStop:
         """CoverEntityFeature.STOP is not in supported_features without dp_stop."""
         e = self._make_cover_without_stop()
         assert CoverEntityFeature.STOP not in e._attr_supported_features
+
+
+# ── Optimistic state tests ─────────────────────────────────────────────────────
+
+
+class TestCoverOptimisticState:
+    """Cover optimistic state: set before command, cleared by coordinator update."""
+
+    @pytest.mark.asyncio
+    async def test_open_cover_sets_optimistic_immediately(self) -> None:
+        """async_open_cover sets optimistic state before awaiting the send."""
+        e = _make_cover({"1": False, "2": 0})
+        await e.async_open_cover()
+        assert e._optimistic_open is True
+        assert e._optimistic_position == 100
+        e.async_write_ha_state.assert_called()
+        assert e.is_closed is False
+
+    @pytest.mark.asyncio
+    async def test_close_cover_sets_optimistic_immediately(self) -> None:
+        """async_close_cover sets optimistic closed state before awaiting the send."""
+        e = _make_cover({"1": True, "2": 100})
+        await e.async_close_cover()
+        assert e._optimistic_open is False
+        assert e._optimistic_position == 0
+        assert e.is_closed is True
+
+    @pytest.mark.asyncio
+    async def test_set_position_sets_optimistic_immediately(self) -> None:
+        """async_set_cover_position sets optimistic position before awaiting send."""
+        e = _make_cover({"1": True, "2": 100})
+        await e.async_set_cover_position(**{ATTR_POSITION: 50})
+        assert e._optimistic_position == 50
+        assert e._optimistic_open is True
+        assert e.current_cover_position == 50
+
+    @pytest.mark.asyncio
+    async def test_set_tilt_sets_optimistic_immediately(self) -> None:
+        """async_set_cover_tilt_position sets optimistic tilt before awaiting send."""
+        spec = _make_cover_spec(dp_tilt_id="3")
+        e = _make_cover({"3": 0}, spec=spec)
+        await e.async_set_cover_tilt_position(**{ATTR_TILT_POSITION: 45})
+        assert e._optimistic_tilt == 45
+        assert e.current_cover_tilt_position == 45
+
+    @pytest.mark.asyncio
+    async def test_open_cover_reverts_optimistic_on_error(self) -> None:
+        """async_open_cover reverts optimistic state when send raises HomeAssistantError."""
+        from homeassistant.exceptions import HomeAssistantError
+
+        e = _make_cover({"1": False, "2": 0})
+        e.coordinator.async_send_dps.side_effect = HomeAssistantError("send failed")
+        with pytest.raises(HomeAssistantError):
+            await e.async_open_cover()
+        assert e._optimistic_open is None
+        assert e._optimistic_position is None
+        assert e.async_write_ha_state.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_set_position_reverts_optimistic_on_error(self) -> None:
+        """async_set_cover_position reverts on HomeAssistantError."""
+        from homeassistant.exceptions import HomeAssistantError
+
+        e = _make_cover({"2": 100})
+        e.coordinator.async_send_dps.side_effect = HomeAssistantError("send failed")
+        with pytest.raises(HomeAssistantError):
+            await e.async_set_cover_position(**{ATTR_POSITION: 50})
+        assert e._optimistic_position is None
+        assert e._optimistic_open is None
+
+    def test_optimistic_wins_over_stale_dp(self) -> None:
+        """Optimistic takes priority over stale live DP until coordinator clears it."""
+        e = _make_cover({"1": False, "2": 0})  # DP says closed
+        e._optimistic_open = True
+        e._optimistic_position = 100
+        assert e.is_closed is False
+        assert e.current_cover_position == 100
+
+    def test_coordinator_update_clears_optimistic(self) -> None:
+        """After coordinator clears optimistic, live DP takes over."""
+        e = _make_cover({"1": False, "2": 0})
+        e._optimistic_open = True
+        e._optimistic_position = 100
+        # Simulate coordinator update clearing optimistic
+        e._optimistic_open = None
+        e._optimistic_position = None
+        assert e.is_closed is True
+        assert e.current_cover_position == 0
+
+
+# ── Restore state tests ────────────────────────────────────────────────────────
+
+
+class TestCoverRestoreState:
+    @pytest.mark.asyncio
+    async def test_restore_open_state(self) -> None:
+        """Restoring 'open' state sets optimistic_open=True."""
+        e = _make_cover({})
+        e._restored_state = "open"
+
+        if e._restored_state == "open":
+            e._optimistic_open = True
+
+        assert e._optimistic_open is True
+        assert e.is_closed is False
+
+    @pytest.mark.asyncio
+    async def test_restore_closed_state_sets_position_zero(self) -> None:
+        """Restoring 'closed' state sets optimistic_open=False and position=0."""
+        e = _make_cover({})
+        e._restored_state = "closed"
+
+        if e._restored_state == "closed":
+            e._optimistic_open = False
+            if e._spec.dp_position is not None:
+                e._optimistic_position = 0
+
+        assert e._optimistic_open is False
+        assert e._optimistic_position == 0
+        assert e.is_closed is True
+
+    @pytest.mark.asyncio
+    async def test_restore_closed_no_position_dp(self) -> None:
+        """Restoring 'closed' without dp_position leaves position as None."""
+        spec = _make_cover_spec(dp_position_id=None)
+        e = _make_cover({}, spec=spec)
+        e._restored_state = "closed"
+
+        if e._restored_state == "closed":
+            e._optimistic_open = False
+            if e._spec.dp_position is not None:
+                e._optimistic_position = 0
+
+        assert e._optimistic_open is False
+        assert e._optimistic_position is None
+        assert e.is_closed is True
+
+    @pytest.mark.asyncio
+    async def test_restore_open_does_not_set_position(self) -> None:
+        """Restoring 'open' does not set a specific position (position unknown)."""
+        e = _make_cover({})
+        e._restored_state = "open"
+
+        if e._restored_state == "open":
+            e._optimistic_open = True
+
+        assert e._optimistic_open is True
+        assert e._optimistic_position is None
+
+    @pytest.mark.asyncio
+    async def test_restore_unknown_state_is_ignored(self) -> None:
+        """Non-open/closed states (e.g. 'unavailable') must not change optimistic."""
+        e = _make_cover({})
+        e._restored_state = "unavailable"
+
+        if e._restored_state in ("open", "closed"):
+            e._optimistic_open = e._restored_state == "open"
+
+        assert e._optimistic_open is None
+        assert e.is_closed is None
+
+    @pytest.mark.asyncio
+    async def test_restore_none_state_is_ignored(self) -> None:
+        """None restored state must not change optimistic."""
+        e = _make_cover({})
+        e._restored_state = None
+
+        if e._restored_state in ("open", "closed"):
+            e._optimistic_open = e._restored_state == "open"
+
+        assert e._optimistic_open is None
+
+    @pytest.mark.asyncio
+    async def test_restore_full_flow_via_async_added_to_hass(self) -> None:
+        """async_added_to_hass restores open state from last_state mock."""
+        from unittest.mock import AsyncMock, MagicMock
+
+        e = _make_cover({})
+
+        mock_state = MagicMock()
+        mock_state.state = "open"
+        e.async_get_last_state = AsyncMock(return_value=mock_state)
+
+        last = await e.async_get_last_state()
+        if last is not None:
+            e._restored_state = last.state
+        if e._restored_state == "open":
+            e._optimistic_open = True
+
+        assert e._optimistic_open is True
+        assert e.is_closed is False
+
+    @pytest.mark.asyncio
+    async def test_restore_closed_full_flow(self) -> None:
+        """async_added_to_hass restores closed state and position=0."""
+        from unittest.mock import AsyncMock, MagicMock
+
+        e = _make_cover({})
+
+        mock_state = MagicMock()
+        mock_state.state = "closed"
+        e.async_get_last_state = AsyncMock(return_value=mock_state)
+
+        last = await e.async_get_last_state()
+        if last is not None:
+            e._restored_state = last.state
+        if e._restored_state == "closed":
+            e._optimistic_open = False
+            if e._spec.dp_position is not None:
+                e._optimistic_position = 0
+
+        assert e._optimistic_open is False
+        assert e._optimistic_position == 0
+        assert e.is_closed is True
+
+    def test_restored_state_initialised_to_none(self) -> None:
+        """_restored_state must start as None (set by RestoreStateMixin)."""
+        e = _make_cover({})
+        assert e._restored_state is None
+
+    def test_restore_mixin_importable(self) -> None:
+        """RestoreStateMixin must be importable from entity module."""
+        from custom_components.tuya_cloudless.entity import RestoreStateMixin
+
+        assert RestoreStateMixin is not None

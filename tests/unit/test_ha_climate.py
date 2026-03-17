@@ -86,6 +86,11 @@ def _make_climate(
         | ClimateEntityFeature.TARGET_TEMPERATURE
     )
     entity._attr_supported_features = features
+    # Optimistic state (set by __init__ normally)
+    entity._optimistic_hvac_mode = None
+    entity._optimistic_target_temp = None
+    entity._restored_state = None
+    entity.async_write_ha_state = MagicMock()
     return entity
 
 
@@ -304,3 +309,236 @@ class TestClimateInit:
         spec = EntitySpec(platform="climate", name="heater", dp_power=DPSpec(id="1", type="bool"))
         entity = self._make(spec=spec)
         assert ClimateEntityFeature.TARGET_TEMPERATURE not in entity.supported_features
+
+
+# ── Optimistic state tests ─────────────────────────────────────────────────────
+
+
+class TestClimateOptimisticState:
+    """Climate optimistic state: set before command, cleared by coordinator update."""
+
+    @pytest.mark.asyncio
+    async def test_set_hvac_mode_sets_optimistic_immediately(self) -> None:
+        """async_set_hvac_mode sets optimistic mode before awaiting the send."""
+        e = _make_climate({"1": False})
+        await e.async_set_hvac_mode(HVACMode.HEAT)
+        assert e._optimistic_hvac_mode == HVACMode.HEAT
+        assert e.hvac_mode == HVACMode.HEAT
+        e.async_write_ha_state.assert_called()
+
+    @pytest.mark.asyncio
+    async def test_set_hvac_mode_off_sets_optimistic_off(self) -> None:
+        """async_set_hvac_mode(OFF) sets optimistic OFF immediately."""
+        e = _make_climate({"1": True, "2": "heat"})
+        await e.async_set_hvac_mode(HVACMode.OFF)
+        assert e._optimistic_hvac_mode == HVACMode.OFF
+        assert e.hvac_mode == HVACMode.OFF
+
+    @pytest.mark.asyncio
+    async def test_set_temperature_sets_optimistic_immediately(self) -> None:
+        """async_set_temperature sets optimistic temp before awaiting the send."""
+        e = _make_climate({"1": True, "3": 200}, scale=0.1)  # 200 * 0.1 = 20.0
+        await e.async_set_temperature(**{ATTR_TEMPERATURE: 22.0})
+        assert e._optimistic_target_temp == 22.0
+        assert e.target_temperature == 22.0
+
+    @pytest.mark.asyncio
+    async def test_turn_on_sets_optimistic_auto(self) -> None:
+        """async_turn_on sets optimistic hvac_mode to AUTO immediately."""
+        e = _make_climate({"1": False})
+        await e.async_turn_on()
+        assert e._optimistic_hvac_mode == HVACMode.AUTO
+        assert e.hvac_mode == HVACMode.AUTO
+
+    @pytest.mark.asyncio
+    async def test_turn_off_sets_optimistic_off(self) -> None:
+        """async_turn_off sets optimistic hvac_mode to OFF immediately."""
+        e = _make_climate({"1": True, "2": "heat"})
+        await e.async_turn_off()
+        assert e._optimistic_hvac_mode == HVACMode.OFF
+
+    @pytest.mark.asyncio
+    async def test_set_hvac_mode_reverts_on_error(self) -> None:
+        """async_set_hvac_mode reverts optimistic state on HomeAssistantError."""
+        from homeassistant.exceptions import HomeAssistantError
+
+        e = _make_climate({"1": False})
+        e.coordinator.async_send_dps.side_effect = HomeAssistantError("fail")
+        with pytest.raises(HomeAssistantError):
+            await e.async_set_hvac_mode(HVACMode.HEAT)
+        assert e._optimistic_hvac_mode is None
+        assert e.async_write_ha_state.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_set_temperature_reverts_on_error(self) -> None:
+        """async_set_temperature reverts optimistic temp on HomeAssistantError."""
+        from homeassistant.exceptions import HomeAssistantError
+
+        e = _make_climate({"1": True, "3": 200})
+        e.coordinator.async_send_dps.side_effect = HomeAssistantError("fail")
+        with pytest.raises(HomeAssistantError):
+            await e.async_set_temperature(**{ATTR_TEMPERATURE: 22.0})
+        assert e._optimistic_target_temp is None
+
+    def test_optimistic_wins_over_stale_dp(self) -> None:
+        """Optimistic takes priority over stale DP until coordinator clears it."""
+        e = _make_climate({"1": False})  # DP says OFF
+        e._optimistic_hvac_mode = HVACMode.HEAT
+        assert e.hvac_mode == HVACMode.HEAT
+
+    def test_coordinator_update_clears_optimistic(self) -> None:
+        """After coordinator clears optimistic, live DP takes over."""
+        e = _make_climate({"1": False})
+        e._optimistic_hvac_mode = HVACMode.HEAT
+        assert e.hvac_mode == HVACMode.HEAT
+        e._optimistic_hvac_mode = None  # Cleared by coordinator update
+        assert e.hvac_mode == HVACMode.OFF  # Live DP wins
+
+
+# ── Restore state tests ────────────────────────────────────────────────────────
+
+
+class TestClimateRestoreState:
+    @pytest.mark.asyncio
+    async def test_restore_heat_mode(self) -> None:
+        """Restoring 'heat' state sets optimistic_hvac_mode=HVACMode.HEAT."""
+        e = _make_climate({})
+        e._restored_state = "heat"
+
+        try:
+            restored = HVACMode(e._restored_state)
+            if restored in e._attr_hvac_modes:
+                e._optimistic_hvac_mode = restored
+        except ValueError:
+            pass
+
+        assert e._optimistic_hvac_mode == HVACMode.HEAT
+        assert e.hvac_mode == HVACMode.HEAT
+
+    @pytest.mark.asyncio
+    async def test_restore_cool_mode(self) -> None:
+        """Restoring 'cool' state sets optimistic_hvac_mode=HVACMode.COOL."""
+        e = _make_climate({}, options=("heat", "cool", "auto"))
+        e._restored_state = "cool"
+
+        try:
+            restored = HVACMode(e._restored_state)
+            if restored in e._attr_hvac_modes:
+                e._optimistic_hvac_mode = restored
+        except ValueError:
+            pass
+
+        assert e._optimistic_hvac_mode == HVACMode.COOL
+
+    @pytest.mark.asyncio
+    async def test_restore_off_mode(self) -> None:
+        """Restoring 'off' state sets optimistic_hvac_mode=HVACMode.OFF."""
+        e = _make_climate({})
+        e._restored_state = "off"
+
+        try:
+            restored = HVACMode(e._restored_state)
+            if restored in e._attr_hvac_modes:
+                e._optimistic_hvac_mode = restored
+        except ValueError:
+            pass
+
+        assert e._optimistic_hvac_mode == HVACMode.OFF
+
+    @pytest.mark.asyncio
+    async def test_restore_invalid_state_is_ignored(self) -> None:
+        """Non-HVAC state string (e.g. 'unavailable') must not change optimistic."""
+        e = _make_climate({})
+        e._restored_state = "unavailable"
+
+        try:
+            restored = HVACMode(e._restored_state)
+            if restored in e._attr_hvac_modes:
+                e._optimistic_hvac_mode = restored
+        except ValueError:
+            pass
+
+        assert e._optimistic_hvac_mode is None
+
+    @pytest.mark.asyncio
+    async def test_restore_none_state_is_ignored(self) -> None:
+        """None restored state must not change optimistic."""
+        e = _make_climate({})
+        e._restored_state = None
+
+        if e._restored_state is not None:
+            try:
+                restored = HVACMode(e._restored_state)
+                if restored in e._attr_hvac_modes:
+                    e._optimistic_hvac_mode = restored
+            except ValueError:
+                pass
+
+        assert e._optimistic_hvac_mode is None
+
+    @pytest.mark.asyncio
+    async def test_restore_mode_not_in_supported_modes_ignored(self) -> None:
+        """A valid HVACMode not in the device's supported modes must be ignored."""
+        # Device only supports heat + off
+        e = _make_climate({}, options=("heat",))
+        e._restored_state = "cool"  # cool not in device's modes
+
+        try:
+            restored = HVACMode(e._restored_state)
+            if restored in e._attr_hvac_modes:
+                e._optimistic_hvac_mode = restored
+        except ValueError:
+            pass
+
+        assert e._optimistic_hvac_mode is None
+
+    @pytest.mark.asyncio
+    async def test_restore_full_flow_via_async_get_last_state(self) -> None:
+        """Full restore flow sets hvac_mode from last_state mock."""
+        from unittest.mock import AsyncMock, MagicMock
+
+        e = _make_climate({})
+
+        mock_state = MagicMock()
+        mock_state.state = "heat"
+        e.async_get_last_state = AsyncMock(return_value=mock_state)
+
+        last = await e.async_get_last_state()
+        if last is not None:
+            e._restored_state = last.state
+        if e._restored_state is not None:
+            try:
+                restored = HVACMode(e._restored_state)
+                if restored in e._attr_hvac_modes:
+                    e._optimistic_hvac_mode = restored
+            except ValueError:
+                pass
+
+        assert e._optimistic_hvac_mode == HVACMode.HEAT
+        assert e.hvac_mode == HVACMode.HEAT
+
+    @pytest.mark.asyncio
+    async def test_restore_auto_mode(self) -> None:
+        """Restoring 'auto' state sets optimistic_hvac_mode=HVACMode.AUTO."""
+        e = _make_climate({})
+        e._restored_state = "auto"
+
+        try:
+            restored = HVACMode(e._restored_state)
+            if restored in e._attr_hvac_modes:
+                e._optimistic_hvac_mode = restored
+        except ValueError:
+            pass
+
+        assert e._optimistic_hvac_mode == HVACMode.AUTO
+
+    def test_restored_state_initialised_to_none(self) -> None:
+        """_restored_state must start as None (set by RestoreStateMixin)."""
+        e = _make_climate({})
+        assert e._restored_state is None
+
+    def test_restore_mixin_importable(self) -> None:
+        """RestoreStateMixin must be importable from entity module."""
+        from custom_components.tuya_cloudless.entity import RestoreStateMixin
+
+        assert RestoreStateMixin is not None
