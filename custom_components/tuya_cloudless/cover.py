@@ -109,17 +109,32 @@ class TuyaCloudlessCover(RestoreStateMixin, TuyaCloudlessEntity, CoverEntity):
     async def async_added_to_hass(self) -> None:
         """Register with HA and restore last known cover state if available.
 
-        Restores open/closed state so the entity is never stuck as
-        ``unavailable`` after an HA restart before the device sends its
-        first state push.
+        First restores open/closed from the HA state string so the entity is
+        never stuck as ``unavailable`` after a restart.  Then refines with
+        the exact position and tilt values saved in the last state attributes,
+        overriding the coarse open/closed guess with the real numbers.
         """
         await super().async_added_to_hass()
+        # Coarse restore from state string
         if self._restored_state == STATE_OPEN:
             self._optimistic_open = True
         elif self._restored_state == STATE_CLOSED:
             self._optimistic_open = False
             if self._spec.dp_position is not None:
                 self._optimistic_position = 0
+        # Fine restore from saved attributes (exact position / tilt)
+        last_state = await self.async_get_last_state()
+        if last_state is not None:
+            attrs = last_state.attributes
+            raw_pos = attrs.get("current_position")
+            if raw_pos is not None and self._spec.dp_position is not None:
+                with contextlib.suppress(ValueError, TypeError):
+                    self._optimistic_position = int(raw_pos)
+                    self._optimistic_open = self._optimistic_position > 0
+            raw_tilt = attrs.get("current_tilt_position")
+            if raw_tilt is not None and self._spec.dp_tilt is not None:
+                with contextlib.suppress(ValueError, TypeError):
+                    self._optimistic_tilt = int(raw_tilt)
 
     @callback
     def _handle_coordinator_update(self) -> None:

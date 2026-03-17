@@ -399,7 +399,11 @@ class TestClimateOptimisticState:
 
 
 # Helper: run the real async_added_to_hass with a mocked last state.
-async def _run_restore(entity: TuyaCloudlessClimate, state_str: str | None) -> None:
+async def _run_restore(
+    entity: TuyaCloudlessClimate,
+    state_str: str | None,
+    attributes: dict[str, object] | None = None,
+) -> None:
     from unittest.mock import AsyncMock, MagicMock, patch
 
     from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -407,6 +411,7 @@ async def _run_restore(entity: TuyaCloudlessClimate, state_str: str | None) -> N
     mock_state = MagicMock() if state_str is not None else None
     if mock_state is not None:
         mock_state.state = state_str
+        mock_state.attributes = attributes or {}
     entity.async_get_last_state = AsyncMock(return_value=mock_state)
     with patch.object(CoordinatorEntity, "async_added_to_hass", AsyncMock()):
         await entity.async_added_to_hass()
@@ -481,3 +486,103 @@ class TestClimateRestoreState:
         """_restored_state must start as None before async_added_to_hass runs."""
         e = _make_climate({})
         assert e._restored_state is None
+
+
+# ── Restore extra-data tests (PLAT-718: target temperature) ───────────────────
+
+
+class TestClimateRestoreExtraData:
+    @pytest.mark.asyncio
+    async def test_restore_target_temperature_from_attributes(self) -> None:
+        """Target temperature is restored from saved attributes."""
+        e = _make_climate({})
+        await _run_restore(e, "heat", attributes={"temperature": 22.5})
+        assert e._optimistic_target_temp == 22.5
+        assert e.target_temperature == 22.5
+
+    @pytest.mark.asyncio
+    async def test_restore_target_temperature_integer(self) -> None:
+        """Integer temperature attribute is cast to float."""
+        e = _make_climate({})
+        await _run_restore(e, "heat", attributes={"temperature": 20})
+        assert e._optimistic_target_temp == 20.0
+
+    @pytest.mark.asyncio
+    async def test_restore_target_temperature_none_when_no_dp_temp_set(self) -> None:
+        """Target temperature is not restored when dp_temp_set is absent."""
+        spec = EntitySpec(
+            platform="climate",
+            name="thermostat",
+            dp_power=DPSpec(id="1", type="bool"),
+            dp_options=("heat",),
+        )
+        from custom_components.tuya_cloudless.coordinator import DeviceState
+
+        coord = MagicMock()
+        coord.gw_id = "gw001"
+        coord.device_name = "gw001"
+        coord.profile_name = ""
+        coord.version = "3.3"
+        coord.state = DeviceState(available=True, dps={})
+        coord.async_send_dps = AsyncMock()
+        coord.device_info = MagicMock()
+        entity = TuyaCloudlessClimate.__new__(TuyaCloudlessClimate)
+        entity.coordinator = coord
+        entity._dp_id = "1"
+        entity._spec = spec
+        entity._attr_unique_id = "gw001_climate_thermostat"
+        entity._attr_translation_key = "thermostat"
+        entity._attr_hvac_modes = [HVACMode.OFF, HVACMode.HEAT]
+        entity._tuya_options = ["heat"]
+        entity._attr_min_temp = 10.0
+        entity._attr_max_temp = 30.0
+        entity._attr_target_temperature_step = 0.5
+        entity._attr_supported_features = (
+            ClimateEntityFeature.TURN_ON | ClimateEntityFeature.TURN_OFF
+        )
+        entity._optimistic_hvac_mode = None
+        entity._optimistic_target_temp = None
+        entity._restored_state = None
+        entity.async_write_ha_state = MagicMock()
+        await _run_restore(entity, "heat", attributes={"temperature": 21.0})
+        assert entity._optimistic_target_temp is None
+
+    @pytest.mark.asyncio
+    async def test_restore_target_temperature_invalid_ignored(self) -> None:
+        """Non-numeric temperature attribute must not crash."""
+        e = _make_climate({})
+        await _run_restore(e, "heat", attributes={"temperature": "bad"})
+        assert e._optimistic_target_temp is None
+
+    @pytest.mark.asyncio
+    async def test_restore_temperature_without_state(self) -> None:
+        """Temperature can be restored even if state is None (no last state)."""
+        e = _make_climate({})
+        # When no last state exists, temperature stays None
+        await _run_restore(e, None)
+        assert e._optimistic_target_temp is None
+
+    @pytest.mark.asyncio
+    async def test_restore_temperature_with_off_mode(self) -> None:
+        """Temperature is restored alongside OFF hvac_mode."""
+        e = _make_climate({})
+        await _run_restore(e, "off", attributes={"temperature": 18.0})
+        assert e._optimistic_hvac_mode == HVACMode.OFF
+        assert e._optimistic_target_temp == 18.0
+
+    @pytest.mark.asyncio
+    async def test_restore_temperature_absent_attribute_is_ignored(self) -> None:
+        """Missing temperature key in attributes must not change optimistic_target_temp."""
+        e = _make_climate({})
+        await _run_restore(e, "heat", attributes={})
+        assert e._optimistic_target_temp is None
+
+    @pytest.mark.asyncio
+    async def test_restore_temperature_wins_before_coordinator_update(self) -> None:
+        """Restored target_temperature takes priority until coordinator clears it."""
+        e = _make_climate({})
+        await _run_restore(e, "heat", attributes={"temperature": 24.0})
+        assert e.target_temperature == 24.0
+        # Coordinator update clears optimistic
+        e._optimistic_target_temp = None
+        assert e.target_temperature is None  # live DP (missing) takes over

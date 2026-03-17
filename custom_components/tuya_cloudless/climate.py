@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import logging
 from typing import Any
 
@@ -134,13 +135,15 @@ class TuyaCloudlessClimate(RestoreStateMixin, TuyaCloudlessEntity, ClimateEntity
         self._attr_supported_features = features
 
     async def async_added_to_hass(self) -> None:
-        """Register with HA and restore last known HVAC mode if available.
+        """Register with HA and restore last known climate state if available.
 
-        Restores ``_optimistic_hvac_mode`` so the entity shows its previous
-        mode immediately after an HA restart, before the device sends its
-        first state push.
+        Restores HVAC mode from the state string and target temperature from
+        the saved attributes so the entity shows its previous setpoint
+        immediately after an HA restart, before the device sends its first
+        state push.
         """
         await super().async_added_to_hass()
+        # Restore HVAC mode from state string
         if self._restored_state is not None:
             try:
                 restored_mode = HVACMode(self._restored_state)
@@ -148,6 +151,13 @@ class TuyaCloudlessClimate(RestoreStateMixin, TuyaCloudlessEntity, ClimateEntity
                     self._optimistic_hvac_mode = restored_mode
             except ValueError:
                 pass
+        # Restore target temperature from saved attributes
+        last_state = await self.async_get_last_state()
+        if last_state is not None and self._spec.dp_temp_set is not None:
+            raw_temp = last_state.attributes.get("temperature")
+            if raw_temp is not None:
+                with contextlib.suppress(ValueError, TypeError):
+                    self._optimistic_target_temp = float(raw_temp)
 
     @callback
     def _handle_coordinator_update(self) -> None:

@@ -411,7 +411,11 @@ class TestCoverOptimisticState:
 # Helper: run the real async_added_to_hass with a mocked last state.
 # Patches CoordinatorEntity.async_added_to_hass to avoid real HA setup;
 # RestoreStateMixin and the platform method execute for real.
-async def _run_restore(entity: TuyaCloudlessCover, state_str: str | None) -> None:
+async def _run_restore(
+    entity: TuyaCloudlessCover,
+    state_str: str | None,
+    attributes: dict[str, object] | None = None,
+) -> None:
     from unittest.mock import AsyncMock, MagicMock, patch
 
     from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -419,6 +423,7 @@ async def _run_restore(entity: TuyaCloudlessCover, state_str: str | None) -> Non
     mock_state = MagicMock() if state_str is not None else None
     if mock_state is not None:
         mock_state.state = state_str
+        mock_state.attributes = attributes or {}
     entity.async_get_last_state = AsyncMock(return_value=mock_state)
     with patch.object(CoordinatorEntity, "async_added_to_hass", AsyncMock()):
         await entity.async_added_to_hass()
@@ -501,3 +506,74 @@ class TestCoverRestoreState:
         """_restored_state must start as None before async_added_to_hass runs."""
         e = _make_cover({})
         assert e._restored_state is None
+
+
+# ── Restore extra-data tests (PLAT-718: exact position + tilt) ─────────────────
+
+
+class TestCoverRestoreExtraData:
+    @pytest.mark.asyncio
+    async def test_restore_exact_position_from_attributes(self) -> None:
+        """Exact position from saved attributes overrides coarse open/closed."""
+        e = _make_cover({})
+        await _run_restore(e, "open", attributes={"current_position": 50})
+        assert e._optimistic_position == 50
+        assert e._optimistic_open is True  # 50 > 0
+
+    @pytest.mark.asyncio
+    async def test_restore_position_zero_from_attributes(self) -> None:
+        """Position 0 from attributes marks cover as closed."""
+        e = _make_cover({})
+        await _run_restore(e, "closed", attributes={"current_position": 0})
+        assert e._optimistic_position == 0
+        assert e._optimistic_open is False
+
+    @pytest.mark.asyncio
+    async def test_restore_position_100_from_attributes(self) -> None:
+        """Position 100 from attributes marks cover as fully open."""
+        e = _make_cover({})
+        await _run_restore(e, "open", attributes={"current_position": 100})
+        assert e._optimistic_position == 100
+        assert e._optimistic_open is True
+
+    @pytest.mark.asyncio
+    async def test_restore_tilt_from_attributes(self) -> None:
+        """Tilt position is restored from saved attributes."""
+        spec = _make_cover_spec(dp_tilt_id="3")
+        e = _make_cover({}, spec=spec)
+        attrs = {"current_position": 75, "current_tilt_position": 30}
+        await _run_restore(e, "open", attributes=attrs)
+        assert e._optimistic_tilt == 30
+
+    @pytest.mark.asyncio
+    async def test_restore_tilt_ignored_when_no_dp_tilt(self) -> None:
+        """Tilt is not restored when dp_tilt is not in spec."""
+        e = _make_cover({})  # default spec has no dp_tilt
+        await _run_restore(e, "open", attributes={"current_tilt_position": 45})
+        assert e._optimistic_tilt is None
+
+    @pytest.mark.asyncio
+    async def test_restore_position_ignored_when_no_dp_position(self) -> None:
+        """Position is not restored when dp_position is not in spec."""
+        spec = _make_cover_spec(dp_position_id=None)
+        e = _make_cover({}, spec=spec)
+        await _run_restore(e, "open", attributes={"current_position": 60})
+        assert e._optimistic_position is None
+
+    @pytest.mark.asyncio
+    async def test_restore_position_invalid_value_is_ignored(self) -> None:
+        """Non-integer position attribute must not crash or set optimistic."""
+        e = _make_cover({})
+        await _run_restore(e, "open", attributes={"current_position": "bad"})
+        # Should fall back to coarse state (open → no position set)
+        assert e._optimistic_position is None
+        assert e._optimistic_open is True
+
+    @pytest.mark.asyncio
+    async def test_restore_position_overrides_coarse_closed_guess(self) -> None:
+        """Position 35 in attributes overrides the coarse position=0 from 'closed'."""
+        e = _make_cover({})
+        # HA might report state as 'closed' but saved position=35 (partial close)
+        await _run_restore(e, "closed", attributes={"current_position": 35})
+        assert e._optimistic_position == 35
+        assert e._optimistic_open is True  # 35 > 0
