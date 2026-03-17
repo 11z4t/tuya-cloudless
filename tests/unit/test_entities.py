@@ -230,6 +230,9 @@ class TestCover:
         entity._spec = _spec
         entity._attr_unique_id = f"{coord.gw_id}_{_spec.platform}_{_spec.name}"
         entity._attr_supported_features = MagicMock()
+        entity._optimistic_open = None
+        entity._optimistic_position = None
+        entity._optimistic_tilt = None
         return entity
 
     def test_unique_id_includes_platform(self) -> None:
@@ -456,6 +459,10 @@ class TestCoverActions:
         entity._spec = _spec
         entity._attr_unique_id = f"{coord.gw_id}_{_spec.platform}_{_spec.name}"
         entity._attr_supported_features = MagicMock()
+        entity._optimistic_open = None
+        entity._optimistic_position = None
+        entity._optimistic_tilt = None
+        entity.async_write_ha_state = MagicMock()
         return entity
 
     @pytest.mark.asyncio

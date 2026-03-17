@@ -159,4 +159,5 @@ class TestSwitchSetupEntry:
         entity._dp_id = "1"
         entity._spec = spec
         entity._attr_unique_id = f"gw001_{spec.platform}_{spec.name}"
+        entity._optimistic_state = None
         assert entity.is_on is True

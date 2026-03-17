@@ -16,7 +16,7 @@ from homeassistant.components.light import (
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import STATE_OFF, STATE_ON
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
@@ -177,13 +177,26 @@ class TuyaCloudlessLight(RestoreStateMixin, TuyaCloudlessEntity, LightEntity):
         if self._restored_state in (STATE_ON, STATE_OFF):
             self._optimistic_state = self._restored_state == STATE_ON
 
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        """Clear optimistic state when the coordinator delivers live device data."""
+        self._optimistic_state = None
+        super()._handle_coordinator_update()
+
     @property
     def is_on(self) -> bool | None:
+        """Return True if the light is on.
+
+        Optimistic state (set before a command is confirmed) takes priority.
+        Falls back to live DP once the coordinator delivers a device update.
+        """
+        if self._optimistic_state is not None:
+            return self._optimistic_state
         dp_id = self._spec.dp_power.id if self._spec.dp_power else "1"
         dp_val = self.get_dp(dp_id)
         if dp_val is not None:
             return bool(dp_val)
-        return self._optimistic_state
+        return None
 
     @property
     def color_mode(self) -> ColorMode | None:

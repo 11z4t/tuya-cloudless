@@ -191,14 +191,26 @@ class TestSwitchOptimisticUpdates:
         assert e._optimistic_state is None
         assert e.async_write_ha_state.call_count == 2
 
-    def test_is_on_prefers_dp_over_optimistic(self) -> None:
-        """Live DP value should take precedence over optimistic state."""
-        e = _make_switch({"1": False})
-        e._optimistic_state = True  # Optimistic says on
-        # DP says off — DP wins
-        assert e.is_on is False
+    def test_optimistic_wins_over_stale_dp(self) -> None:
+        """Optimistic state takes priority over stale DP until coordinator clears it.
 
-    def test_is_on_falls_back_to_optimistic_when_no_dp(self) -> None:
+        After a command the DP still shows the old value until the device
+        confirms.  Optimistic must win during that window.
+        """
+        e = _make_switch({"1": False})
+        e._optimistic_state = True  # Command sent — optimistic says on
+        assert e.is_on is True
+
+    def test_coordinator_update_clears_optimistic_and_shows_live_dp(self) -> None:
+        """Coordinator update must clear optimistic so live DP takes over."""
+        e = _make_switch({"1": False})
+        e._optimistic_state = True
+        assert e.is_on is True  # Optimistic wins
+
+        e._optimistic_state = None  # Cleared by _handle_coordinator_update
+        assert e.is_on is False  # Now live DP (False) wins
+
+    def test_is_on_returns_optimistic_when_no_dp(self) -> None:
         """When no DP value is present, optimistic state is returned."""
         e = _make_switch({})
         e._optimistic_state = True
@@ -352,13 +364,22 @@ class TestLightOptimisticUpdates:
         assert e._optimistic_state is None
         assert e.async_write_ha_state.call_count == 2
 
-    def test_is_on_prefers_dp_over_optimistic(self) -> None:
-        """Live DP value should take precedence over light optimistic state."""
+    def test_optimistic_wins_over_stale_dp(self) -> None:
+        """Optimistic state takes priority over stale DP until coordinator clears it."""
+        e = _make_light({"1": False})
+        e._optimistic_state = True  # Command sent — optimistic says on
+        assert e.is_on is True
+
+    def test_coordinator_update_clears_optimistic_and_shows_live_dp(self) -> None:
+        """Coordinator update must clear optimistic so live DP takes over."""
         e = _make_light({"1": False})
         e._optimistic_state = True
-        assert e.is_on is False
+        assert e.is_on is True  # Optimistic wins
 
-    def test_is_on_falls_back_to_optimistic_when_no_dp(self) -> None:
+        e._optimistic_state = None  # Cleared by _handle_coordinator_update
+        assert e.is_on is False  # Now live DP (False) wins
+
+    def test_is_on_returns_optimistic_when_no_dp(self) -> None:
         """Light falls back to optimistic state when no DP is present."""
         e = _make_light({})
         e._optimistic_state = True

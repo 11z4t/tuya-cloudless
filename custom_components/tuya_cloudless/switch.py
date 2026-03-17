@@ -8,7 +8,7 @@ from typing import Any
 from homeassistant.components.switch import SwitchEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import STATE_OFF, STATE_ON
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
@@ -84,17 +84,25 @@ class TuyaCloudlessSwitch(RestoreStateMixin, TuyaCloudlessEntity, SwitchEntity):
         if self._restored_state in (STATE_ON, STATE_OFF):
             self._optimistic_state = self._restored_state == STATE_ON
 
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        """Clear optimistic state when the coordinator delivers live device data."""
+        self._optimistic_state = None
+        super()._handle_coordinator_update()
+
     @property
     def is_on(self) -> bool | None:
         """Return True if the switch is on.
 
-        Prefers the live DP value from the device when available; falls back
-        to the optimistic / restored state while waiting for the first push.
+        Optimistic state (set before a command is confirmed) takes priority.
+        Falls back to live DP once the coordinator delivers a device update.
         """
+        if self._optimistic_state is not None:
+            return self._optimistic_state
         dp_val = self.get_dp()
         if dp_val is not None:
             return bool(dp_val)
-        return self._optimistic_state
+        return None
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn on the switch with optimistic state update.
