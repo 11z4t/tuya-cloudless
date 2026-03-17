@@ -71,7 +71,9 @@ class DeviceState:
 
     Attributes:
         available:      True when TCP connection is up.
-        dps:            Latest DPS snapshot (str key → value).
+        dps:            Live DPS dict (str key → value), mutated in-place on
+                        each device update.  Use ``coordinator.data`` for a
+                        stable per-update snapshot, or ``get_dp()`` on entities.
         last_seen:      UTC timestamp of the last successful response.
         reconnect_count: Total number of reconnections since startup.
         last_error:     Human-readable description of the last error (if any).
@@ -590,7 +592,10 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self.state.dps.update(dps)
             self.state.last_seen = datetime.now(UTC)
             _LOGGER.debug("[%s] DPS update: %s", self._gw_id, list(dps.keys()))
-            self.async_set_updated_data(self.state.dps)
+            # Pass a shallow copy so coordinator.data is a stable snapshot of
+            # this update. Callers that hold coordinator.data will not see
+            # subsequent mutations of state.dps.
+            self.async_set_updated_data(dict(self.state.dps))
             self._fire_event(EVENT_TUYA_DP_CHANGED, {"dps": dict(dps)})
 
     # ── Session key negotiation (v3.4/3.5) ───────────────────────────────────
