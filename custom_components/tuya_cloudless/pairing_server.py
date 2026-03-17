@@ -176,6 +176,15 @@ class PairingServer:
             await q.put(None)
         self._sse_queues.clear()
 
+        # Discard pending flow IDs — they belong to the current session and
+        # must not carry over if the server is restarted (e.g. new provisioning).
+        self._pending_flows.clear()
+        self._results.clear()
+
+        if self._auto_stop_task is not None:
+            self._auto_stop_task.cancel()
+            self._auto_stop_task = None
+
         if self._runner is not None:
             await self._runner.cleanup()
             self._runner = None
