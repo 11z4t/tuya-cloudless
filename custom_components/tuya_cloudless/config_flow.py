@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import functools
 import logging
 from typing import TYPE_CHECKING, Any
 from urllib.parse import urlparse
@@ -103,6 +104,7 @@ def _get_profile_options() -> list[SelectOptionDict]:
     return options
 
 
+@functools.lru_cache(maxsize=64)
 def _suggest_profile(product_key: str | None) -> str:
     """Return the best-matching profile name for a discovered product key (PLAT-724).
 
@@ -110,6 +112,10 @@ def _suggest_profile(product_key: str | None) -> str:
     so the user sees their device pre-selected.  Otherwise default to the
     ``__auto_detect__`` sentinel so the integration detects the profile
     automatically at confirm time (PLAT-778).
+
+    Results are cached by product_key — the profile list is static at runtime
+    so repeated calls for the same key (across multiple config flow steps) are
+    free after the first lookup.
 
     Args:
         product_key: Product key from UDP device discovery, or ``None``.
