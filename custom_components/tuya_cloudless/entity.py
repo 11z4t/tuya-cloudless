@@ -14,6 +14,8 @@ from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
+from tuya_cloudless.profiles import EntitySpec
+
 from .coordinator import TuyaCloudlessCoordinator
 
 
@@ -55,15 +57,26 @@ class TuyaCloudlessEntity(CoordinatorEntity[TuyaCloudlessCoordinator]):
         self,
         coordinator: TuyaCloudlessCoordinator,
         dp_id: str | None = None,
+        spec: EntitySpec | None = None,
     ) -> None:
         """Initialise the entity.
+
+        When *spec* is provided the three common identity attributes
+        (``_spec``, ``_attr_unique_id``, ``_attr_translation_key``) are set
+        here so subclasses do not have to repeat the same boilerplate
+        (PLAT-780).
 
         Args:
             coordinator: The device coordinator.
             dp_id: Data point ID this entity maps to (e.g. "1" for main switch).
+            spec: Optional entity specification from the device profile.
         """
         super().__init__(coordinator)
         self._dp_id = dp_id
+        if spec is not None:
+            self._spec: EntitySpec = spec
+            self._attr_unique_id = f"{coordinator.gw_id}_{spec.platform}_{spec.name}"
+            self._attr_translation_key = spec.name
 
     @property
     def available(self) -> bool:

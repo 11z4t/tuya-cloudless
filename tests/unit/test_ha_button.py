@@ -8,8 +8,8 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from tuya_cloudless.profiles import DPSpec, EntitySpec
 
-from custom_components.tuya_cloudless.coordinator import DeviceState
 from custom_components.tuya_cloudless.button import TuyaCloudlessButton
+from custom_components.tuya_cloudless.coordinator import DeviceState
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 

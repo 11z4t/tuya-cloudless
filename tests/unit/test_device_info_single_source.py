@@ -24,7 +24,6 @@ from __future__ import annotations
 import asyncio
 from unittest.mock import AsyncMock, MagicMock
 
-import pytest
 from homeassistant.helpers.device_registry import DeviceInfo
 
 from custom_components.tuya_cloudless.const import DOMAIN
@@ -37,7 +36,6 @@ from tests.conftest import (
     make_sensor_spec,
     make_switch_spec,
 )
-
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 

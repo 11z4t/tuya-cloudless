@@ -82,10 +82,7 @@ class TuyaCloudlessSensor(TuyaCloudlessEntity, SensorEntity):
             spec: Entity specification from the device profile.
         """
         dp_id = spec.dp_value.id if spec.dp_value else None
-        super().__init__(coordinator, dp_id=dp_id)
-        self._spec = spec
-        self._attr_unique_id = f"{coordinator.gw_id}_{spec.platform}_{spec.name}"
-        self._attr_translation_key = spec.name
+        super().__init__(coordinator, dp_id=dp_id, spec=spec)
 
         if spec.unit:
             self._attr_native_unit_of_measurement = spec.unit

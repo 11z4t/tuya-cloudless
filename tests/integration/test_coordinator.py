@@ -323,3 +323,206 @@ async def test_coordinator_consecutive_errors_trigger_reconnect() -> None:
     finally:
         await coord.async_stop()
         await device.stop()
+
+
+# ── PLAT-778/779/781 new integration tests ────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_coordinator_dp_query_pre_populates_dps() -> None:
+    """Initial DP_QUERY on connect should pre-populate entity state immediately.
+
+    The fake device now responds to CMD_DP_QUERY so the coordinator's
+    _send_initial_dp_query should cause DPS to be available before the device
+    sends any unsolicited update (PLAT-761 / PLAT-778 / PLAT-781).
+    """
+    key = b"0123456789abcdef"
+    device = FakeTuyaDevice("gw001", key, version="3.3")
+    device.dps = {"1": True, "19": 250, "20": 100}
+    port = await device.start()
+
+    hass = _make_hass()
+
+    try:
+        coord = await _make_coordinator(hass, local_key=key, port=port)
+        await coord.async_start()
+
+        # Wait long enough for connect + DP_QUERY round-trip
+        await asyncio.sleep(0.3)
+        assert coord.state.available is True
+
+        # DPS should be pre-populated from the DP_QUERY response
+        assert coord.state.dps.get("1") is True
+        assert coord.state.dps.get("19") == 250
+        assert coord.state.dps.get("20") == 100
+
+    finally:
+        await coord.async_stop()
+        await device.stop()
+
+
+@pytest.mark.asyncio
+async def test_coordinator_exposes_detected_dp_ids() -> None:
+    """coordinator.detected_dp_ids is populated after the first DPS response (PLAT-778)."""
+    key = b"0123456789abcdef"
+    device = FakeTuyaDevice("gw001", key, version="3.3")
+    device.dps = {"1": False, "2": 500, "3": "auto"}
+    port = await device.start()
+
+    hass = _make_hass()
+
+    try:
+        coord = await _make_coordinator(hass, local_key=key, port=port)
+        await coord.async_start()
+
+        # Wait for connect + initial DP_QUERY round-trip
+        await asyncio.sleep(0.3)
+        assert coord.state.available is True
+
+        # detected_dp_ids should contain all DPs from the first response
+        assert coord.detected_dp_ids, "detected_dp_ids should be non-empty after first response"
+        assert "1" in coord.detected_dp_ids
+        assert "2" in coord.detected_dp_ids
+        assert "3" in coord.detected_dp_ids
+
+    finally:
+        await coord.async_stop()
+        await device.stop()
+
+
+@pytest.mark.asyncio
+async def test_fake_device_handles_cmd_dp_query_and_cmd_status() -> None:
+    """FakeTuyaDevice should respond to both CMD_DP_QUERY and CMD_STATUS (PLAT-781)."""
+    key = b"0123456789abcdef"
+    device = FakeTuyaDevice("gw001", key, version="3.3")
+    device.dps = {"1": True, "99": 42}
+    port = await device.start()
+
+    import sys
+    from pathlib import Path
+
+    lib_path = str(Path(__file__).resolve().parent.parent.parent / "lib")
+    if lib_path not in sys.path:
+        sys.path.insert(0, lib_path)
+
+    from tuya_cloudless.const import TCP_READ_BUFFER_SIZE
+    from tuya_cloudless.protocol import (
+        decode_frame,
+        encode_status_query,
+        split_frames,
+    )
+
+    try:
+        reader, writer = await asyncio.open_connection("127.0.0.1", port)
+        try:
+            # Send CMD_DP_QUERY
+            query = encode_status_query(sequence=1, version="3.3", local_key=key, session_key=None)
+            writer.write(query)
+            await writer.drain()
+
+            raw = await asyncio.wait_for(reader.read(TCP_READ_BUFFER_SIZE), timeout=2.0)
+            frames, _ = split_frames(raw)
+            assert frames, "Device should respond to CMD_DP_QUERY"
+
+            resp = decode_frame(frames[0], version="3.3", local_key=key)
+            dps_in_response = resp.dps.get("dps", {})
+            assert dps_in_response.get("1") is True
+            assert dps_in_response.get("99") == 42
+
+        finally:
+            writer.close()
+            with __import__("contextlib").suppress(OSError):
+                await writer.wait_closed()
+    finally:
+        await device.stop()
+
+
+@pytest.mark.asyncio
+async def test_coordinator_detected_dp_ids_stable_across_pushes() -> None:
+    """detected_dp_ids should remain the same set after subsequent DPS pushes (PLAT-778)."""
+    key = b"0123456789abcdef"
+    device = FakeTuyaDevice("gw001", key, version="3.3")
+    device.dps = {"1": False, "2": 0}
+    port = await device.start()
+
+    hass = _make_hass()
+
+    try:
+        coord = await _make_coordinator(hass, local_key=key, port=port)
+        await coord.async_start()
+        await asyncio.sleep(0.3)
+
+        # Capture detected DP IDs after first response
+        initial_detected = coord.detected_dp_ids
+
+        # Push additional DPS updates with different keys
+        await device.push_dps({"1": True})
+        await asyncio.sleep(0.1)
+        await device.push_dps({"2": 999})
+        await asyncio.sleep(0.1)
+
+        # detected_dp_ids should not change after the first capture
+        assert coord.detected_dp_ids == initial_detected
+
+    finally:
+        await coord.async_stop()
+        await device.stop()
+
+
+@pytest.mark.asyncio
+async def test_coordinator_version_31_connects_without_encryption() -> None:
+    """Protocol v3.1 devices should connect and receive DPS without encryption."""
+    key = b"0123456789abcdef"
+    device = FakeTuyaDevice("gw001", key, version="3.1")
+    device.dps = {"1": True}
+    port = await device.start()
+
+    hass = _make_hass()
+
+    try:
+        coord = await _make_coordinator(hass, local_key=key, version="3.1", port=port)
+        await coord.async_start()
+        await asyncio.sleep(0.3)
+
+        assert coord.state.available is True
+        # v3.1 device should push DPS without encryption
+        await device.push_dps({"1": False})
+        await asyncio.sleep(0.1)
+        assert coord.state.dps.get("1") is False
+
+    finally:
+        await coord.async_stop()
+        await device.stop()
+
+
+@pytest.mark.asyncio
+async def test_coordinator_large_dps_set_handled_correctly() -> None:
+    """Coordinator should handle a device with many DPs without data loss."""
+    key = b"0123456789abcdef"
+    device = FakeTuyaDevice("gw001", key, version="3.3")
+    # Simulate a power strip or complex device with many DPs
+    device.dps = {str(i): i * 10 for i in range(1, 21)}
+    port = await device.start()
+
+    hass = _make_hass()
+
+    try:
+        coord = await _make_coordinator(hass, local_key=key, port=port)
+        await coord.async_start()
+        await asyncio.sleep(0.3)
+        assert coord.state.available is True
+
+        # Push all 20 DPs at once
+        await device.push_dps(device.dps)
+        await asyncio.sleep(0.2)
+
+        # All DPs should be present
+        for i in range(1, 21):
+            assert coord.state.dps.get(str(i)) == i * 10, f"DP {i} missing from coordinator state"
+
+        # detected_dp_ids should contain all DP keys from the first response
+        assert len(coord.detected_dp_ids) == 20
+
+    finally:
+        await coord.async_stop()
+        await device.stop()

@@ -4,7 +4,7 @@ Exposes the Tuya LAN protocol version as the firmware version.
 
 Tuya LAN protocol does not provide a mechanism for OTA firmware updates
 or for reading actual device firmware version — only the protocol version
-(3.1–3.5) is negotiated during the TCP handshake.
+(3.1-3.5) is negotiated during the TCP handshake.
 
 Therefore this entity reports ``installed_version == latest_version``
 (no update available) and has no install feature.

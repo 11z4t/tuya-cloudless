@@ -6,7 +6,6 @@ from datetime import UTC, datetime
 from unittest.mock import MagicMock
 
 import pytest
-
 from homeassistant.helpers.redact import REDACTED
 
 
@@ -143,11 +142,11 @@ class TestDiagnosticsRedaction:
     @pytest.mark.asyncio
     async def test_local_key_replaced_with_redacted(self) -> None:
         """AC1: async_redact_data replaces local_key with REDACTED marker."""
+        from homeassistant.helpers.redact import async_redact_data
+
         from custom_components.tuya_cloudless.diagnostics import (
-            async_get_config_entry_diagnostics,
             _CONFIG_REDACT,
         )
-        from homeassistant.helpers.redact import async_redact_data
 
         raw = {
             "gw_id": "abcdef1234",

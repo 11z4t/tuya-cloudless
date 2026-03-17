@@ -92,9 +92,8 @@ def _make_light(dps: dict[str, Any] | None = None, spec: EntitySpec | None = Non
     from homeassistant.components.light import ColorMode, LightEntityFeature
 
     has_hs = (
-        (_spec.dp_hs_hue is not None and _spec.dp_hs_saturation is not None)
-        or _spec.dp_colour_data is not None
-    )
+        _spec.dp_hs_hue is not None and _spec.dp_hs_saturation is not None
+    ) or _spec.dp_colour_data is not None
     has_color_temp = _spec.dp_color_temp is not None
     has_brightness = _spec.dp_brightness is not None
 

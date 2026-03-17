@@ -342,12 +342,13 @@ class TestProfileRegistryIsolation:
 
     @pytest.mark.asyncio
     async def test_two_hass_instances_have_separate_registries(self, tmp_path: Any) -> None:
+        from tuya_cloudless.profiles import ProfileRegistry
+
         from custom_components.tuya_cloudless import (
             _KEY_PROFILE_REGISTRY,
             _ensure_profiles,
         )
         from custom_components.tuya_cloudless.const import DOMAIN
-        from tuya_cloudless.profiles import ProfileRegistry
 
         async def _fake_executor(fn, *args):  # type: ignore[no-untyped-def]
             fn(*args)

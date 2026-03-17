@@ -79,10 +79,7 @@ class TuyaCloudlessCover(TuyaCloudlessEntity, CoverEntity):
             spec: Entity specification from the device profile.
         """
         dp_id = spec.dp_open.id if spec.dp_open else None
-        super().__init__(coordinator, dp_id=dp_id)
-        self._spec = spec
-        self._attr_unique_id = f"{coordinator.gw_id}_{spec.platform}_{spec.name}"
-        self._attr_translation_key = spec.name
+        super().__init__(coordinator, dp_id=dp_id, spec=spec)
 
         # Build supported features based on available DPs in spec
         features = CoverEntityFeature(0)

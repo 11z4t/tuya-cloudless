@@ -690,9 +690,7 @@ class TuyaCloudlessConfigFlow(ConfigFlow, domain=DOMAIN):
 
     # ── Zeroconf / DHCP auto-discovery (PLAT-766) ─────────────────────────────
 
-    async def async_step_zeroconf(
-        self, discovery_info: ZeroconfServiceInfo
-    ) -> ConfigFlowResult:
+    async def async_step_zeroconf(self, discovery_info: ZeroconfServiceInfo) -> ConfigFlowResult:
         """Handle mDNS/zeroconf discovery of a ``_tuya._tcp.local.`` service.
 
         Home Assistant calls this automatically when a device advertises the
@@ -733,9 +731,7 @@ class TuyaCloudlessConfigFlow(ConfigFlow, domain=DOMAIN):
         self.context["title_placeholders"] = {"name": gw_id}
         return await self.async_step_discovery()
 
-    async def async_step_dhcp(
-        self, discovery_info: DhcpServiceInfo
-    ) -> ConfigFlowResult:
+    async def async_step_dhcp(self, discovery_info: DhcpServiceInfo) -> ConfigFlowResult:
         """Handle DHCP discovery of a device with a known Tuya MAC OUI.
 
         Home Assistant calls this when a DHCP lease is seen for a MAC address
@@ -992,7 +988,11 @@ class TuyaCloudlessConfigFlow(ConfigFlow, domain=DOMAIN):
         try:
             from tuya_cloudless.crypto import CryptoError
             from tuya_cloudless.exceptions import MalformedPacketError
-            from tuya_cloudless.profiles import detect_profile_from_dps, init_profiles, list_profiles
+            from tuya_cloudless.profiles import (
+                detect_profile_from_dps,
+                init_profiles,
+                list_profiles,
+            )
             from tuya_cloudless.protocol import decode_frame, encode_status_query, split_frames
         except ImportError:
             return "Generic Switch"
@@ -1021,9 +1021,7 @@ class TuyaCloudlessConfigFlow(ConfigFlow, domain=DOMAIN):
                 return "Generic Switch"
 
             try:
-                raw = await asyncio.wait_for(
-                    reader.read(4096), timeout=_KEY_VALIDATION_TIMEOUT
-                )
+                raw = await asyncio.wait_for(reader.read(4096), timeout=_KEY_VALIDATION_TIMEOUT)
             except (TimeoutError, OSError):
                 return "Generic Switch"
 

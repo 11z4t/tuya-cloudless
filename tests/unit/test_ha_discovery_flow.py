@@ -15,7 +15,6 @@ from custom_components.tuya_cloudless.const import (
     DEFAULT_PROTOCOL_VERSION,
 )
 
-
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 
@@ -150,9 +149,7 @@ class TestStepZeroconf:
         """Extracts productKey TXT field for profile auto-suggestion."""
         flow = _make_flow()
         flow.async_step_discovery = AsyncMock(return_value={"type": "form"})
-        info = _make_zeroconf_info(
-            properties={"gwId": "abc123", "productKey": "pkey42"}
-        )
+        info = _make_zeroconf_info(properties={"gwId": "abc123", "productKey": "pkey42"})
 
         await flow.async_step_zeroconf(info)
 
@@ -181,9 +178,7 @@ class TestStepDhcp:
         flow.async_step_discovery = AsyncMock(return_value={"type": "form"})
         info = _make_dhcp_info(ip="192.168.1.100")
 
-        with patch.object(
-            flow, "_run_discovery", AsyncMock(return_value=[_DISCOVERED_DEVICE])
-        ):
+        with patch.object(flow, "_run_discovery", AsyncMock(return_value=[_DISCOVERED_DEVICE])):
             await flow.async_step_dhcp(info)
 
         flow.async_set_unique_id.assert_called_once_with("abc123")
@@ -198,9 +193,7 @@ class TestStepDhcp:
         flow = _make_flow()
         info = _make_dhcp_info(ip="192.168.1.200")  # different IP
 
-        with patch.object(
-            flow, "_run_discovery", AsyncMock(return_value=[_DISCOVERED_DEVICE])
-        ):
+        with patch.object(flow, "_run_discovery", AsyncMock(return_value=[_DISCOVERED_DEVICE])):
             result = await flow.async_step_dhcp(info)
 
         flow.async_abort.assert_called_once_with(reason="no_device_id")
@@ -213,7 +206,7 @@ class TestStepDhcp:
         info = _make_dhcp_info()
 
         with patch.object(flow, "_run_discovery", AsyncMock(return_value=[])):
-            result = await flow.async_step_dhcp(info)
+            await flow.async_step_dhcp(info)
 
         flow.async_abort.assert_called_once_with(reason="no_device_id")
 
@@ -223,10 +216,8 @@ class TestStepDhcp:
         flow = _make_flow()
         info = _make_dhcp_info()
 
-        with patch.object(
-            flow, "_run_discovery", AsyncMock(side_effect=OSError("network error"))
-        ):
-            result = await flow.async_step_dhcp(info)
+        with patch.object(flow, "_run_discovery", AsyncMock(side_effect=OSError("network error"))):
+            await flow.async_step_dhcp(info)
 
         flow.async_abort.assert_called_once_with(reason="no_device_id")
 
@@ -236,10 +227,8 @@ class TestStepDhcp:
         flow = _make_flow()
         info = _make_dhcp_info()
 
-        with patch.object(
-            flow, "_run_discovery", AsyncMock(side_effect=TimeoutError())
-        ):
-            result = await flow.async_step_dhcp(info)
+        with patch.object(flow, "_run_discovery", AsyncMock(side_effect=TimeoutError())):
+            await flow.async_step_dhcp(info)
 
         flow.async_abort.assert_called_once_with(reason="no_device_id")
 
@@ -250,9 +239,7 @@ class TestStepDhcp:
         flow.async_step_discovery = AsyncMock(return_value={"type": "form"})
         info = _make_dhcp_info(ip="192.168.1.100")
 
-        with patch.object(
-            flow, "_run_discovery", AsyncMock(return_value=[_DISCOVERED_DEVICE])
-        ):
+        with patch.object(flow, "_run_discovery", AsyncMock(return_value=[_DISCOVERED_DEVICE])):
             await flow.async_step_dhcp(info)
 
         flow._abort_if_unique_id_configured.assert_called_once_with(
@@ -266,9 +253,7 @@ class TestStepDhcp:
         flow.async_step_discovery = AsyncMock(return_value={"type": "form"})
         info = _make_dhcp_info(ip="192.168.1.100")
 
-        with patch.object(
-            flow, "_run_discovery", AsyncMock(return_value=[_DISCOVERED_DEVICE])
-        ):
+        with patch.object(flow, "_run_discovery", AsyncMock(return_value=[_DISCOVERED_DEVICE])):
             await flow.async_step_dhcp(info)
 
         assert flow.context.get("title_placeholders", {}).get("name") == "abc123"

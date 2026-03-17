@@ -1156,7 +1156,6 @@ class TestSendInitialDpQuery:
         writer.drain = AsyncMock()
 
         # Use the real encode_status_query to verify it builds a DP_QUERY frame
-        from tuya_cloudless.protocol import encode_status_query
 
         captured_frames: list[bytes] = []
 

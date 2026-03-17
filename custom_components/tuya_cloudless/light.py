@@ -79,9 +79,9 @@ def _encode_colour_data(hue: float, sat_pct: float, brightness_255: int) -> str:
     """Encode HA HS colour + brightness into a 12-char Tuya colour_data hex string.
 
     Args:
-        hue:            HA hue, 0.0–360.0.
-        sat_pct:        HA saturation, 0.0–100.0.
-        brightness_255: HA brightness, 0–255.
+        hue:            HA hue, 0.0-360.0.
+        sat_pct:        HA saturation, 0.0-100.0.
+        brightness_255: HA brightness, 0-255.
 
     Returns:
         12-char lowercase hex string ``HHHHSSSSBBBB``.
@@ -116,7 +116,9 @@ def _decode_colour_data(raw: str) -> tuple[float, float, int] | None:
         return None
     hue = float(min(360, h))
     sat_pct = round(min(100.0, s / _TUYA_COLOUR_DATA_SAT_MAX * 100), 1)
-    brightness_255 = round(min(_HA_BRIGHTNESS_MAX, v / _TUYA_COLOUR_DATA_VAL_MAX * _HA_BRIGHTNESS_MAX))
+    brightness_255 = round(
+        min(_HA_BRIGHTNESS_MAX, v / _TUYA_COLOUR_DATA_VAL_MAX * _HA_BRIGHTNESS_MAX)
+    )
     return (hue, sat_pct, brightness_255)
 
 
@@ -144,17 +146,13 @@ class TuyaCloudlessLight(RestoreStateMixin, TuyaCloudlessEntity, LightEntity):
         spec: EntitySpec,
     ) -> None:
         dp_id = spec.dp_power.id if spec.dp_power else "1"
-        super().__init__(coordinator, dp_id=dp_id)
-        self._spec = spec
-        self._attr_unique_id = f"{coordinator.gw_id}_{spec.platform}_{spec.name}"
-        self._attr_translation_key = spec.name
+        super().__init__(coordinator, dp_id=dp_id, spec=spec)
         self._attr_min_color_temp_kelvin = _MIN_COLOR_TEMP_KELVIN
         self._attr_max_color_temp_kelvin = _MAX_COLOR_TEMP_KELVIN
         self._optimistic_state: bool | None = None
         has_hs = (
-            (spec.dp_hs_hue is not None and spec.dp_hs_saturation is not None)
-            or spec.dp_colour_data is not None
-        )
+            spec.dp_hs_hue is not None and spec.dp_hs_saturation is not None
+        ) or spec.dp_colour_data is not None
         has_color_temp = spec.dp_color_temp is not None
         has_brightness = spec.dp_brightness is not None
         supported: set[ColorMode] = set()
@@ -306,16 +304,15 @@ class TuyaCloudlessLight(RestoreStateMixin, TuyaCloudlessEntity, LightEntity):
                 cd_spec = self._spec.dp_colour_data
                 if cd_spec is not None:
                     # Fold brightness into V; use new value if provided, else current
-                    bri = int(kwargs[ATTR_BRIGHTNESS]) if has_bri_kwarg else (
-                        self.brightness or _HA_BRIGHTNESS_MAX
+                    bri = (
+                        int(kwargs[ATTR_BRIGHTNESS])
+                        if has_bri_kwarg
+                        else (self.brightness or _HA_BRIGHTNESS_MAX)
                     )
                     dps[cd_spec.id] = _encode_colour_data(ha_hue, ha_sat, bri)
                     if self._spec.dp_color_mode is not None:
                         dps[self._spec.dp_color_mode.id] = _TUYA_COLOR_MODE_COLOUR
-                elif (
-                    self._spec.dp_hs_hue is not None
-                    and self._spec.dp_hs_saturation is not None
-                ):
+                elif self._spec.dp_hs_hue is not None and self._spec.dp_hs_saturation is not None:
                     hue_spec = self._spec.dp_hs_hue
                     sat_spec = self._spec.dp_hs_saturation
                     hue_max = hue_spec.max_raw if hue_spec.max_raw is not None else _TUYA_HUE_MAX
@@ -350,9 +347,7 @@ class TuyaCloudlessLight(RestoreStateMixin, TuyaCloudlessEntity, LightEntity):
                     # Standalone brightness change in colour mode: update V component
                     current_hs = self.hs_color
                     if current_hs is not None:
-                        dps[cd_spec.id] = _encode_colour_data(
-                            current_hs[0], current_hs[1], ha_bri
-                        )
+                        dps[cd_spec.id] = _encode_colour_data(current_hs[0], current_hs[1], ha_bri)
                         if self._spec.dp_color_mode is not None:
                             dps[self._spec.dp_color_mode.id] = _TUYA_COLOR_MODE_COLOUR
                 elif self._spec.dp_brightness is not None:
@@ -375,9 +370,7 @@ class TuyaCloudlessLight(RestoreStateMixin, TuyaCloudlessEntity, LightEntity):
                             self._attr_unique_id,
                         )
                 else:
-                    _LOGGER.debug(
-                        "Effect requested: %s (no dp_scene configured)", effect
-                    )
+                    _LOGGER.debug("Effect requested: %s (no dp_scene configured)", effect)
 
             await self.coordinator.async_send_dps(dps)
         except HomeAssistantError:

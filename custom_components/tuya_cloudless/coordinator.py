@@ -676,9 +676,7 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 raise TuyaCloudlessError(
                     f"Session key response frame too large ({frame_payload_len} bytes)"
                 )
-            rest_bytes = await asyncio.wait_for(
-                reader.readexactly(frame_payload_len), timeout=5.0
-            )
+            rest_bytes = await asyncio.wait_for(reader.readexactly(frame_payload_len), timeout=5.0)
             raw = header_bytes + rest_bytes
         except asyncio.IncompleteReadError as exc:
             raise TuyaCloudlessError(
@@ -787,15 +785,11 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         try:
             await listener.start()
         except DiscoveryError as exc:
-            _LOGGER.debug(
-                "[%s] UDP rediscovery: could not open socket — %s", self._gw_id, exc
-            )
+            _LOGGER.debug("[%s] UDP rediscovery: could not open socket — %s", self._gw_id, exc)
             return
 
         try:
-            device = await listener.wait_for_device(
-                self._gw_id, timeout=_IP_REDISCOVER_TIMEOUT
-            )
+            device = await listener.wait_for_device(self._gw_id, timeout=_IP_REDISCOVER_TIMEOUT)
             if device.ip != self._ip:
                 self.async_update_ip(device.ip)
             else:
@@ -903,9 +897,7 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         from homeassistant.const import ATTR_DEVICE_ID
         from homeassistant.helpers import device_registry as dr
 
-        device = dr.async_get(self.hass).async_get_device(
-            identifiers={(DOMAIN, self._gw_id)}
-        )
+        device = dr.async_get(self.hass).async_get_device(identifiers={(DOMAIN, self._gw_id)})
         device_id: str = device.id if device is not None else self._gw_id
         data: dict = {ATTR_DEVICE_ID: device_id, CONF_GW_ID: self._gw_id}
         if extra_data:

@@ -129,9 +129,7 @@ class TestAttachTrigger:
             new_callable=AsyncMock,
             return_value=lambda: None,
         ) as mock_attach:
-            await async_attach_trigger(
-                MagicMock(), config, AsyncMock(), MagicMock()
-            )
+            await async_attach_trigger(MagicMock(), config, AsyncMock(), MagicMock())
         event_config = mock_attach.call_args.args[1]
         assert self._event_type_str(event_config) == EVENT_TUYA_CONNECTED
 
@@ -143,9 +141,7 @@ class TestAttachTrigger:
             new_callable=AsyncMock,
             return_value=lambda: None,
         ) as mock_attach:
-            await async_attach_trigger(
-                MagicMock(), config, AsyncMock(), MagicMock()
-            )
+            await async_attach_trigger(MagicMock(), config, AsyncMock(), MagicMock())
         event_config = mock_attach.call_args.args[1]
         assert self._event_type_str(event_config) == EVENT_TUYA_DISCONNECTED
 
@@ -157,9 +153,7 @@ class TestAttachTrigger:
             new_callable=AsyncMock,
             return_value=lambda: None,
         ) as mock_attach:
-            await async_attach_trigger(
-                MagicMock(), config, AsyncMock(), MagicMock()
-            )
+            await async_attach_trigger(MagicMock(), config, AsyncMock(), MagicMock())
         event_config = mock_attach.call_args.args[1]
         assert self._event_type_str(event_config) == EVENT_TUYA_DP_CHANGED
 
@@ -171,9 +165,7 @@ class TestAttachTrigger:
             new_callable=AsyncMock,
             return_value=lambda: None,
         ) as mock_attach:
-            await async_attach_trigger(
-                MagicMock(), config, AsyncMock(), MagicMock()
-            )
+            await async_attach_trigger(MagicMock(), config, AsyncMock(), MagicMock())
         event_config = mock_attach.call_args.args[1]
         assert event_config["event_data"]["device_id"] == DEVICE_ID
 
@@ -185,8 +177,6 @@ class TestAttachTrigger:
             new_callable=AsyncMock,
             return_value=lambda: None,
         ) as mock_attach:
-            await async_attach_trigger(
-                MagicMock(), config, AsyncMock(), MagicMock()
-            )
+            await async_attach_trigger(MagicMock(), config, AsyncMock(), MagicMock())
         _, kwargs = mock_attach.call_args
         assert kwargs.get("platform_type") == "device"

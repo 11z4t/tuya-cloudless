@@ -290,10 +290,23 @@ def _get_spec_dp_ids(spec: EntitySpec) -> set[str]:
     """
     ids: set[str] = set()
     for attr_name in (
-        "dp_power", "dp_value", "dp_brightness", "dp_color_temp",
-        "dp_open", "dp_position", "dp_tilt", "dp_stop", "dp_direction",
-        "dp_hs_hue", "dp_hs_saturation", "dp_color_mode", "dp_scene",
-        "dp_colour_data", "dp_mode", "dp_temp_set", "dp_temp_current",
+        "dp_power",
+        "dp_value",
+        "dp_brightness",
+        "dp_color_temp",
+        "dp_open",
+        "dp_position",
+        "dp_tilt",
+        "dp_stop",
+        "dp_direction",
+        "dp_hs_hue",
+        "dp_hs_saturation",
+        "dp_color_mode",
+        "dp_scene",
+        "dp_colour_data",
+        "dp_mode",
+        "dp_temp_set",
+        "dp_temp_current",
         "dp_oscillate",
     ):
         val = getattr(spec, attr_name, None)

@@ -10,7 +10,6 @@ import pytest
 from custom_components.tuya_cloudless.coordinator import DeviceState
 from custom_components.tuya_cloudless.update import TuyaCloudlessUpdateEntity
 
-
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
 
@@ -29,7 +28,9 @@ def _make_coordinator(
     return coord
 
 
-def _make_entity(version: str = "3.3", gw_id: str = "gw001", available: bool = True) -> TuyaCloudlessUpdateEntity:
+def _make_entity(
+    version: str = "3.3", gw_id: str = "gw001", available: bool = True
+) -> TuyaCloudlessUpdateEntity:
     coord = _make_coordinator(version=version, gw_id=gw_id, available=available)
     entity = TuyaCloudlessUpdateEntity.__new__(TuyaCloudlessUpdateEntity)
     entity.coordinator = coord
@@ -62,17 +63,20 @@ class TestTuyaCloudlessUpdateEntity:
     def test_supported_features_zero(self) -> None:
         """No OTA install feature should be advertised."""
         from homeassistant.components.update import UpdateEntityFeature
+
         entity = _make_entity()
         assert entity._attr_supported_features == 0
         assert not (entity._attr_supported_features & UpdateEntityFeature.INSTALL)
 
     def test_device_class_firmware(self) -> None:
         from homeassistant.components.update import UpdateDeviceClass
+
         entity = _make_entity()
         assert entity._attr_device_class == UpdateDeviceClass.FIRMWARE
 
     def test_entity_category_diagnostic(self) -> None:
         from homeassistant.const import EntityCategory
+
         entity = _make_entity()
         assert entity._attr_entity_category == EntityCategory.DIAGNOSTIC
 

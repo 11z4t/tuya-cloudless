@@ -149,7 +149,7 @@ class FakeTuyaDevice:
         writer: asyncio.StreamWriter,
     ) -> None:
         """Read frames and respond until the connection is closed."""
-        from tuya_cloudless.const import CMD_CONTROL, CMD_HEARTBEAT
+        from tuya_cloudless.const import CMD_CONTROL, CMD_DP_QUERY, CMD_HEARTBEAT, CMD_STATUS
         from tuya_cloudless.protocol import (
             decode_frame,
             encode_heartbeat,
@@ -207,6 +207,20 @@ class FakeTuyaDevice:
                     )
                     writer.write(response)
                     await writer.drain()
+
+                elif frame.command in (CMD_DP_QUERY, CMD_STATUS):
+                    # Respond with current DPS snapshot (PLAT-778/PLAT-781).
+                    # Enables coordinator initial DP_QUERY pre-population and
+                    # profile auto-detection in tests.
+                    response = encode_status_response(
+                        self.dps,
+                        sequence=self._next_sequence(),
+                        version=self.version,
+                        local_key=self.local_key,
+                    )
+                    writer.write(response)
+                    await writer.drain()
+                    _LOGGER.debug("[fake:%s] DP_QUERY/STATUS response sent", self.gw_id)
 
     # ── Utility ───────────────────────────────────────────────────────────────
 
