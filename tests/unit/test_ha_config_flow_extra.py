@@ -481,13 +481,14 @@ class TestValidateLocalKey:
 
 
 class TestPairingToolUrl:
-    def test_returns_default_when_no_internal_url(self) -> None:
+    def test_returns_valid_url_when_no_internal_url(self) -> None:
         flow = _make_flow()
         flow.hass = MagicMock(spec=[])  # No config attribute
 
         url = flow._pairing_tool_url()
 
-        assert url == "http://homeassistant.local:8099"
+        assert url.startswith("http://")
+        assert ":8099" in url
 
     def test_extracts_hostname_from_internal_url(self) -> None:
         flow = _make_flow()
@@ -503,7 +504,8 @@ class TestPairingToolUrl:
 
         url = flow._pairing_tool_url()
 
-        assert url == "http://homeassistant.local:8099"
+        assert url.startswith("http://")
+        assert ":8099" in url
 
     def test_handles_empty_internal_url(self) -> None:
         flow = _make_flow()
@@ -511,4 +513,5 @@ class TestPairingToolUrl:
 
         url = flow._pairing_tool_url()
 
-        assert url == "http://homeassistant.local:8099"
+        assert url.startswith("http://")
+        assert ":8099" in url

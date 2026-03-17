@@ -908,22 +908,40 @@ class TuyaCloudlessConfigFlow(ConfigFlow, domain=DOMAIN):
     def _pairing_tool_url(self) -> str:
         """Return the URL to the Tuya Cloudless pairing tool running on this HA host.
 
-        Extracts the hostname from HA's internal URL and appends port 8099.
-        Falls back to ``http://homeassistant.local:8099`` when the internal URL
-        is not configured.
+        Uses the same host-resolution chain as the pairing server so the link
+        works regardless of how the user reaches Home Assistant.
 
         Returns:
             Absolute HTTP URL string for the pairing tool.
         """
+        from .pairing_server import PAIRING_SERVER_PORT
+
+        # 1. HA network helper
+        try:
+            from homeassistant.helpers.network import get_url
+
+            base = get_url(self.hass, allow_internal=True, allow_external=False)
+            host = urlparse(base).hostname or ""
+            if host:
+                return f"http://{host}:{PAIRING_SERVER_PORT}"
+        except Exception:  # broad catch — must not crash config flow
+            pass
+
+        # 2. hass.config.internal_url
         try:
             internal = getattr(self.hass.config, "internal_url", None)
-        except AttributeError:
-            internal = None
-        if isinstance(internal, str) and internal:
-            parsed = urlparse(internal)
-            host = parsed.hostname or "homeassistant.local"
-            return f"http://{host}:8099"
-        return "http://homeassistant.local:8099"
+            if isinstance(internal, str) and internal:
+                host = urlparse(internal).hostname or ""
+                if host:
+                    return f"http://{host}:{PAIRING_SERVER_PORT}"
+        except Exception:  # broad catch — must not crash config flow
+            pass
+
+        # 3. Machine hostname
+        import socket
+
+        hostname = socket.getfqdn() or socket.gethostname() or "homeassistant.local"
+        return f"http://{hostname}:{PAIRING_SERVER_PORT}"
 
     # ── Private helpers ────────────────────────────────────────────────────────
 
