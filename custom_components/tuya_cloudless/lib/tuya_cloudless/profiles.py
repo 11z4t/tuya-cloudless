@@ -16,6 +16,8 @@ __all__ = [
     "DPSpec",
     "DeviceProfile",
     "EntitySpec",
+    "ProfileRegistry",
+    "detect_profile_from_dps",
     "find_profile",
     "find_profile_by_product_key",
     "init_profiles",
@@ -81,6 +83,8 @@ class EntitySpec:
         dp_hs_saturation: Saturation DP (light; 0-1000 raw typical).
         dp_color_mode:    Color mode DP (light; enum "white"/"colour").
         dp_stop:          Stop-movement DP (cover; sends True to halt motor).
+        dp_scene:         Scene/effect DP (light; enum or str — value = effect name).
+        dp_colour_data:   Compound HSV colour DP (light; 12-char hex "HHHHSSSSBBBB").
         effects:          Supported effect names for the light.
         device_class:     HA device class string (e.g. "power", "current").
         state_class:      HA state class string (e.g. "measurement").
@@ -101,6 +105,8 @@ class EntitySpec:
     dp_hs_hue: DPSpec | None = None
     dp_hs_saturation: DPSpec | None = None
     dp_color_mode: DPSpec | None = None
+    dp_scene: DPSpec | None = None
+    dp_colour_data: DPSpec | None = None
     effects: tuple[str, ...] = ()
     device_class: str | None = None
     state_class: str | None = None
@@ -190,6 +196,8 @@ def _parse_entity_spec(data: dict[str, Any]) -> EntitySpec:
         dp_hs_hue=_parse_dp_spec(data.get("dp_hs_hue")),
         dp_hs_saturation=_parse_dp_spec(data.get("dp_hs_saturation")),
         dp_color_mode=_parse_dp_spec(data.get("dp_color_mode")),
+        dp_scene=_parse_dp_spec(data.get("dp_scene")),
+        dp_colour_data=_parse_dp_spec(data.get("dp_colour_data")),
         effects=tuple(data.get("effects", [])),
         device_class=str(data["device_class"]) if "device_class" in data else None,
         state_class=str(data["state_class"]) if "state_class" in data else None,
@@ -265,74 +273,237 @@ def load_profiles_from_dir(profiles_dir: Path) -> list[DeviceProfile]:
     return profiles
 
 
-# ── Global profile registry ───────────────────────────────────────────────────
+# ── DP-based profile detection (PLAT-778) ────────────────────────────────────
 
-_REGISTRY: list[DeviceProfile] = []
+
+def _get_spec_dp_ids(spec: EntitySpec) -> set[str]:
+    """Return the set of DP IDs referenced by a single EntitySpec.
+
+    Iterates over all ``dp_*`` attributes of *spec* and collects their ``.id``
+    values so that callers can compare a live DP snapshot against a profile.
+
+    Args:
+        spec: Entity specification from a loaded device profile.
+
+    Returns:
+        Set of DP ID strings (e.g. ``{"1", "19"}``).
+    """
+    ids: set[str] = set()
+    for attr_name in (
+        "dp_power",
+        "dp_value",
+        "dp_brightness",
+        "dp_color_temp",
+        "dp_open",
+        "dp_position",
+        "dp_tilt",
+        "dp_stop",
+        "dp_direction",
+        "dp_hs_hue",
+        "dp_hs_saturation",
+        "dp_color_mode",
+        "dp_scene",
+        "dp_colour_data",
+        "dp_mode",
+        "dp_temp_set",
+        "dp_temp_current",
+        "dp_oscillate",
+    ):
+        val = getattr(spec, attr_name, None)
+        if isinstance(val, DPSpec):
+            ids.add(val.id)
+    return ids
+
+
+def _detect_profile_from_dps_core(
+    dp_ids: set[str],
+    profiles: list[DeviceProfile],
+) -> DeviceProfile | None:
+    """Core implementation: find best-matching profile for observed DP IDs.
+
+    Scores each profile by the fraction of its expected DPs that appear in
+    *dp_ids*.  A wildcard-model (``"*"``) profile is only returned as a
+    last-resort fallback when no specific profile has any overlap.
+
+    Args:
+        dp_ids:   Set of DP IDs observed in the device's DP_QUERY response.
+        profiles: List of candidate profiles to score.
+
+    Returns:
+        Best-matching :class:`DeviceProfile`, or ``None`` if *dp_ids* is empty.
+    """
+    if not dp_ids or not profiles:
+        return None
+
+    best_profile: DeviceProfile | None = None
+    best_score: float = 0.0
+    wildcard_fallback: DeviceProfile | None = None
+
+    for profile in profiles:
+        if profile.model == "*":
+            if wildcard_fallback is None:
+                wildcard_fallback = profile
+            continue
+
+        expected: set[str] = set()
+        for spec in profile.entities:
+            expected.update(_get_spec_dp_ids(spec))
+
+        if not expected:
+            continue
+
+        overlap = len(dp_ids & expected)
+        if overlap == 0:
+            continue
+
+        # Score = fraction of profile's expected DPs found on this device.
+        # Higher score → profile is a better fit for the observed DP set.
+        score = overlap / len(expected)
+        if score > best_score:
+            best_score = score
+            best_profile = profile
+
+    return best_profile or wildcard_fallback
+
+
+# ── Per-instance profile registry ────────────────────────────────────────────
+
+
+class ProfileRegistry:
+    """Per-hass-instance profile registry (no global mutable state).
+
+    Create one instance per Home Assistant instance and store it in
+    ``hass.data[DOMAIN]``. This prevents sharing mutable profile state
+    across multiple HA instances running in the same Python process.
+
+    Usage in integration setup::
+
+        registry = ProfileRegistry()
+        registry.init(PROFILES_DIR)          # sync — run in executor
+        hass.data[DOMAIN]["profile_registry"] = registry
+    """
+
+    __slots__ = ("_profiles",)
+
+    def __init__(self) -> None:
+        self._profiles: list[DeviceProfile] = []
+
+    def init(self, profiles_dir: Path) -> None:
+        """Load profiles from *profiles_dir* into this registry.
+
+        Call once per instance. Thread-safe for single-writer scenarios
+        (HA event loop is single-threaded).
+
+        Args:
+            profiles_dir: Directory containing ``*.yaml`` profile files.
+        """
+        self._profiles = load_profiles_from_dir(profiles_dir)
+        _LOGGER.info(
+            "Profile registry ready: %d profiles loaded from %s",
+            len(self._profiles),
+            profiles_dir,
+        )
+
+    def list_profiles(self) -> list[DeviceProfile]:
+        """Return all profiles in this registry (shallow copy)."""
+        return list(self._profiles)
+
+    def find_profile(self, name: str) -> DeviceProfile | None:
+        """Find a profile by its exact display name.
+
+        Args:
+            name: Profile name as stored in config entry data.
+
+        Returns:
+            Matching :class:`DeviceProfile`, or ``None`` if not found.
+        """
+        for profile in self._profiles:
+            if profile.name == name:
+                return profile
+        return None
+
+    def detect_profile_from_dps(self, dp_ids: set[str]) -> DeviceProfile | None:
+        """Find the best-matching profile for a set of observed device DP IDs.
+
+        Delegates to the module-level :func:`detect_profile_from_dps`.
+
+        Args:
+            dp_ids: Set of DP IDs observed from the device's DP_QUERY response.
+
+        Returns:
+            Best-matching :class:`DeviceProfile`, or ``None`` if no match.
+        """
+        return _detect_profile_from_dps_core(dp_ids, self._profiles)
+
+    def find_profile_by_product_key(self, product_key: str) -> DeviceProfile | None:
+        """Find the best-matching profile for a device product key.
+
+        Uses glob-style matching against each profile's ``model`` pattern.
+        The first match wins (alphabetical profile file order).
+
+        Args:
+            product_key: Product key string from UDP device discovery.
+
+        Returns:
+            Best-matching :class:`DeviceProfile`, or ``None`` if none match.
+        """
+        fallback: DeviceProfile | None = None
+        for profile in self._profiles:
+            if profile.model == "*":
+                if fallback is None:
+                    fallback = profile
+                continue
+            if fnmatch.fnmatch(product_key.lower(), profile.model.lower()):
+                return profile
+        return fallback
+
+    def __len__(self) -> int:
+        return len(self._profiles)
+
+
+# ── Module-level compatibility helpers ────────────────────────────────────────
+# These wrap a single module-level ProfileRegistry for callers (config_flow,
+# tests) that cannot easily receive a hass-scoped registry.  Do NOT use these
+# from integration setup code — use a per-hass ProfileRegistry via hass.data.
+
+_COMPAT_REGISTRY: ProfileRegistry = ProfileRegistry()
 
 
 def init_profiles(profiles_dir: Path) -> None:
-    """Load all profiles from *profiles_dir* into the module-level registry.
+    """Load profiles into the module-level compatibility registry.
 
-    Call this once at integration startup. Thread-safe for single-writer
-    scenarios (HA event loop is single-threaded).
+    .. note::
+        For HA integration setup, prefer creating a :class:`ProfileRegistry`
+        directly and storing it in ``hass.data[DOMAIN]``.
 
     Args:
         profiles_dir: Directory containing ``*.yaml`` profile files.
     """
-    global _REGISTRY
-    _REGISTRY = load_profiles_from_dir(profiles_dir)
-    _LOGGER.info(
-        "Profile registry ready: %d profiles loaded from %s",
-        len(_REGISTRY),
-        profiles_dir,
-    )
+    _COMPAT_REGISTRY.init(profiles_dir)
 
 
 def list_profiles() -> list[DeviceProfile]:
-    """Return all profiles in the registry.
-
-    Returns:
-        Shallow copy of the registry list (stable across mutations).
-    """
-    return list(_REGISTRY)
+    """Return all profiles in the module-level compatibility registry."""
+    return _COMPAT_REGISTRY.list_profiles()
 
 
 def find_profile(name: str) -> DeviceProfile | None:
-    """Find a profile by its exact display name.
-
-    Args:
-        name: Profile name as stored in config entry data.
-
-    Returns:
-        Matching :class:`DeviceProfile`, or ``None`` if not found.
-    """
-    for profile in _REGISTRY:
-        if profile.name == name:
-            return profile
-    return None
+    """Find a profile by name in the module-level compatibility registry."""
+    return _COMPAT_REGISTRY.find_profile(name)
 
 
 def find_profile_by_product_key(product_key: str) -> DeviceProfile | None:
-    """Find the best-matching profile for a device product key.
+    """Find the best-matching profile in the module-level compatibility registry."""
+    return _COMPAT_REGISTRY.find_profile_by_product_key(product_key)
 
-    Uses glob-style matching against each profile's ``model`` pattern.
-    The first match wins (alphabetical profile file order).
+
+def detect_profile_from_dps(dp_ids: set[str]) -> DeviceProfile | None:
+    """Find the best-matching profile in the module-level compatibility registry.
 
     Args:
-        product_key: Product key string from UDP device discovery.
+        dp_ids: Set of DP IDs observed from the device's DP_QUERY response.
 
     Returns:
-        Best-matching :class:`DeviceProfile`, or ``None`` if none match.
+        Best-matching :class:`DeviceProfile`, or ``None`` if no match.
     """
-    for profile in _REGISTRY:
-        if profile.model == "*":
-            continue  # Generic catch-all — only match as last resort
-        if fnmatch.fnmatch(product_key.lower(), profile.model.lower()):
-            return profile
-
-    # Fall back to the first wildcard profile
-    for profile in _REGISTRY:
-        if profile.model == "*":
-            return profile
-
-    return None
+    return _COMPAT_REGISTRY.detect_profile_from_dps(dp_ids)
