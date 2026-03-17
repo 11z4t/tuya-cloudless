@@ -576,9 +576,12 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # Tuya frames carry DPS nested under a "dps" key: {"dps": {"1": true}}
         dps: dict[str, Any] = payload.get("dps", {}) if isinstance(payload, dict) else {}
         if dps:
-            # Capture the DP IDs from the first response for auto-detection (PLAT-778).
-            if not self.detected_dp_ids:
-                self.detected_dp_ids = frozenset(dps.keys())
+            # Accumulate DP IDs seen across all frames for auto-detection (PLAT-778).
+            # Use union so DPs that arrive in later frames (e.g. a separate status
+            # push after the initial DP_QUERY response) are also captured.
+            new_ids = frozenset(dps.keys()) - self.detected_dp_ids
+            if new_ids:
+                self.detected_dp_ids |= new_ids
                 _LOGGER.debug(
                     "[%s] Auto-detected DP IDs: %s",
                     self._gw_id,
