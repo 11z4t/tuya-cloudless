@@ -225,8 +225,8 @@ class PairingServer:
             host = parsed.hostname or ""
             if host:
                 return f"http://{host}:{self._port}"
-        except Exception:  # broad catch intentional — URL resolution must never crash
-            pass
+        except Exception as exc:  # broad catch intentional — URL resolution must never crash
+            _LOGGER.debug("HA network helper unavailable, trying fallback: %s", exc)
 
         # 2. Fall back to hass.config.internal_url
         try:
@@ -236,8 +236,8 @@ class PairingServer:
                 host = parsed.hostname or ""
                 if host:
                     return f"http://{host}:{self._port}"
-        except Exception:  # broad catch intentional — URL resolution must never crash
-            pass
+        except Exception as exc:  # broad catch intentional — URL resolution must never crash
+            _LOGGER.debug("internal_url fallback failed: %s", exc)
 
         # 3. Use the machine's actual hostname as last resort
         import socket

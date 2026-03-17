@@ -242,8 +242,8 @@ class TuyaCloudlessConfigFlow(ConfigFlow, domain=DOMAIN):
                 from homeassistant.helpers.network import get_url
 
                 ha_base = get_url(self.hass, allow_internal=True, allow_external=False)
-            except Exception:  # broad catch — URL resolution must never crash config flow
-                pass
+            except Exception as exc:  # broad catch — URL resolution must never crash config flow
+                _LOGGER.debug("HA network helper unavailable in config flow: %s", exc)
 
         if not ha_base:
             # Can't determine HA address automatically — ask the user.
@@ -971,8 +971,8 @@ class TuyaCloudlessConfigFlow(ConfigFlow, domain=DOMAIN):
             host = urlparse(base).hostname or ""
             if host:
                 return f"http://{host}:{PAIRING_SERVER_PORT}"
-        except Exception:  # broad catch — must not crash config flow
-            pass
+        except Exception as exc:  # broad catch — must not crash config flow
+            _LOGGER.debug("HA network helper unavailable in _resolve_ha_base_url: %s", exc)
 
         # 2. hass.config.internal_url
         try:
@@ -981,8 +981,8 @@ class TuyaCloudlessConfigFlow(ConfigFlow, domain=DOMAIN):
                 host = urlparse(internal).hostname or ""
                 if host:
                     return f"http://{host}:{PAIRING_SERVER_PORT}"
-        except Exception:  # broad catch — must not crash config flow
-            pass
+        except Exception as exc:  # broad catch — must not crash config flow
+            _LOGGER.debug("internal_url fallback failed in _resolve_ha_base_url: %s", exc)
 
         # 3. Machine hostname
         import socket
