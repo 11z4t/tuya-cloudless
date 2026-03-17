@@ -122,8 +122,10 @@ class TuyaCloudlessCover(RestoreStateMixin, TuyaCloudlessEntity, CoverEntity):
             self._optimistic_open = False
             if self._spec.dp_position is not None:
                 self._optimistic_position = 0
-        # Fine restore from saved attributes (exact position / tilt)
-        last_state = await self.async_get_last_state()
+        # Fine restore from saved attributes (exact position / tilt).
+        # Use the cached State object from RestoreStateMixin to avoid a
+        # second async_get_last_state() I/O call.
+        last_state = self._restored_state_obj
         if last_state is not None:
             attrs = last_state.attributes
             raw_pos = attrs.get("current_position")

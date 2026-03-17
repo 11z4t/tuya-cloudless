@@ -23,19 +23,28 @@ class RestoreStateMixin(RestoreEntity):
     """Mixin that adds last-state restoration for Tuya Cloudless entities.
 
     Subclasses must call ``await super().async_added_to_hass()`` and then
-    optionally read ``self._restored_state`` to pre-populate optimistic
-    state before the first device push is received.
+    optionally read ``self._restored_state`` (state string) or
+    ``self._restored_state_obj`` (full State, includes attributes) to
+    pre-populate optimistic state before the first device push is received.
+
+    Using ``_restored_state_obj`` avoids a second ``async_get_last_state()``
+    call in platform subclasses that also need the saved attributes.
     """
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         """Initialise the mixin."""
         super().__init__(*args, **kwargs)
         self._restored_state: str | None = None
+        self._restored_state_obj: Any = None  # homeassistant.core.State | None
 
     async def async_added_to_hass(self) -> None:
         """Register with HA and restore last known state if available."""
         await super().async_added_to_hass()
         last_state = await self.async_get_last_state()
+        # Always set _restored_state_obj (even to None) so platforms can
+        # safely read it without an AttributeError when entities are
+        # instantiated via __new__ in tests or before __init__ runs.
+        self._restored_state_obj = last_state
         if last_state is not None:
             self._restored_state = last_state.state
 

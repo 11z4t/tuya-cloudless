@@ -106,8 +106,10 @@ class TuyaCloudlessFan(RestoreStateMixin, TuyaCloudlessEntity, FanEntity):
             self._optimistic_is_on = True
         elif self._restored_state == STATE_OFF:
             self._optimistic_is_on = False
-        # Fine restore from saved attributes
-        last_state = await self.async_get_last_state()
+        # Fine restore from saved attributes.
+        # Use the cached State object from RestoreStateMixin to avoid a
+        # second async_get_last_state() I/O call.
+        last_state = self._restored_state_obj
         if last_state is not None:
             attrs = last_state.attributes
             raw_pct = attrs.get("percentage")

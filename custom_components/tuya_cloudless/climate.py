@@ -151,8 +151,10 @@ class TuyaCloudlessClimate(RestoreStateMixin, TuyaCloudlessEntity, ClimateEntity
                     self._optimistic_hvac_mode = restored_mode
             except ValueError:
                 pass
-        # Restore target temperature from saved attributes
-        last_state = await self.async_get_last_state()
+        # Restore target temperature from saved attributes.
+        # Use the cached State object from RestoreStateMixin to avoid a
+        # second async_get_last_state() I/O call.
+        last_state = self._restored_state_obj
         if last_state is not None and self._spec.dp_temp_set is not None:
             raw_temp = last_state.attributes.get("temperature")
             if raw_temp is not None:
