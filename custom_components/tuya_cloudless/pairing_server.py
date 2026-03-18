@@ -1013,10 +1013,16 @@ class PairingRedirectView:
 
     Registered at ``/api/tuya_cloudless/pair/{flow_id}``.  Because this path
     lives on HA's own HTTP server, the browser hits it with the *same*
-    hostname/IP it used to reach HA.  The view reads ``request.url.host``
-    and redirects to ``http://{host}:{port}/?flow_id={flow_id}`` so the
-    pairing UI opens at the correct address regardless of whether the user
-    is on a local IP, mDNS name, or Nabu Casa proxy.
+    hostname/IP it used to reach HA.
+
+    When HA runs behind an HTTPS reverse proxy the incoming request carries an
+    ``X-Forwarded-Proto: https`` header set by the proxy.  In that case the
+    view redirects to the HA-hosted HTTPS pairing UI
+    (``/api/tuya_cloudless/pairing/?flow_id=…``) so the browser remains in a
+    secure context and Web Bluetooth is available.
+
+    Without HTTPS the view falls back to ``http://{host}:{port}/?flow_id=…``
+    (the standalone port-8099 server).
     """
 
     requires_auth = False
@@ -1027,9 +1033,19 @@ class PairingRedirectView:
         self._port = port
 
     async def get(self, request: web.Request, flow_id: str) -> web.Response:
-        """Redirect browser to the pairing server on the correct host."""
-        host = request.url.host or "homeassistant.local"
-        target = f"http://{host}:{self._port}/?flow_id={flow_id}"
+        """Redirect browser to the pairing UI on the correct host/scheme.
+
+        Checks ``X-Forwarded-Proto`` first so reverse-proxy HTTPS setups are
+        handled correctly even when ``external_url`` is not configured in HA.
+        """
+        proto = request.headers.get("X-Forwarded-Proto", request.url.scheme)
+        if proto == "https":
+            # Stay on HA's HTTPS server — the pairing UI is mirrored there.
+            # Using a relative redirect keeps the correct hostname automatically.
+            target = f"{_HA_PAIRING_PREFIX}/?flow_id={flow_id}"
+        else:
+            host = request.url.host or "homeassistant.local"
+            target = f"http://{host}:{self._port}/?flow_id={flow_id}"
         raise web.HTTPFound(location=target)
 
 

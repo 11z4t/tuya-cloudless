@@ -3,6 +3,21 @@
 All notable changes to Tuya Cloudless are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [0.5.3] — 2026-03-18
+
+### Fixed
+- `PairingRedirectView` now checks `X-Forwarded-Proto` header before redirecting.
+  When HA runs behind an HTTPS reverse proxy (nginx, Traefik, Caddy, etc.) the
+  browser request arrives at HA with `X-Forwarded-Proto: https`.  The redirect
+  view now sends the browser to the HA-hosted HTTPS pairing UI
+  (`/api/tuya_cloudless/pairing/`) instead of the HTTP port-8099 server, keeping
+  `isSecureContext = true` so Web Bluetooth works — even without `external_url`
+  configured in HA.
+
+### Testing
+- 4 new unit tests for `PairingRedirectView` (HTTPS redirect, HTTP fallback,
+  empty host, default port).
+
 ## [0.5.2] — 2026-03-18
 
 ### Fixed

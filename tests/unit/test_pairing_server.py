@@ -946,6 +946,8 @@ class TestPairingRedirectView:
 
         mock_request = MagicMock()
         mock_request.url.host = "192.168.1.50"
+        mock_request.url.scheme = "http"
+        mock_request.headers = {}
 
         with pytest.raises(web.HTTPFound) as exc_info:
             await view.get(mock_request, "my-flow-id")
@@ -961,11 +963,52 @@ class TestPairingRedirectView:
 
         mock_request = MagicMock()
         mock_request.url.host = ""
+        mock_request.url.scheme = "http"
+        mock_request.headers = {}
 
         with pytest.raises(web.HTTPFound) as exc_info:
             await view.get(mock_request, "flow-id")
 
         assert "homeassistant.local" in str(exc_info.value.location)
+
+    async def test_get_redirects_to_ha_https_ui_when_forwarded_proto_is_https(
+        self,
+    ) -> None:
+        """When X-Forwarded-Proto: https, redirect to the HA HTTPS pairing UI."""
+        from custom_components.tuya_cloudless.pairing_server import _HA_PAIRING_PREFIX
+
+        view = PairingRedirectView(port=8099)
+
+        mock_request = MagicMock()
+        mock_request.url.host = "ha.example.com"
+        mock_request.url.scheme = "http"  # HA sees HTTP internally
+        mock_request.headers = {"X-Forwarded-Proto": "https"}
+
+        with pytest.raises(web.HTTPFound) as exc_info:
+            await view.get(mock_request, "abc123")
+
+        location = str(exc_info.value.location)
+        assert _HA_PAIRING_PREFIX in location
+        assert "abc123" in location
+        # Must NOT redirect to port 8099
+        assert "8099" not in location
+
+    async def test_get_redirects_to_port_8099_when_no_https(self) -> None:
+        """Without HTTPS headers, redirect to the port-8099 server."""
+        view = PairingRedirectView(port=8099)
+
+        mock_request = MagicMock()
+        mock_request.url.host = "192.168.1.10"
+        mock_request.url.scheme = "http"
+        mock_request.headers = {}  # No X-Forwarded-Proto
+
+        with pytest.raises(web.HTTPFound) as exc_info:
+            await view.get(mock_request, "flow-xyz")
+
+        location = str(exc_info.value.location)
+        assert "192.168.1.10" in location
+        assert "8099" in location
+        assert "flow-xyz" in location
 
 
 # ── register_redirect_view ────────────────────────────────────────────────────
