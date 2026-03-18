@@ -10,6 +10,7 @@ const {
   isSupportedBrowser, hasWebBluetooth,
   isIOS, isAndroid, chromeIntentUrl,
   saveLastSsid, loadLastSsid, SSID_TTL_MS, SSID_STORAGE_KEY,
+  countUtf8Bytes,
 } = app;
 
 // ── PLAT-810 — Browser compatibility helpers ──────────────────────────────────
@@ -195,5 +196,49 @@ describe("chromeIntentUrl", () => {
     });
     const url = chromeIntentUrl();
     expect(url).toContain("scheme=http");
+  });
+});
+
+// ── countUtf8Bytes ─────────────────────────────────────────────────────────────
+
+describe("countUtf8Bytes", () => {
+  it("returns 0 for empty string", () => {
+    expect(countUtf8Bytes("")).toBe(0);
+  });
+
+  it("returns same as length for pure ASCII", () => {
+    expect(countUtf8Bytes("HomeNet")).toBe(7);
+    expect(countUtf8Bytes("a".repeat(32))).toBe(32);
+  });
+
+  it("counts multibyte characters correctly", () => {
+    // é = U+00E9 = 2 bytes in UTF-8
+    expect(countUtf8Bytes("Café")).toBe(5);  // C(1)+a(1)+f(1)+é(2) = 5
+    // Chinese character = 3 bytes
+    expect(countUtf8Bytes("家")).toBe(3);
+    // Emoji = 4 bytes (U+1F4F6 = ANTENNA BARS)
+    expect(countUtf8Bytes("📶")).toBe(4);
+  });
+
+  it("exactly 32 ASCII bytes passes the WiFi SSID limit", () => {
+    expect(countUtf8Bytes("a".repeat(32))).toBe(32);
+    expect(countUtf8Bytes("a".repeat(32))).not.toBeGreaterThan(32);
+  });
+
+  it("detects that an emoji SSID may exceed 32 bytes", () => {
+    // "Network" (7) + 7 emoji (28 bytes) = 35 bytes total — would fail
+    const ssid = "Net" + "📶".repeat(8);  // 3 + 32 = 35 bytes
+    expect(countUtf8Bytes(ssid)).toBeGreaterThan(32);
+  });
+
+  it("counts 63-char ASCII password as exactly 63 bytes", () => {
+    const pwd = "a".repeat(63);
+    expect(countUtf8Bytes(pwd)).toBe(63);
+  });
+
+  it("detects password exceeding 63 bytes with multibyte chars", () => {
+    // 32 ASCII + 16 two-byte chars = 32 + 32 = 64 bytes
+    const pwd = "a".repeat(32) + "é".repeat(16);
+    expect(countUtf8Bytes(pwd)).toBeGreaterThan(63);
   });
 });

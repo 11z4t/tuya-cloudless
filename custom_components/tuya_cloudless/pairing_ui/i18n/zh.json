@@ -27,7 +27,7 @@
   "footer_github": "GitHub",
   "footer_no_cloud": "无需云账户",
   "warn_no_ssid": "⚠ 请先输入 Wi-Fi 网络名称。",
-  "warn_invalid_ssid": "⚠ Invalid network name (max 32 characters, no control characters).",
+  "warn_invalid_ssid": "⚠ Invalid network name (max 32 bytes, no null characters).",
   "spin_scanning": "正在搜索 Tuya 设备…",
   "spin_connecting": "正在连接到 {name}…",
   "spin_handshake": "握手中…",
@@ -65,5 +65,6 @@
   "show_password": "Show password",
   "hide_password": "Hide password",
   "label_reveal_key": "Reveal",
-  "label_hide_key": "Hide"
+  "label_hide_key": "Hide",
+  "warn_invalid_password": "⚠ Password too long (max 63 bytes for WPA2)."
 }

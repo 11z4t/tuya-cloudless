@@ -486,7 +486,8 @@ function goToStep2() {
     errEl.focus();
     return;
   }
-  if (_ssid.includes("\x00") || _ssid.length > 32) {
+  // WiFi spec: SSID max 32 bytes (UTF-8). Check byte count, not JS .length (code units).
+  if (_ssid.includes("\x00") || countUtf8Bytes(_ssid) > 32) {
     errEl.className = "status-box status-warn";
     errEl.textContent = t("warn_invalid_ssid");
     errEl.setAttribute("tabindex", "-1");
@@ -495,6 +496,15 @@ function goToStep2() {
   }
   errEl.className = "status-box hidden";
   _pwd = document.getElementById("password").value;
+
+  // WPA2 PSK: password max 63 bytes (WiFi Alliance spec). Empty is OK (open network).
+  if (_pwd && countUtf8Bytes(_pwd) > 63) {
+    errEl.className = "status-box status-warn";
+    errEl.textContent = t("warn_invalid_password");
+    errEl.setAttribute("tabindex", "-1");
+    errEl.focus();
+    return;
+  }
 
   if (_pairMethod === PAIR_METHOD.WIFI_AP) {
     // WiFi AP: pair inline — stay on panel-wifi, show status below the button
@@ -693,6 +703,17 @@ function esc(s) {
   return String(s)
     .replace(/&/g, "&amp;").replace(/</g, "&lt;")
     .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+// Return the byte length of a string in UTF-8 encoding.
+// JavaScript .length counts UTF-16 code units; WiFi SSID/password limits are in bytes.
+function countUtf8Bytes(str) {
+  // TextEncoder is available in all modern browsers and Node.js
+  if (typeof TextEncoder !== "undefined") {
+    return new TextEncoder().encode(str).length;
+  }
+  // Fallback for environments without TextEncoder (e.g. old test runners)
+  return new Blob([str]).size;
 }
 
 // ── SSE ───────────────────────────────────────────────────────────────────────
@@ -1060,5 +1081,6 @@ if (typeof module !== "undefined") {
     saveLastSsid, loadLastSsid, SSID_TTL_MS, SSID_STORAGE_KEY,
     autoDetectDevices, showDeviceCard, selectDeviceWifiAp, selectDeviceBle,
     goToDevices, goToCredentials, showDone,
+    countUtf8Bytes,
   };
 }

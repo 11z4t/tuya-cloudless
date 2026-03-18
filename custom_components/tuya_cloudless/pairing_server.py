@@ -477,6 +477,15 @@ class PairingServer:
             SVG image response encoding ``ha_local_url()``, or 503 if the
             ``qrcode`` library is not installed.
         """
+        # Rate limit: QR generation is CPU-bound — 20/min per IP
+        client_ip = request.remote or "unknown"
+        if self._is_rate_limited(client_ip, max_requests=20, window=60.0):
+            return web.Response(
+                status=429,
+                text="Too Many Requests",
+                headers={"Retry-After": "3"},
+            )
+
         try:
             import io
 

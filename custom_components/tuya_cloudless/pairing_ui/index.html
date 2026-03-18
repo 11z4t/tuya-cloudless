@@ -481,7 +481,7 @@
         <label for="ssid" id="ssid-label">Network name (SSID)</label>
         <div class="ssid-row">
           <input type="text" id="ssid" spellcheck="false"
-                 inputmode="text" placeholder="My Home WiFi">
+                 inputmode="text" autocomplete="off" placeholder="My Home WiFi">
           <button class="wifi-scan-btn" id="btn-wifi-scan" type="button"
                   aria-label="Scan for networks">📡</button>
         </div>
@@ -497,8 +497,8 @@
         </div>
       </div>
 
-      <!-- Dedicated error div — never moved from here -->
-      <div id="s1-error" class="status-box hidden"></div>
+      <!-- Dedicated error div — role=alert so screen readers announce validation errors immediately -->
+      <div id="s1-error" class="status-box hidden" role="alert" aria-live="assertive"></div>
 
       <!-- WiFi AP inline pairing status (hidden on BLE path) -->
       <div id="wifi-ap-status" class="status-box hidden" role="status" aria-live="polite"></div>

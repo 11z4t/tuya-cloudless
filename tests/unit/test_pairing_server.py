@@ -1364,6 +1364,27 @@ class TestQrEndpoint:
         assert resp.status == 200
         assert "svg" in resp.content_type.lower()
 
+    async def test_qr_endpoint_rate_limited(self, server: PairingServer) -> None:
+        """QR endpoint returns 429 with Retry-After when per-IP rate limit (20/min) is exceeded."""
+        ts = TestServer(server._app)
+        cli = TestClient(ts)
+        await cli.start_server()
+        try:
+            # Pre-fill the rate limit bucket to just below capacity for QR (max=20)
+            now = time.monotonic()
+            server._rate_limit["127.0.0.1"] = [now] * 19
+
+            # 20th request should still succeed (503 if qrcode missing, but not 429)
+            resp = await cli.get("/api/provision/qr.svg")
+            assert resp.status in (200, 503)  # 503 if qrcode not installed, OK
+
+            # 21st request must be rate-limited
+            resp = await cli.get("/api/provision/qr.svg")
+            assert resp.status == 429
+            assert "Retry-After" in resp.headers
+        finally:
+            await cli.close()
+
 
 # ── Full activation response structure ───────────────────────────────────────
 
