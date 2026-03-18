@@ -116,7 +116,7 @@ function applyStrings() {
   el("step2-badge").textContent    = t("step2_badge");
   el("step2-desc").textContent     = t("step2_desc");
   el("step2-hint").textContent     = t("step2_hint");
-  el("btn-pair-label").innerHTML   = t("btn_scan");
+  el("btn-pair-label").textContent = t("btn_scan");
   el("step3-title").textContent    = t("step3_title");
   el("ha-flow-msg").textContent    = t("step3_ha_flow");
   el("btn-add-ha-label").textContent = t("btn_add_ha");
@@ -346,6 +346,20 @@ function showWifiDropdown(ssids, currentSsid) {
           const prev = item.previousElementSibling || dd.lastElementChild;
           if (prev) prev.focus();
         }
+        if (e.key === "PageDown") {
+          e.preventDefault();
+          const items = Array.from(dd.querySelectorAll("[tabindex='0']"));
+          const idx = items.indexOf(item);
+          const target = items[Math.min(idx + 5, items.length - 1)];
+          if (target) target.focus();
+        }
+        if (e.key === "PageUp") {
+          e.preventDefault();
+          const items = Array.from(dd.querySelectorAll("[tabindex='0']"));
+          const idx = items.indexOf(item);
+          const target = items[Math.max(idx - 5, 0)];
+          if (target) target.focus();
+        }
         if (e.key === "Escape")    { dd.classList.add("hidden"); document.getElementById("ssid").focus(); }
       });
       dd.appendChild(item);
@@ -568,7 +582,8 @@ function showDone(gw_id, local_key, ip_address) {
     // Accept IPv4 or IPv6 (link-local, global) — let HA validate the exact format
     const safeIp   = /^[a-f0-9:.\[\]%]{2,45}$/i.test(ip_address) ? ip_address : "";
     if (safeGwId && safeKey) {
-      const params = new URLSearchParams({ domain: "tuya_cloudless", gw_id: safeGwId, local_key: safeKey, ip_address: safeIp });
+      const params = new URLSearchParams({ domain: "tuya_cloudless", gw_id: safeGwId, local_key: safeKey });
+      if (safeIp) params.set("ip_address", safeIp);
       document.getElementById("btn-add-ha").href = "/config/integrations/add?" + params;
       document.getElementById("btn-add-ha").classList.remove("hidden");
     }
@@ -650,8 +665,10 @@ let _recvResolve = null;
 function onNotify(event) {
   const data = new Uint8Array(event.target.value.buffer);
   _recvChunks.push(data);
-  const chunkNo = data[0], total = data[1];
-  if (chunkNo + 1 === total && _recvResolve) {
+  // Trigger when all expected chunks have arrived, regardless of arrival order.
+  // reassemble() sorts by chunk index so out-of-order delivery is handled.
+  const total = data[1];
+  if (_recvChunks.length === total && _recvResolve) {
     const resolve = _recvResolve;
     _recvResolve = null;
     resolve([..._recvChunks]);
@@ -739,10 +756,12 @@ function listenForActivation(token) {
   }
   const es = new EventSource(EVENTS_URL);
   _currentEventSource = es;
+  const sseTimer = setTimeout(() => es.close(), SSE_TIMEOUT_MS);
   es.addEventListener("activated", (e) => {
     try {
       const d = JSON.parse(e.data);
       if ((!token || d.token === token || !d.token) && d.gw_id && d.local_key) {
+        clearTimeout(sseTimer);
         es.close();
         setPairStatus("status-success", t("success_activated"));
         dbg("Device activated: " + esc(d.gw_id) + " \u2713");
@@ -755,8 +774,7 @@ function listenForActivation(token) {
       }
     } catch (err) { dbg("SSE parse error: " + err.message); }
   });
-  es.onerror = () => es.close();
-  setTimeout(() => es.close(), SSE_TIMEOUT_MS);
+  es.onerror = () => { clearTimeout(sseTimer); es.close(); };
   return es;
 }
 
@@ -1102,6 +1120,6 @@ if (typeof module !== "undefined") {
     saveLastSsid, loadLastSsid, SSID_TTL_MS, SSID_STORAGE_KEY,
     autoDetectDevices, showDeviceCard, selectDeviceWifiAp, selectDeviceBle,
     goToDevices, goToCredentials, showDone,
-    countUtf8Bytes,
+    countUtf8Bytes, reassemble,
   };
 }

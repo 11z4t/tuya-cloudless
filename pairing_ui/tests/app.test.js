@@ -10,7 +10,7 @@ const {
   isSupportedBrowser, hasWebBluetooth,
   isIOS, isAndroid, chromeIntentUrl,
   saveLastSsid, loadLastSsid, SSID_TTL_MS, SSID_STORAGE_KEY,
-  countUtf8Bytes,
+  countUtf8Bytes, reassemble,
 } = app;
 
 // ── PLAT-810 — Browser compatibility helpers ──────────────────────────────────
@@ -240,5 +240,58 @@ describe("countUtf8Bytes", () => {
     // 32 ASCII + 16 two-byte chars = 32 + 32 = 64 bytes
     const pwd = "a".repeat(32) + "é".repeat(16);
     expect(countUtf8Bytes(pwd)).toBeGreaterThan(63);
+  });
+});
+
+// ── reassemble ────────────────────────────────────────────────────────────────
+// BLE chunks format: [chunk_index, total_chunks, ...payload_bytes]
+// reassemble() sorts by chunk index and concatenates payloads.
+
+describe("reassemble", () => {
+  function makeChunks(payloads) {
+    const total = payloads.length;
+    return payloads.map((payload, idx) => {
+      const chunk = new Uint8Array(2 + payload.length);
+      chunk[0] = idx;       // chunk index
+      chunk[1] = total;     // total chunks
+      chunk.set(payload, 2);
+      return chunk;
+    });
+  }
+
+  it("reassembles a single chunk correctly", () => {
+    const chunks = makeChunks([[0x55, 0xAA, 0x04]]);
+    const result = reassemble(chunks);
+    expect(Array.from(result)).toEqual([0x55, 0xAA, 0x04]);
+  });
+
+  it("reassembles in-order chunks", () => {
+    const chunks = makeChunks([[0x01, 0x02], [0x03, 0x04], [0x05, 0x06]]);
+    const result = reassemble(chunks);
+    expect(Array.from(result)).toEqual([0x01, 0x02, 0x03, 0x04, 0x05, 0x06]);
+  });
+
+  it("reassembles out-of-order chunks correctly", () => {
+    // Build chunks in order, then shuffle before reassembling
+    const chunks = makeChunks([[0xAA], [0xBB], [0xCC]]);
+    const shuffled = [chunks[2], chunks[0], chunks[1]]; // [CC, AA, BB]
+    const result = reassemble(shuffled);
+    // Should produce AA BB CC (sorted by index)
+    expect(Array.from(result)).toEqual([0xAA, 0xBB, 0xCC]);
+  });
+
+  it("handles reversed chunk order", () => {
+    const chunks = makeChunks([[0x10, 0x11], [0x20, 0x21], [0x30, 0x31]]);
+    const reversed = [chunks[2], chunks[1], chunks[0]];
+    const result = reassemble(reversed);
+    expect(Array.from(result)).toEqual([0x10, 0x11, 0x20, 0x21, 0x30, 0x31]);
+  });
+
+  it("produces correct byte count for multi-chunk payload", () => {
+    // 5 chunks of 18 bytes each = 90 bytes total
+    const payloads = Array.from({ length: 5 }, () => new Uint8Array(18).fill(0xff));
+    const chunks = makeChunks(payloads.map(p => Array.from(p)));
+    const result = reassemble(chunks);
+    expect(result.length).toBe(90);
   });
 });

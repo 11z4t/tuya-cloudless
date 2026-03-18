@@ -57,8 +57,9 @@ _LOGGER = logging.getLogger(__name__)
 #: Default TCP port the pairing server listens on
 PAIRING_SERVER_PORT: Final[int] = 8099
 
-#: Maximum seconds an activation result is kept in memory
-_RESULT_TTL_SECS: Final[float] = 300.0
+#: Maximum seconds an activation result is kept in memory (1 hour — covers
+#: users who step away briefly after pairing and return to complete HA setup)
+_RESULT_TTL_SECS: Final[float] = 3600.0
 
 #: Path to the static web UI assets (relative to this file)
 _UI_DIR: Final[Path] = Path(__file__).parent / "pairing_ui"
