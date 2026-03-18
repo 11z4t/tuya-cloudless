@@ -56,6 +56,8 @@
   "device_panel_desc": "Devices found nearby appear automatically. Or use Bluetooth to scan.",
   "looking_for_devices": "Looking for devices…",
   "no_devices_auto_found": "No Tuya devices found nearby. Use Bluetooth below, or put the device in pairing mode and try again.",
+  "scan_refresh": "更新",
+  "wifi_ap_in_progress": "ペアリングはすでに進行中です。しばらく待ってから再試行してください。",
   "pair_via_wifi_ap": "WiFi AP",
   "pair_via_ble": "Scan via Bluetooth",
   "wifi_ap_connecting": "Connecting to device AP…",

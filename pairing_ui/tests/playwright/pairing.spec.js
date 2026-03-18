@@ -803,6 +803,31 @@ test.describe("Full pairing flow", () => {
     await expect(page.locator("#pair-status")).toHaveClass(/status-error/);
     await expect(page.locator("#btn-pair")).toBeEnabled();
   });
+
+  test("BLE SSE timeout shows warning message and re-enables pair button", async ({ page }) => {
+    await setupRoutes(page);
+    // BLE mock with no activation payload — SSE "activated" never fires
+    await mockBle(page, null);
+    // Speed up all long timers (> 100 ms) so SSE_TIMEOUT_MS fires quickly
+    await page.addInitScript(() => {
+      const orig = window.setTimeout;
+      window.setTimeout = (fn, delay, ...args) =>
+        orig(fn, delay > 100 ? 50 : delay, ...args);
+    });
+
+    await loadPage(page);
+    await navigateToCredentials(page);
+    await page.locator("#ssid").click();
+    await page.locator("#ssid").fill("MyNet");
+    await page.locator("#btn-next").click();
+    await page.locator("#btn-pair").click();
+
+    // After timeout the error message should appear with status-warn
+    await expect(page.locator("#pair-status")).toBeVisible({ timeout: 5000 });
+    await expect(page.locator("#pair-status")).toHaveClass(/status-warn/);
+    // Pair button must be re-enabled so user can retry
+    await expect(page.locator("#btn-pair")).toBeEnabled({ timeout: 3000 });
+  });
 });
 
 // ── Tests: HA flow_id mode ────────────────────────────────────────────────────
@@ -1251,5 +1276,42 @@ test.describe("WiFi AP pairing flow", () => {
 
     // pair-status should be cleared / hidden
     await expect(page.locator("#pair-status")).toHaveClass(/hidden/);
+  });
+
+  test("POST 409 conflict shows friendly 'already in progress' message", async ({ page }) => {
+    await setupRoutes(page, { tuya_aps: [{ ssid: "SmartLife_AB12" }] });
+    await mockWifiApRoute(page, { postStatus: 409, sseEvent: null });
+    await loadPage(page);
+
+    await pairViaWifiApUi(page);
+
+    await expect(page.locator("#wifi-ap-status")).toBeVisible({ timeout: 3000 });
+    // Message should mention "in progress" or be an error (not the raw HTTP status code)
+    await expect(page.locator("#wifi-ap-status")).not.toContainText("409");
+    await expect(page.locator("#wifi-ap-status")).toContainText("progress");
+    await expect(page.locator("#btn-next")).toBeEnabled();
+  });
+
+  test("Refresh scan button clears old cards and re-runs autoDetectDevices", async ({ page }) => {
+    // Initial scan: empty
+    await setupRoutes(page);
+    await loadPage(page);
+    await expect(page.locator(".device-card")).toHaveCount(0);
+
+    // Now mock quick-scan to return a device
+    await page.route(BASE + "/api/provision/quick-scan", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ tuya_aps: [{ ssid: "SmartLife_CC33" }] }),
+      })
+    );
+
+    // Click refresh
+    await page.locator("#btn-refresh-scan").click();
+    await page.waitForSelector(".device-card");
+
+    await expect(page.locator(".device-card")).toHaveCount(1);
+    await expect(page.locator(".device-card").first()).toContainText("SmartLife_CC33");
   });
 });

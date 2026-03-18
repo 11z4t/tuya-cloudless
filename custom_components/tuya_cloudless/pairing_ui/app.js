@@ -144,6 +144,7 @@ function applyStrings() {
   if (el("devices-desc"))          el("devices-desc").textContent          = t("device_panel_desc");
   if (el("devices-scanning-label")) el("devices-scanning-label").textContent = t("looking_for_devices");
   if (el("btn-ble-scan-label"))    el("btn-ble-scan-label").textContent    = t("pair_via_ble");
+  if (el("btn-refresh-scan-label")) el("btn-refresh-scan-label").textContent = t("scan_refresh") || "Refresh";
   // Re-apply btn-pwd-toggle aria-label in the current show/hide state
   const pwdToggle = document.getElementById("btn-pwd-toggle");
   if (pwdToggle) {
@@ -407,6 +408,17 @@ function showDeviceCard(ssid) {
 async function autoDetectDevices() {
   const scanEl = document.getElementById("devices-scanning");
   const noDevEl = document.getElementById("no-devices-msg");
+
+  // Clear any previously rendered device cards so a refresh starts clean
+  const list = document.getElementById("device-list");
+  if (list) {
+    Array.from(list.children).forEach(child => {
+      if (child.id !== "devices-scanning") list.removeChild(child);
+    });
+  }
+  if (noDevEl) noDevEl.className = "status-box status-info hidden";
+  if (scanEl) scanEl.style.display = "";  // show scanning indicator
+
   try {
     const r = await fetch(_PROVISION_BASE + "/quick-scan");
     if (!r.ok) throw new Error("scan HTTP " + r.status);
@@ -796,7 +808,14 @@ function listenForActivation(token) {
   }
   const es = new EventSource(EVENTS_URL);
   _currentEventSource = es;
-  const sseTimer = setTimeout(() => es.close(), SSE_TIMEOUT_MS);
+  const sseTimer = setTimeout(() => {
+    es.close();
+    // Show timeout error so the user isn't left staring at a forever-spinner
+    setPairStatus("status-warn", "\u23F1 " + esc(t("wifi_ap_timeout")));
+    const pairBtn = document.getElementById("btn-pair");
+    if (pairBtn) pairBtn.disabled = false;
+    dbg("BLE pairing: activation timeout after " + (SSE_TIMEOUT_MS / 1000) + "s");
+  }, SSE_TIMEOUT_MS);
   es.addEventListener("activated", (e) => {
     try {
       const d = JSON.parse(e.data);
@@ -913,22 +932,35 @@ async function pairViaWifiAp() {
     } finally {
       clearTimeout(fetchTimeout);
     }
-    if (!r.ok) { wifiApCleanup(true); throw new Error("wifi-ap-pair HTTP " + r.status); }
+    if (!r.ok) {
+      const msg = r.status === 409
+        ? (t("wifi_ap_in_progress") || "Pairing already in progress — wait and retry.")
+        : "wifi-ap-pair HTTP " + r.status;
+      wifiApCleanup(true);
+      throw new Error(msg);
+    }
     const data = await r.json();
     token = data.token;
 
-    // After SSE_TIMEOUT_MS with no activation, show timeout error and re-enable button
-    wifiApTimer = setTimeout(() => {
-      wifiApCleanup(true);
-      setWifiApStatus("status-error", "\u274C " + esc(t("wifi_ap_timeout") || t("wifi_ap_error")));
-      dbg("WiFi AP pair: activation timeout after " + (SSE_TIMEOUT_MS / 1000) + "s");
-    }, SSE_TIMEOUT_MS);
+    // After SSE_TIMEOUT_MS with no activation, show timeout error and re-enable button.
+    // Guard: don't start if onerror already ran before POST completed.
+    if (!_wifiApDone) {
+      wifiApTimer = setTimeout(() => {
+        wifiApCleanup(true);
+        setWifiApStatus("status-error", "\u274C " + esc(t("wifi_ap_timeout") || t("wifi_ap_error")));
+        dbg("WiFi AP pair: activation timeout after " + (SSE_TIMEOUT_MS / 1000) + "s");
+      }, SSE_TIMEOUT_MS);
+    }
 
     showWifiApSpinner(t("wifi_ap_waiting"));
     dbg("WiFi AP pair: waiting for activation SSE\u2026");
   } catch (err) {
+    // AbortError means the 15-second fetch watchdog fired — show a friendly message
+    const msg = err.name === "AbortError"
+      ? (t("wifi_ap_timeout") || "Pairing request timed out — please retry.")
+      : err.message;
     wifiApCleanup(false);
-    setWifiApStatus("status-error", "\u274C " + esc(err.message));
+    setWifiApStatus("status-error", "\u274C " + esc(msg));
     dbg("WiFi AP pair error: " + err.message);
     btn.disabled = false;
   }
@@ -1059,6 +1091,7 @@ function copyShareUrl() {
   document.getElementById("btn-copy").addEventListener("click", copyShareUrl);
   document.getElementById("btn-ble-scan").addEventListener("click", selectDeviceBle);
   document.getElementById("btn-pair-another").addEventListener("click", goToDevices);
+  document.getElementById("btn-refresh-scan").addEventListener("click", autoDetectDevices);
 
   // Password show/hide toggle
   document.getElementById("btn-pwd-toggle").addEventListener("click", function() {

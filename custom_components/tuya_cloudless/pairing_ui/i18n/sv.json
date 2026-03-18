@@ -57,6 +57,8 @@
   "device_panel_desc": "Enheter i närheten visas automatiskt. Eller använd Bluetooth för att söka.",
   "looking_for_devices": "Söker efter enheter…",
   "no_devices_auto_found": "Inga Tuya-enheter hittades. Använd Bluetooth nedan, eller sätt enheten i parkopplingsläge och försök igen.",
+  "scan_refresh": "Uppdatera",
+  "wifi_ap_in_progress": "Parkoppling pågår redan — vänta en stund och försök igen.",
   "pair_via_wifi_ap": "WiFi AP",
   "pair_via_ble": "Sök via Bluetooth",
   "wifi_ap_connecting": "Ansluter till enhetens AP…",
