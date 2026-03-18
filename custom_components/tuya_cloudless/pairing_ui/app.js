@@ -480,7 +480,16 @@ function goToDevices() {
   const ssidEl = document.getElementById("ssid");
   const pwdEl  = document.getElementById("password");
   if (ssidEl) ssidEl.value = "";
-  if (pwdEl)  pwdEl.value  = "";
+  if (pwdEl) {
+    pwdEl.value = "";
+    // Reset password visibility to hidden so it's not exposed on the next visit
+    pwdEl.type = "password";
+    const toggle = document.getElementById("btn-pwd-toggle");
+    if (toggle) {
+      toggle.setAttribute("aria-pressed", "false");
+      toggle.setAttribute("aria-label", t("show_password"));
+    }
+  }
   document.getElementById("panel-wifi").classList.add("hidden");
   document.getElementById("panel-ble").classList.add("hidden");
   document.getElementById("panel-done").classList.add("hidden");
@@ -945,6 +954,9 @@ async function startPairing() {
 
   } catch (err) {
     if (typeof _cleanupNotify === "function") _cleanupNotify();
+    // Disconnect GATT server if it was opened — Bluetooth is an exclusive resource
+    // and leaving the connection open blocks other apps and the next pairing attempt.
+    if (server && server.connected) server.disconnect();
     es.close();
     if (err.name === "NotFoundError" || err.name === "AbortError") {
       setPairStatus("status-warn", t("warn_scan_cancelled"));

@@ -34,6 +34,8 @@ async function setupRoutes(page, opts = {}) {
     events_url: BASE + "/api/provision/events",
   };
   const ssids = opts.ssids ?? ["HomeNet", "GuestNet", "WorkNet"];
+  // tuya_aps: Tuya devices found in AP mode — empty by default (no devices nearby)
+  const tuyaAps = opts.tuya_aps ?? [];
 
   // Serve the HTML page (matches / with or without query params)
   const htmlBody = fs.readFileSync(path.join(UI_DIR, "index.html"));
@@ -84,6 +86,11 @@ async function setupRoutes(page, opts = {}) {
   // Mock QR endpoint
   await page.route(BASE + "/api/provision/qr.svg", (route) =>
     route.fulfill({ status: 503, body: "" })
+  );
+
+  // Mock /api/provision/quick-scan (auto device discovery — no Tuya APs by default)
+  await page.route(BASE + "/api/provision/quick-scan", (route) =>
+    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ tuya_aps: tuyaAps }) })
   );
 }
 
@@ -223,31 +230,52 @@ async function loadPage(page) {
   await page.waitForFunction(() => document.title !== "Tuya Cloudless — Pair Device" || document.getElementById("step1-title").textContent !== "");
 }
 
+/**
+ * After loadPage(), the device discovery panel (#panel-devices) is shown first.
+ * Click the BLE scan button to navigate to the WiFi credentials panel (#panel-wifi).
+ */
+async function navigateToCredentials(page) {
+  await page.locator("#btn-ble-scan").click();
+  await page.waitForSelector("#panel-wifi:not(.hidden)");
+}
+
 // ── Tests: Step 1 — WiFi form ─────────────────────────────────────────────────
 
 test.describe("Step 1 — WiFi credentials form", () => {
-  test("page loads with WiFi panel visible and BLE panel hidden", async ({ page }) => {
+  test("page loads with device discovery panel visible, WiFi panel hidden", async ({ page }) => {
     await setupRoutes(page);
     await loadPage(page);
 
-    await expect(page.locator("#panel-wifi")).toBeVisible();
+    await expect(page.locator("#panel-devices")).toBeVisible();
+    await expect(page.locator("#panel-wifi")).toBeHidden();
     await expect(page.locator("#panel-ble")).toBeHidden();
     await expect(page.locator("#panel-done")).toBeHidden();
   });
 
-  test("step counter shows STEP 1 OF 2", async ({ page }) => {
+  test("clicking BLE scan button navigates to WiFi credentials panel", async ({ page }) => {
+    await setupRoutes(page);
+    await loadPage(page);
+
+    await navigateToCredentials(page);
+
+    await expect(page.locator("#panel-devices")).toBeHidden();
+    await expect(page.locator("#panel-wifi")).toBeVisible();
+    await expect(page.locator("#panel-ble")).toBeHidden();
+  });
+
+  test("step counter shows STEP 1 OF 2 on device panel", async ({ page }) => {
     await setupRoutes(page);
     await loadPage(page);
 
     const counter = page.locator("#step-counter");
     await expect(counter).toBeVisible();
     await expect(counter).toContainText("1");
-    await expect(counter).toContainText("2");
   });
 
   test("clicking Next without SSID shows error", async ({ page }) => {
     await setupRoutes(page);
     await loadPage(page);
+    await navigateToCredentials(page);
 
     // SSID field is readonly+empty by default — just click Next to trigger validation
     await page.locator("#btn-next").click();
@@ -257,11 +285,11 @@ test.describe("Step 1 — WiFi credentials form", () => {
     await expect(page.locator("#panel-ble")).toBeHidden();
   });
 
-  test("entering SSID and clicking Next advances to step 2", async ({ page }) => {
+  test("entering SSID and clicking Next advances to BLE panel", async ({ page }) => {
     await setupRoutes(page);
     await loadPage(page);
+    await navigateToCredentials(page);
 
-    // Trigger focus to remove readonly
     await page.locator("#ssid").click();
     await page.locator("#ssid").fill("MyHomeNetwork");
     await page.locator("#btn-next").click();
@@ -279,6 +307,7 @@ test.describe("WiFi scan dropdown", () => {
   test("scan button fetches networks and shows dropdown", async ({ page }) => {
     await setupRoutes(page, { ssids: ["HomeNet", "GuestNet", "WorkNet"] });
     await loadPage(page);
+    await navigateToCredentials(page);
 
     await expect(page.locator("#wifi-dropdown")).toBeHidden();
     await page.locator("#btn-wifi-scan").click();
@@ -294,6 +323,7 @@ test.describe("WiFi scan dropdown", () => {
   test("clicking a network fills the SSID field and hides dropdown", async ({ page }) => {
     await setupRoutes(page, { ssids: ["HomeNet", "OfficeNet"] });
     await loadPage(page);
+    await navigateToCredentials(page);
 
     await page.locator("#btn-wifi-scan").click();
     await page.locator(".wifi-option", { hasText: "OfficeNet" }).click();
@@ -305,6 +335,7 @@ test.describe("WiFi scan dropdown", () => {
   test("empty scan result shows 'No networks found'", async ({ page }) => {
     await setupRoutes(page, { ssids: [] });
     await loadPage(page);
+    await navigateToCredentials(page);
 
     await page.locator("#btn-wifi-scan").click();
     await expect(page.locator(".wifi-option.muted")).toBeVisible();
@@ -314,6 +345,7 @@ test.describe("WiFi scan dropdown", () => {
   test("clicking outside dropdown closes it", async ({ page }) => {
     await setupRoutes(page, { ssids: ["HomeNet"] });
     await loadPage(page);
+    await navigateToCredentials(page);
 
     await page.locator("#btn-wifi-scan").click();
     await expect(page.locator("#wifi-dropdown")).toBeVisible();
@@ -330,6 +362,7 @@ test.describe("WiFi dropdown keyboard navigation", () => {
   test("ArrowDown wraps from last item to first", async ({ page }) => {
     await setupRoutes(page, { ssids: ["Net-A", "Net-B", "Net-C"] });
     await loadPage(page);
+    await navigateToCredentials(page);
 
     await page.locator("#btn-wifi-scan").click();
     await expect(page.locator("#wifi-dropdown")).toBeVisible();
@@ -348,6 +381,7 @@ test.describe("WiFi dropdown keyboard navigation", () => {
   test("ArrowUp wraps from first item to last", async ({ page }) => {
     await setupRoutes(page, { ssids: ["Net-A", "Net-B", "Net-C"] });
     await loadPage(page);
+    await navigateToCredentials(page);
 
     await page.locator("#btn-wifi-scan").click();
     const options = page.locator(".wifi-option[tabindex='0']");
@@ -360,6 +394,7 @@ test.describe("WiFi dropdown keyboard navigation", () => {
   test("Escape closes dropdown and returns focus to SSID input", async ({ page }) => {
     await setupRoutes(page, { ssids: ["HomeNet"] });
     await loadPage(page);
+    await navigateToCredentials(page);
 
     await page.locator("#btn-wifi-scan").click();
     await expect(page.locator("#wifi-dropdown")).toBeVisible();
@@ -371,6 +406,7 @@ test.describe("WiFi dropdown keyboard navigation", () => {
   test("Enter key selects focused item", async ({ page }) => {
     await setupRoutes(page, { ssids: ["Net-A", "Net-B"] });
     await loadPage(page);
+    await navigateToCredentials(page);
 
     await page.locator("#btn-wifi-scan").click();
     const options = page.locator(".wifi-option[tabindex='0']");
@@ -617,6 +653,7 @@ test.describe("Full pairing flow", () => {
     await setupRoutes(page);
     await mockBle(page, ACTIVATION);
     await loadPage(page);
+    await navigateToCredentials(page);
 
     // Step 1: enter WiFi credentials
     await page.locator("#ssid").click();
@@ -646,6 +683,7 @@ test.describe("Full pairing flow", () => {
     await setupRoutes(page);
     await mockBle(page, ACTIVATION);
     await loadPage(page);
+    await navigateToCredentials(page);
 
     await page.locator("#ssid").click();
     await page.locator("#ssid").fill("MyNet");
@@ -665,6 +703,7 @@ test.describe("Full pairing flow", () => {
     await setupRoutes(page);
     await mockBle(page, ACTIVATION);
     await loadPage(page);
+    await navigateToCredentials(page);
 
     await page.locator("#ssid").click();
     await page.locator("#ssid").fill("SavedNet");
@@ -703,6 +742,7 @@ test.describe("Full pairing flow", () => {
     });
 
     await loadPage(page);
+    await navigateToCredentials(page);
     await page.locator("#ssid").click();
     await page.locator("#ssid").fill("MyNet");
     await page.locator("#btn-next").click();
@@ -732,6 +772,7 @@ test.describe("Full pairing flow", () => {
     });
 
     await loadPage(page);
+    await navigateToCredentials(page);
     await page.locator("#ssid").click();
     await page.locator("#ssid").fill("MyNet");
     await page.locator("#btn-next").click();
@@ -764,6 +805,8 @@ test.describe("HA flow_id mode", () => {
     await page.waitForFunction(() =>
       document.getElementById("step1-title").textContent !== ""
     );
+    await page.locator("#btn-ble-scan").click();
+    await page.waitForSelector("#panel-wifi:not(.hidden)");
 
     await page.locator("#ssid").click();
     await page.locator("#ssid").fill("FlowNet");
@@ -791,6 +834,7 @@ test.describe("HTTPS warning panel", () => {
     });
 
     await loadPage(page);
+    await navigateToCredentials(page);
 
     // Navigate to step 2 (BLE panel)
     await page.locator("#ssid").click();
@@ -810,6 +854,7 @@ test.describe("HTTPS warning panel", () => {
     });
 
     await loadPage(page);
+    await navigateToCredentials(page);
 
     // Navigate to BLE panel
     await page.locator("#ssid").click();
@@ -836,6 +881,7 @@ test.describe("HTTPS warning panel", () => {
     });
 
     await loadPage(page);
+    await navigateToCredentials(page);
 
     await page.locator("#ssid").click();
     await page.locator("#ssid").fill("TestNet");
@@ -845,5 +891,96 @@ test.describe("HTTPS warning panel", () => {
     await expect(page.locator("#warn-https")).toBeHidden();
     // btn-pair enabled (assuming bluetooth stub present — no warn-browser either)
     await expect(page.locator("#btn-pair")).toBeEnabled();
+  });
+});
+
+// ── Tests: Device discovery panel ────────────────────────────────────────────
+
+test.describe("Device discovery panel", () => {
+  test("panel-devices is shown on page load", async ({ page }) => {
+    await setupRoutes(page);
+    await loadPage(page);
+
+    await expect(page.locator("#panel-devices")).toBeVisible();
+    await expect(page.locator("#panel-wifi")).toBeHidden();
+  });
+
+  test("Tuya AP device card appears when quick-scan returns results", async ({ page }) => {
+    await setupRoutes(page, { tuya_aps: [{ ssid: "SmartLife_AB12" }] });
+    await loadPage(page);
+
+    await expect(page.locator(".device-card")).toBeVisible({ timeout: 3000 });
+    await expect(page.locator(".device-card")).toContainText("SmartLife_AB12");
+  });
+
+  test("no device card when quick-scan returns empty", async ({ page }) => {
+    await setupRoutes(page, { tuya_aps: [] });
+    await loadPage(page);
+
+    await expect(page.locator(".device-card")).not.toBeVisible({ timeout: 2000 });
+  });
+
+  test("BLE scan button navigates to credentials panel", async ({ page }) => {
+    await setupRoutes(page);
+    await loadPage(page);
+
+    await page.locator("#btn-ble-scan").click();
+
+    await expect(page.locator("#panel-devices")).toBeHidden();
+    await expect(page.locator("#panel-wifi")).toBeVisible();
+  });
+
+  test("Back button from credentials returns to device panel", async ({ page }) => {
+    await setupRoutes(page);
+    await loadPage(page);
+    await navigateToCredentials(page);
+
+    await expect(page.locator("#panel-wifi")).toBeVisible();
+    await page.locator("#btn-back").click();
+    await expect(page.locator("#panel-devices")).toBeVisible();
+    await expect(page.locator("#panel-wifi")).toBeHidden();
+  });
+});
+
+// ── Tests: Password visibility reset ─────────────────────────────────────────
+
+test.describe("Password visibility", () => {
+  test("password field resets to hidden when navigating back to device panel", async ({ page }) => {
+    await setupRoutes(page);
+    await loadPage(page);
+    await navigateToCredentials(page);
+
+    // Show password
+    await page.locator("#btn-pwd-toggle").click();
+    await expect(page.locator("#password")).toHaveAttribute("type", "text");
+    await expect(page.locator("#btn-pwd-toggle")).toHaveAttribute("aria-pressed", "true");
+
+    // Navigate back to device panel
+    await page.locator("#btn-back").click();
+    await expect(page.locator("#panel-devices")).toBeVisible();
+
+    // Navigate to credentials again
+    await navigateToCredentials(page);
+
+    // Password field should be reset to hidden
+    await expect(page.locator("#password")).toHaveAttribute("type", "password");
+    await expect(page.locator("#btn-pwd-toggle")).toHaveAttribute("aria-pressed", "false");
+  });
+
+  test("password toggle updates aria-pressed correctly", async ({ page }) => {
+    await setupRoutes(page);
+    await loadPage(page);
+    await navigateToCredentials(page);
+
+    // Initial state: hidden
+    await expect(page.locator("#btn-pwd-toggle")).toHaveAttribute("aria-pressed", "false");
+
+    // Show
+    await page.locator("#btn-pwd-toggle").click();
+    await expect(page.locator("#btn-pwd-toggle")).toHaveAttribute("aria-pressed", "true");
+
+    // Hide again
+    await page.locator("#btn-pwd-toggle").click();
+    await expect(page.locator("#btn-pwd-toggle")).toHaveAttribute("aria-pressed", "false");
   });
 });

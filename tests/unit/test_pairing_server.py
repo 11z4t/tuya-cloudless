@@ -259,6 +259,24 @@ class TestGetResult:
         s._results["old_tok"] = old
         assert s.get_result("old_tok") is None
 
+    def test_result_survives_within_ttl(self) -> None:
+        """Result should remain accessible for the full 1-hour TTL."""
+        from custom_components.tuya_cloudless.pairing_server import _RESULT_TTL_SECS
+
+        s = PairingServer(_make_hass(), port=0)
+        r = ActivationResult(gw_id="g", product_key="", local_key="k", ip_address="")
+        # Simulate result stored 59 minutes ago — still within TTL
+        almost_expired = time.monotonic() - (_RESULT_TTL_SECS - 60)
+        object.__setattr__(r, "timestamp", almost_expired)
+        s._results["tok_alive"] = r
+        assert s.get_result("tok_alive") is r
+
+    def test_result_ttl_is_one_hour(self) -> None:
+        """_RESULT_TTL_SECS must be 3600 — users may take up to an hour to complete HA setup."""
+        from custom_components.tuya_cloudless.pairing_server import _RESULT_TTL_SECS
+
+        assert _RESULT_TTL_SECS == 3600.0
+
 
 # ── CSRF protection (PLAT-725) ────────────────────────────────────────────────
 
