@@ -74,5 +74,6 @@
   "label_hide_key": "Hide",
   "warn_invalid_password": "⚠ Password too long (max 63 bytes for WPA2).",
   "err_sse_lost": "Verbinding verbroken — probeer opnieuw.",
-  "err_pair_fail": "Apparaat heeft WiFi-configuratie geweigerd. Controleer de gegevens en probeer opnieuw."
+  "err_pair_fail": "Apparaat heeft WiFi-configuratie geweigerd. Controleer de gegevens en probeer opnieuw.",
+  "wifi_ap_nmcli_missing": "WiFi-besturing niet beschikbaar — nmcli is niet geïnstalleerd op deze Home Assistant-host."
 }

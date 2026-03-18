@@ -1493,4 +1493,47 @@ test.describe("WiFi AP pairing flow", () => {
     // wifi-ap-status should be cleared (not showing the previous error)
     await expect(page.locator("#wifi-ap-status")).toHaveClass(/hidden/);
   });
+
+  test("503 nmcli-unavailable shows friendly error and re-enables pair button", async ({ page }) => {
+    await setupRoutes(page, { tuya_aps: [{ ssid: "SmartLife_AB12" }] });
+    // Mock wifi-ap-pair to return 503 (nmcli not installed)
+    await page.route(BASE + "/api/provision/wifi-ap-pair", (route) =>
+      route.fulfill({
+        status: 503,
+        contentType: "text/plain",
+        body: "nmcli is not available on this host",
+      })
+    );
+    await loadPage(page);
+
+    await pairViaWifiApUi(page);
+
+    // Should show an error (not a generic HTTP status string)
+    await expect(page.locator("#wifi-ap-status")).toBeVisible({ timeout: 3000 });
+    await expect(page.locator("#wifi-ap-status")).toHaveClass(/status-error/);
+    // Should contain friendly nmcli message (from wifi_ap_nmcli_missing i18n key)
+    await expect(page.locator("#wifi-ap-status")).not.toContainText("HTTP 503");
+    // Pair button re-enabled so user can retry
+    await expect(page.locator("#btn-next")).toBeEnabled();
+  });
+
+  test("WiFi scan error closes dropdown instead of showing misleading empty state", async ({ page }) => {
+    await setupRoutes(page, { tuya_aps: [{ ssid: "SmartLife_AB12" }] });
+    await loadPage(page);
+
+    // Navigate to credentials panel
+    await page.locator(".device-card").first().click();
+    await page.waitForSelector("#panel-wifi:not(.hidden)");
+
+    // Mock wifi-scan to fail
+    await page.route(BASE + "/api/provision/wifi-scan", (route) =>
+      route.fulfill({ status: 500, body: "Internal Server Error" })
+    );
+
+    await page.locator("#btn-wifi-scan").click();
+
+    // Dropdown should remain hidden on error (not show "No networks found")
+    await page.waitForTimeout(500);
+    await expect(page.locator("#wifi-dropdown")).toHaveClass(/hidden/);
+  });
 });

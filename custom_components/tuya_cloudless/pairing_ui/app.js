@@ -309,7 +309,12 @@ async function scanWifi() {
     showWifiDropdown(ssids, current);
   } catch (err) {
     dbg("WiFi scan error: " + err.message);
-    showWifiDropdown([], null);
+    // Close dropdown on error — showing "No networks found" would be misleading
+    // when the actual cause is a network or server error, not an empty scan result.
+    const dd = document.getElementById("wifi-dropdown");
+    if (dd) { dd.classList.add("hidden"); }
+    const scanBtnEl = document.getElementById("btn-wifi-scan");
+    if (scanBtnEl) scanBtnEl.setAttribute("aria-expanded", "false");
   } finally {
     btn.disabled = false;
   }
@@ -954,7 +959,9 @@ async function pairViaWifiAp() {
     if (!r.ok) {
       const msg = r.status === 409
         ? (t("wifi_ap_in_progress") || "Pairing already in progress — wait and retry.")
-        : "wifi-ap-pair HTTP " + r.status;
+        : r.status === 503
+          ? (t("wifi_ap_nmcli_missing") || "WiFi control unavailable — nmcli is not installed on the HA host.")
+          : "wifi-ap-pair HTTP " + r.status;
       wifiApCleanup(true);
       throw new Error(msg);
     }
@@ -1206,7 +1213,7 @@ function copyShareUrl() {
           "<circle cx='12' cy='12' r='10' stroke='currentColor' stroke-width='2'/>" +
           "<circle cx='12' cy='12' r='4' fill='currentColor'/>" +
           "</svg>" +
-          (t("open_in_chrome") || "Open in Chrome");
+          esc(t("open_in_chrome") || "Open in Chrome");
         document.getElementById("warn-browser").appendChild(btn);
         // Fallback note shown after a short delay if Chrome did not open.
         btn.addEventListener("click", () => {

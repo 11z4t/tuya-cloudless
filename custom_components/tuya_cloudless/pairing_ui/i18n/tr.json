@@ -74,5 +74,6 @@
   "label_hide_key": "Hide",
   "warn_invalid_password": "⚠ Password too long (max 63 bytes for WPA2).",
   "err_sse_lost": "Bağlantı kesildi — lütfen tekrar deneyin.",
-  "err_pair_fail": "Cihaz WiFi yapılandırmasını reddetti. Kimlik bilgilerini kontrol edip tekrar deneyin."
+  "err_pair_fail": "Cihaz WiFi yapılandırmasını reddetti. Kimlik bilgilerini kontrol edip tekrar deneyin.",
+  "wifi_ap_nmcli_missing": "WiFi control unavailable — nmcli is not installed on this Home Assistant host."
 }

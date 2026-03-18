@@ -74,5 +74,6 @@
   "label_hide_key": "Hide",
   "warn_invalid_password": "⚠ Password too long (max 63 bytes for WPA2).",
   "err_sse_lost": "Forbindelsen mistet — prøv igen.",
-  "err_pair_fail": "Enheden afviste WiFi-konfigurationen. Tjek legitimationsoplysningerne og prøv igen."
+  "err_pair_fail": "Enheden afviste WiFi-konfigurationen. Tjek legitimationsoplysningerne og prøv igen.",
+  "wifi_ap_nmcli_missing": "WiFi-kontrol utilgængelig — nmcli er ikke installeret på denne Home Assistant-vært."
 }

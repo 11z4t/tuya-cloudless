@@ -74,5 +74,6 @@
   "label_hide_key": "Hide",
   "warn_invalid_password": "⚠ Password too long (max 63 bytes for WPA2).",
   "err_sse_lost": "Spojení ztraceno — zkuste to znovu.",
-  "err_pair_fail": "Zařízení odmítlo konfiguraci WiFi. Zkontrolujte přihlašovací údaje a zkuste to znovu."
+  "err_pair_fail": "Zařízení odmítlo konfiguraci WiFi. Zkontrolujte přihlašovací údaje a zkuste to znovu.",
+  "wifi_ap_nmcli_missing": "Ovládání WiFi není dostupné — nmcli není nainstalováno na tomto hostu Home Assistant."
 }

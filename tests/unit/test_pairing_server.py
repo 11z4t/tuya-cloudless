@@ -741,6 +741,17 @@ class TestQuickScan:
 class TestWifiApPair:
     """Tests for POST /api/provision/wifi-ap-pair."""
 
+    @pytest.fixture(autouse=True)
+    def _mock_nmcli_available(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Pretend nmcli is installed for all tests in this class.
+
+        Individual tests that want to test the 503 path override shutil.which themselves.
+        """
+        monkeypatch.setattr(
+            "shutil.which",
+            lambda name: "/usr/bin/nmcli" if name == "nmcli" else None,
+        )
+
     async def test_returns_token_and_events_url(self, client: TestClient) -> None:
         """Response contains token and events_url."""
         from unittest.mock import patch
@@ -784,6 +795,20 @@ class TestWifiApPair:
             headers={"Content-Type": "application/json"},
         )
         assert resp.status == 400
+
+    async def test_nmcli_unavailable_returns_503(self, client: TestClient) -> None:
+        """Returns 503 immediately when nmcli is not installed — avoids silent timeout."""
+        from unittest.mock import patch
+
+        with patch("shutil.which", return_value=None):
+            resp = await client.post(
+                "/api/provision/wifi-ap-pair",
+                json={"ap_ssid": "SmartLife_AB12", "home_ssid": "HomeNet", "home_password": "pass"},
+            )
+
+        assert resp.status == 503
+        body = await resp.text()
+        assert "nmcli" in body.lower()
 
     async def test_background_task_spawned(self, client: TestClient) -> None:
         """A background task is created when the request is valid."""

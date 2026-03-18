@@ -74,5 +74,6 @@
   "label_hide_key": "Hide",
   "warn_invalid_password": "⚠ Password too long (max 63 bytes for WPA2).",
   "err_sse_lost": "연결이 끊어졌습니다 — 다시 시도하세요.",
-  "err_pair_fail": "기기가 WiFi 구성을 거부했습니다. 자격증명을 확인하고 다시 시도하세요."
+  "err_pair_fail": "기기가 WiFi 구성을 거부했습니다. 자격증명을 확인하고 다시 시도하세요.",
+  "wifi_ap_nmcli_missing": "WiFi control unavailable — nmcli is not installed on this Home Assistant host."
 }

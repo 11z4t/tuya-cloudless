@@ -74,5 +74,6 @@
   "label_hide_key": "Hide",
   "warn_invalid_password": "⚠ Password too long (max 63 bytes for WPA2).",
   "err_sse_lost": "Yhteys katkesi — yritä uudelleen.",
-  "err_pair_fail": "Laite hylkäsi WiFi-asetukset. Tarkista tiedot ja yritä uudelleen."
+  "err_pair_fail": "Laite hylkäsi WiFi-asetukset. Tarkista tiedot ja yritä uudelleen.",
+  "wifi_ap_nmcli_missing": "WiFi-ohjaus ei käytettävissä — nmcli ei ole asennettu tälle Home Assistant -isännälle."
 }

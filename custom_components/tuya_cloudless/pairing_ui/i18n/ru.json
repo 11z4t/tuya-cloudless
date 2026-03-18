@@ -74,5 +74,6 @@
   "label_hide_key": "Hide",
   "warn_invalid_password": "⚠ Password too long (max 63 bytes for WPA2).",
   "err_sse_lost": "Соединение потеряно — попробуйте снова.",
-  "err_pair_fail": "Устройство отклонило конфигурацию WiFi. Проверьте данные и повторите попытку."
+  "err_pair_fail": "Устройство отклонило конфигурацию WiFi. Проверьте данные и повторите попытку.",
+  "wifi_ap_nmcli_missing": "Управление WiFi недоступно — nmcli не установлен на этом хосте Home Assistant."
 }

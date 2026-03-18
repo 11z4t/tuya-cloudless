@@ -74,5 +74,6 @@
   "label_hide_key": "Hide",
   "warn_invalid_password": "⚠ Password too long (max 63 bytes for WPA2).",
   "err_sse_lost": "Verbindung unterbrochen — bitte erneut versuchen.",
-  "err_pair_fail": "Gerät hat WiFi-Konfiguration abgelehnt. Zugangsdaten prüfen und wiederholen."
+  "err_pair_fail": "Gerät hat WiFi-Konfiguration abgelehnt. Zugangsdaten prüfen und wiederholen.",
+  "wifi_ap_nmcli_missing": "WLAN-Steuerung nicht verfügbar — nmcli ist auf diesem Home-Assistant-Host nicht installiert."
 }

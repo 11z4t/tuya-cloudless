@@ -74,5 +74,6 @@
   "show_password": "Show password",
   "hide_password": "Hide password",
   "label_reveal_key": "Reveal",
-  "label_hide_key": "Hide"
+  "label_hide_key": "Hide",
+  "wifi_ap_nmcli_missing": "WiFi control unavailable — nmcli is not installed on this Home Assistant host."
 }

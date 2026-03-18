@@ -74,5 +74,6 @@
   "show_password": "Visa lösenord",
   "hide_password": "Dölj lösenord",
   "label_reveal_key": "Visa",
-  "label_hide_key": "Dölj"
+  "label_hide_key": "Dölj",
+  "wifi_ap_nmcli_missing": "WiFi-kontroll ej tillgänglig — nmcli är inte installerat på denna Home Assistant-värd."
 }

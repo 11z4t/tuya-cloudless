@@ -40,6 +40,7 @@ import asyncio
 import json
 import logging
 import secrets
+import shutil
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -914,6 +915,13 @@ class PairingServer:
         if ap_ssid in self._wifi_ap_pairing_in_progress:
             return web.Response(
                 status=409, text="WiFi AP pairing already in progress for this device"
+            )
+
+        # Fail fast if nmcli is unavailable — avoids silent 120s timeout for user
+        if shutil.which("nmcli") is None:
+            return web.Response(
+                status=503,
+                text="nmcli not available; WiFi AP pairing requires NetworkManager",
             )
 
         token = secrets.token_hex(_LOCAL_KEY_BYTES)
