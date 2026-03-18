@@ -167,6 +167,8 @@
     .wifi-option:hover { background: var(--accent); color: #0f172a; }
     .wifi-option.muted { color: var(--muted); cursor: default; }
     .wifi-option.muted:hover { background: transparent; color: var(--muted); }
+    .wifi-option.wifi-option-current { font-weight: 600; }
+    .wifi-option.wifi-option-current::after { content: " ✓"; opacity: 0.6; font-weight: 400; }
 
     .btn {
       display: inline-flex;

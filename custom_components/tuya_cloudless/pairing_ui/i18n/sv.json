@@ -46,6 +46,7 @@
   "help_text": "Behöver du hjälp?",
   "help_link_label": "Öppna guide →",
   "wifi_scan_none": "Inga nätverk hittades",
+  "wifi_current_network": "Nuvarande nätverk",
   "debug_title": "Felsökningslogg",
   "error_browser_unsupported_title": "Webbläsaren stöds inte",
   "error_browser_unsupported_body": "Web Bluetooth kräver Chrome eller Edge (dator eller Android). Öppna den här sidan i Chrome eller Edge.",

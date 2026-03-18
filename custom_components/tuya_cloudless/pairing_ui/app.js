@@ -21,10 +21,12 @@ function hasWebBluetooth() {
   return typeof navigator.bluetooth !== "undefined";
 }
 function isIOS() {
+  if (typeof window._TEST_IS_IOS !== "undefined") return window._TEST_IS_IOS;
   return /iPad|iPhone|iPod/.test(navigator.userAgent) ||
     (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
 }
 function isAndroid() {
+  if (typeof window._TEST_IS_ANDROID !== "undefined") return window._TEST_IS_ANDROID;
   return /Android/.test(navigator.userAgent);
 }
 // Build an Android intent URL that opens the current page in Chrome.
@@ -256,17 +258,18 @@ async function scanWifi() {
     if (!r.ok) throw new Error("scan HTTP " + r.status);
     const data = await r.json();
     const ssids = data.ssids || [];
+    const current = data.current_ssid || null;
     dbg("WiFi scan: " + ssids.length + " networks found");
-    showWifiDropdown(ssids);
+    showWifiDropdown(ssids, current);
   } catch (err) {
     dbg("WiFi scan error: " + err.message);
-    showWifiDropdown([]);
+    showWifiDropdown([], null);
   } finally {
     btn.disabled = false;
   }
 }
 
-function showWifiDropdown(ssids) {
+function showWifiDropdown(ssids, currentSsid) {
   const dd = document.getElementById("wifi-dropdown");
   dd.innerHTML = "";
   if (ssids.length === 0) {
@@ -279,6 +282,10 @@ function showWifiDropdown(ssids) {
       const item = document.createElement("div");
       item.className = "wifi-option";
       item.textContent = ssid;
+      if (ssid === currentSsid) {
+        item.className += " wifi-option-current";
+        item.title = t("wifi_current_network") || "Current network";
+      }
       item.addEventListener("click", () => selectWifi(ssid));
       dd.appendChild(item);
     }

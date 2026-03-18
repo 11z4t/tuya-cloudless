@@ -673,18 +673,29 @@ class PairingServer:
     async def _handle_wifi_scan(self, request: web.Request) -> web.Response:
         """Return nearby WiFi SSIDs via nmcli. Returns empty list if unavailable.
 
-        Passes ``--rescan yes`` so nmcli performs a real over-the-air scan
-        instead of returning cached (often empty) results.  The timeout is
-        raised to 15 s to accommodate the longer scan time.
+        Two-pass scan for better coverage:
+          1. ``--rescan yes`` — triggers a real OTA scan and waits for it to
+             finish (typically 5-10 s).
+          2. Wait 2 s, then ``--rescan no`` — re-reads the now-populated cache
+             to capture any networks that appeared during the driver's scan
+             window but were not yet ready when pass 1 exited.
+
+        Merges both pass results into a de-duplicated list sorted
+        alphabetically.  Also returns ``current_ssid`` (the SSID of the
+        currently active WiFi connection on the HA host) so the UI can
+        highlight it at the top of the dropdown.
 
         Args:
             request: Incoming HTTP request.
 
         Returns:
-            JSON: ``{"ssids": [...]}`` — empty list if nmcli is unavailable.
+            JSON: ``{"ssids": [...], "current_ssid": str | null}``
         """
+        seen: set[str] = set()
         ssids: list[str] = []
-        try:
+        current_ssid: str | None = await self._get_default_ssid()
+
+        async def _run_nmcli(rescan: str) -> list[str]:
             proc = await asyncio.create_subprocess_exec(
                 "nmcli",
                 "--terse",
@@ -694,21 +705,45 @@ class PairingServer:
                 "wifi",
                 "list",
                 "--rescan",
-                "yes",
+                rescan,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.DEVNULL,
             )
             stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=15.0)
-            seen: set[str] = set()
+            result: list[str] = []
             for line in stdout.decode(errors="replace").splitlines():
                 ssid = line.strip()
-                if ssid and ssid not in seen and ssid != "--":
+                if ssid and ssid != "--":
+                    result.append(ssid)
+            return result
+
+        try:
+            # Pass 1: trigger real scan
+            for ssid in await _run_nmcli("yes"):
+                if ssid not in seen:
                     seen.add(ssid)
                     ssids.append(ssid)
+
+            # Brief pause so the driver can post-process the scan results
+            await asyncio.sleep(2)
+
+            # Pass 2: re-read cache — picks up networks missed in pass 1
+            for ssid in await _run_nmcli("no"):
+                if ssid not in seen:
+                    seen.add(ssid)
+                    ssids.append(ssid)
+
         except (FileNotFoundError, TimeoutError, OSError) as exc:
             _LOGGER.debug("WiFi scan unavailable: %s", exc)
+
+        # Sort alphabetically; if current SSID is known, bubble it to the top
+        ssids.sort(key=str.casefold)
+        if current_ssid and current_ssid in seen:
+            ssids.remove(current_ssid)
+            ssids.insert(0, current_ssid)
+
         return web.json_response(
-            {"ssids": ssids},
+            {"ssids": ssids, "current_ssid": current_ssid},
             headers={"Access-Control-Allow-Origin": "*"},
         )
 
