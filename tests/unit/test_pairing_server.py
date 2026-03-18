@@ -453,6 +453,27 @@ class TestWifiScan:
         assert "HomeNet" not in ssids_in_aps
         assert "OfficeWifi" not in ssids_in_aps
 
+    async def test_wifi_scan_rate_limited(self, server: PairingServer) -> None:
+        """wifi-scan returns 429 when per-IP rate limit (5/min) is exceeded."""
+        ts = TestServer(server._app)
+        cli = TestClient(ts)
+        await cli.start_server()
+        try:
+            # Pre-fill rate limit bucket to just below capacity for wifi-scan (max=5)
+            now = time.monotonic()
+            server._rate_limit["127.0.0.1"] = [now] * 4
+
+            # 5th request should still succeed
+            resp = await cli.get("/api/provision/wifi-scan")
+            assert resp.status == 200
+
+            # 6th request should be rejected
+            resp = await cli.get("/api/provision/wifi-scan")
+            assert resp.status == 429
+            assert "Retry-After" in resp.headers
+        finally:
+            await cli.close()
+
 
 # ── _is_tuya_ap / _TUYA_AP_PREFIXES ──────────────────────────────────────────
 
@@ -644,6 +665,27 @@ class TestQuickScan:
         assert "Tuya_DD" in ssids
         assert "WiFi_EE" in ssids
         assert "HomeNet" not in ssids
+
+    async def test_quick_scan_rate_limited(self, server: PairingServer) -> None:
+        """quick-scan returns 429 when per-IP rate limit (10/min) is exceeded."""
+        ts = TestServer(server._app)
+        cli = TestClient(ts)
+        await cli.start_server()
+        try:
+            # Pre-fill rate limit bucket to just below capacity for quick-scan (max=10)
+            now = time.monotonic()
+            server._rate_limit["127.0.0.1"] = [now] * 9
+
+            # 10th request should still succeed
+            resp = await cli.get("/api/provision/quick-scan")
+            assert resp.status == 200
+
+            # 11th request should be rejected
+            resp = await cli.get("/api/provision/quick-scan")
+            assert resp.status == 429
+            assert "Retry-After" in resp.headers
+        finally:
+            await cli.close()
 
 
 # ── /api/provision/wifi-ap-pair ───────────────────────────────────────────────
@@ -1995,6 +2037,24 @@ class TestRateLimiting:
             assert len(remaining) == 1
         finally:
             await cli.close()
+
+    async def test_is_rate_limited_custom_limits(self, server: PairingServer) -> None:
+        """_is_rate_limited respects custom max_requests and window parameters."""
+        # Should allow 3 requests in 10s window
+        for _ in range(3):
+            assert server._is_rate_limited("10.0.0.1", max_requests=3, window=10.0) is False
+        # 4th request should be rate-limited
+        assert server._is_rate_limited("10.0.0.1", max_requests=3, window=10.0) is True
+
+    async def test_is_rate_limited_different_ips_independent(self, server: PairingServer) -> None:
+        """Different IPs have independent rate limit buckets."""
+        from custom_components.tuya_cloudless.pairing_server import _RATE_LIMIT_MAX
+
+        now = time.monotonic()
+        # Fill IP A to the limit
+        server._rate_limit["10.0.0.1"] = [now] * _RATE_LIMIT_MAX
+        # IP B should still be allowed
+        assert server._is_rate_limited("10.0.0.2") is False
 
 
 # ── SEC-002: Bounded SSE queues (PLAT-825) ───────────────────────────────────

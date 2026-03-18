@@ -63,5 +63,9 @@
   "wifi_ap_waiting": "Inloggningsuppgifter skickade — väntar på att enheten ska ansluta till ditt nätverk…",
   "btn_pair_wifi_ap": "Parkoppla enhet →",
   "step1_desc_wifiap": "Din enhet ansluter till detta nätverk. Ange lösenordet och klicka Parkoppla.",
-  "wifi_ap_timeout": "Enheten aktiverades inte inom 2 minuter. Kontrollera parkopplingsläget och försök igen."
+  "wifi_ap_timeout": "Enheten aktiverades inte inom 2 minuter. Kontrollera parkopplingsläget och försök igen.",
+  "btn_back": "← Tillbaka",
+  "btn_pair_another": "← Parkoppla en annan enhet",
+  "show_password": "Visa lösenord",
+  "hide_password": "Dölj lösenord"
 }

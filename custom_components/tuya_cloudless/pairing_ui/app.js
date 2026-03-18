@@ -163,8 +163,14 @@ function detectLang() {
   return SUPPORTED_LANGS.includes(nav) ? nav : "en";
 }
 
+// ── Pair method constants — use these instead of bare strings to prevent typos ──
+const PAIR_METHOD = Object.freeze({ BLE: "ble", WIFI_AP: "wifi_ap" });
+
+// ── SSE timeout (must match server activation window) ──────────────────────────
+const SSE_TIMEOUT_MS = 120_000;
+
 // ── Pair method state ─────────────────────────────────────────────────────────
-let _pairMethod = null;       // "ble" | "wifi_ap"
+let _pairMethod = null;       // PAIR_METHOD.BLE | PAIR_METHOD.WIFI_AP
 let _selectedApSsid = null;   // SSID of Tuya AP chosen by user
 let _currentEventSource = null; // Active EventSource — closed on panel switch
 
@@ -377,7 +383,7 @@ async function autoDetectDevices() {
 }
 
 function selectDeviceWifiAp(ssid) {
-  _pairMethod = "wifi_ap";
+  _pairMethod = PAIR_METHOD.WIFI_AP;
   _selectedApSsid = ssid;
   dbg("Selected WiFi AP device: " + ssid);
   goToCredentials();
@@ -389,7 +395,7 @@ function selectDeviceWifiAp(ssid) {
 }
 
 function selectDeviceBle() {
-  _pairMethod = "ble";
+  _pairMethod = PAIR_METHOD.BLE;
   _selectedApSsid = null;
   dbg("Selected BLE pairing");
   goToCredentials();
@@ -465,7 +471,7 @@ function goToStep2() {
   errEl.className = "status-box hidden";
   _pwd = document.getElementById("password").value;
 
-  if (_pairMethod === "wifi_ap") {
+  if (_pairMethod === PAIR_METHOD.WIFI_AP) {
     // WiFi AP: pair inline — stay on panel-wifi, show status below the button
     startPairing();
     return;
@@ -498,10 +504,17 @@ function showDone(gw_id, local_key, ip_address) {
   if (_haFlowId) {
     document.getElementById("ha-flow-msg").classList.remove("hidden");
   } else {
-    const params = new URLSearchParams({ domain: "tuya_cloudless", gw_id, local_key, ip_address });
-    document.getElementById("btn-add-ha").href = "/config/integrations/add?" + params;
-    document.getElementById("btn-add-ha").classList.remove("hidden");
+    // Validate params before building deep-link to avoid garbage values
+    const safeGwId = /^[a-zA-Z0-9_-]{1,64}$/.test(gw_id) ? gw_id : "";
+    const safeKey  = /^[a-f0-9]{32}$/i.test(local_key) ? local_key : "";
+    const safeIp   = /^\d{1,3}(?:\.\d{1,3}){3}$/.test(ip_address) ? ip_address : "";
+    if (safeGwId && safeKey) {
+      const params = new URLSearchParams({ domain: "tuya_cloudless", gw_id: safeGwId, local_key: safeKey, ip_address: safeIp });
+      document.getElementById("btn-add-ha").href = "/config/integrations/add?" + params;
+      document.getElementById("btn-add-ha").classList.remove("hidden");
+    }
   }
+  document.getElementById("btn-pair-another").classList.remove("hidden");
 }
 
 // ── CRC-16/MODBUS ─────────────────────────────────────────────────────────────
@@ -651,7 +664,7 @@ function listenForActivation(token) {
     } catch (err) { dbg("SSE parse error: " + err.message); }
   });
   es.onerror = () => es.close();
-  setTimeout(() => es.close(), 120000);
+  setTimeout(() => es.close(), SSE_TIMEOUT_MS);
   return es;
 }
 
@@ -677,6 +690,44 @@ async function pairViaWifiAp() {
   showWifiApSpinner(t("wifi_ap_connecting"));
   dbg("WiFi AP pair: POST /wifi-ap-pair for " + _selectedApSsid);
 
+  // Attach SSE listener BEFORE the POST to avoid race where device activates
+  // before the EventSource is established.
+  const es = new EventSource(EVENTS_URL);
+  if (_currentEventSource && _currentEventSource !== es) _currentEventSource.close();
+  _currentEventSource = es;
+  let token = null;
+  let wifiApTimer = null;
+
+  const wifiApCleanup = (enableBtn) => {
+    es.close();
+    clearTimeout(wifiApTimer);
+    if (enableBtn) btn.disabled = false;
+  };
+
+  es.addEventListener("activated", (e) => {
+    try {
+      const d = JSON.parse(e.data);
+      if (!token || d.token === token || !d.token) {
+        wifiApCleanup(true);
+        if (_ssid) saveLastSsid(_ssid);  // save only on confirmed activation
+        setWifiApStatus("status-success", t("success_activated"));
+        dbg("Device activated: " + d.gw_id + " \u2713");
+        showDone(d.gw_id, d.local_key, d.ip_address);
+      }
+    } catch (err) { dbg("SSE parse error (activated): " + err.message); }
+  });
+  es.addEventListener("wifi_ap_error", (e) => {
+    try {
+      const d = JSON.parse(e.data);
+      if (!token || d.token === token) {
+        wifiApCleanup(true);
+        setWifiApStatus("status-error", "\u274C " + esc(t("wifi_ap_error")));
+        dbg("WiFi AP error: " + (d.error || "unknown"));
+      }
+    } catch (err) { dbg("SSE parse error (wifi_ap_error): " + err.message); }
+  });
+  es.onerror = () => wifiApCleanup(true);
+
   try {
     const r = await fetch(_PROVISION_BASE + "/wifi-ap-pair", {
       method: "POST",
@@ -687,52 +738,21 @@ async function pairViaWifiAp() {
         home_password: _pwd,
       }),
     });
-    if (!r.ok) throw new Error("wifi-ap-pair HTTP " + r.status);
+    if (!r.ok) { wifiApCleanup(true); throw new Error("wifi-ap-pair HTTP " + r.status); }
     const data = await r.json();
-    const token = data.token;
+    token = data.token;
 
-    // Wire up SSE listener — server fires "activated" when device joins home WiFi
-    const es = new EventSource(EVENTS_URL);
-
-    const wifiApCleanup = (enableBtn) => {
-      es.close();
-      clearTimeout(wifiApTimer);
-      if (enableBtn) btn.disabled = false;
-    };
-
-    es.addEventListener("activated", (e) => {
-      try {
-        const d = JSON.parse(e.data);
-        if (!token || d.token === token || !d.token) {
-          wifiApCleanup(true);
-          if (_ssid) saveLastSsid(_ssid);  // save only on confirmed activation
-          setWifiApStatus("status-success", t("success_activated"));
-          dbg("Device activated: " + d.gw_id + " \u2713");
-          showDone(d.gw_id, d.local_key, d.ip_address);
-        }
-      } catch (_) {}
-    });
-    es.addEventListener("wifi_ap_error", (e) => {
-      try {
-        const d = JSON.parse(e.data);
-        if (!token || d.token === token) {
-          wifiApCleanup(true);
-          setWifiApStatus("status-error", "\u274C " + esc(t("wifi_ap_error")));
-          dbg("WiFi AP error: " + (d.error || "unknown"));
-        }
-      } catch (_) {}
-    });
-    es.onerror = () => wifiApCleanup(true);
-    // After 120s with no activation, show timeout error and re-enable button
-    const wifiApTimer = setTimeout(() => {
+    // After SSE_TIMEOUT_MS with no activation, show timeout error and re-enable button
+    wifiApTimer = setTimeout(() => {
       wifiApCleanup(true);
       setWifiApStatus("status-error", "\u274C " + esc(t("wifi_ap_timeout") || t("wifi_ap_error")));
-      dbg("WiFi AP pair: activation timeout after 120s");
-    }, 120000);
+      dbg("WiFi AP pair: activation timeout after " + (SSE_TIMEOUT_MS / 1000) + "s");
+    }, SSE_TIMEOUT_MS);
 
     showWifiApSpinner(t("wifi_ap_waiting"));
     dbg("WiFi AP pair: waiting for activation SSE\u2026");
   } catch (err) {
+    wifiApCleanup(false);
     setWifiApStatus("status-error", "\u274C " + esc(err.message));
     dbg("WiFi AP pair error: " + err.message);
     btn.disabled = false;
@@ -741,7 +761,7 @@ async function pairViaWifiAp() {
 
 // ── Main pairing flow ─────────────────────────────────────────────────────────
 async function startPairing() {
-  if (_pairMethod === "wifi_ap") {
+  if (_pairMethod === PAIR_METHOD.WIFI_AP) {
     await pairViaWifiAp();
     return;
   }
@@ -847,9 +867,21 @@ function copyShareUrl() {
   });
   document.getElementById("btn-wifi-scan").addEventListener("click", scanWifi);
   document.getElementById("btn-next").addEventListener("click", goToStep2);
+  document.getElementById("btn-back").addEventListener("click", goToDevices);
   document.getElementById("btn-pair").addEventListener("click", startPairing);
   document.getElementById("btn-copy").addEventListener("click", copyShareUrl);
   document.getElementById("btn-ble-scan").addEventListener("click", selectDeviceBle);
+  document.getElementById("btn-pair-another").addEventListener("click", goToDevices);
+
+  // Password show/hide toggle
+  document.getElementById("btn-pwd-toggle").addEventListener("click", function() {
+    const pwd = document.getElementById("password");
+    const showing = pwd.type === "text";
+    pwd.type = showing ? "password" : "text";
+    this.textContent = showing ? "\uD83D\uDC41" : "\uD83D\uDE48";  // 👁 / 🙈
+    this.setAttribute("aria-label", showing ? t("show_password") || "Show password" : t("hide_password") || "Hide password");
+    this.setAttribute("aria-pressed", String(!showing));
+  });
 
   // QR image fallback: hide img and show unavail text on error
   const qrImg = document.getElementById("qr-img");
@@ -963,9 +995,11 @@ function copyShareUrl() {
 // Exported for unit testing only — not used in the browser.
 if (typeof module !== "undefined") {
   module.exports = {
+    PAIR_METHOD, SSE_TIMEOUT_MS,
     isSupportedBrowser, hasWebBluetooth,
     isIOS, isAndroid, chromeIntentUrl,
     saveLastSsid, loadLastSsid, SSID_TTL_MS, SSID_STORAGE_KEY,
     autoDetectDevices, showDeviceCard, selectDeviceWifiAp, selectDeviceBle,
+    goToDevices, goToCredentials, showDone,
   };
 }

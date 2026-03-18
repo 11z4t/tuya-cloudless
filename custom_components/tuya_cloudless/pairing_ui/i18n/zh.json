@@ -59,5 +59,9 @@
   "wifi_ap_waiting": "Credentials sent — waiting for device to join your network…",
   "btn_pair_wifi_ap": "Pair device →",
   "step1_desc_wifiap": "Your device will connect to this network. Enter the password and click Pair.",
-  "wifi_ap_timeout": "Device did not activate within 2 minutes. Check pairing mode and try again."
+  "wifi_ap_timeout": "Device did not activate within 2 minutes. Check pairing mode and try again.",
+  "btn_back": "← Back",
+  "btn_pair_another": "← Pair Another Device",
+  "show_password": "Show password",
+  "hide_password": "Hide password"
 }

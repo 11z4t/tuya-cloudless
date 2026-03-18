@@ -434,7 +434,7 @@
   </div>
 
   <!-- Step counter (hidden on done screen) -->
-  <div id="step-counter" class="step-counter"></div>
+  <div id="step-counter" class="step-counter" role="status" aria-live="polite" aria-label="Progress"></div>
 
   <!-- Browser unsupported error (PLAT-810) — shown when browser lacks Web Bluetooth AND is unsupported -->
   <div id="err-browser-unsupported" class="status-box status-error hidden">
@@ -444,7 +444,7 @@
 
   <!-- Step 0 — Device discovery -->
   <div id="panel-devices" class="step-panel hidden">
-    <div class="step-title" id="devices-title">Find device</div>
+    <h2 class="step-title" id="devices-title">Find device</h2>
     <p class="step-desc" id="devices-desc">Devices found nearby appear automatically. Or use Bluetooth to scan.</p>
 
     <!-- Screen reader live region — announces device discovery results -->
@@ -452,8 +452,9 @@
 
     <div id="device-list" class="device-list">
       <!-- Populated by autoDetectDevices() -->
-      <div id="devices-scanning" style="display:flex;align-items:center;gap:8px;color:var(--muted);font-size:0.85rem">
-        <span class="spinner" style="border-top-color:var(--muted)"></span>
+      <div id="devices-scanning" role="status" aria-live="polite"
+           style="display:flex;align-items:center;gap:8px;color:var(--muted);font-size:0.85rem">
+        <span class="spinner" style="border-top-color:var(--muted)" aria-hidden="true"></span>
         <span id="devices-scanning-label">Looking for devices…</span>
       </div>
     </div>
@@ -472,34 +473,46 @@
 
   <!-- Step 1 — WiFi credentials -->
   <div id="panel-wifi" class="step-panel hidden">
-    <div class="step-title" id="step1-title">WiFi credentials</div>
+    <h2 class="step-title" id="step1-title">WiFi credentials</h2>
     <p class="step-desc" id="step1-desc">Your device will connect to this network after pairing.</p>
 
-    <div>
-      <label for="ssid" id="ssid-label">Network name (SSID)</label>
-      <div class="ssid-row">
-        <input type="text" id="ssid" spellcheck="false"
-               inputmode="text" placeholder="My Home WiFi">
-        <button class="wifi-scan-btn" id="btn-wifi-scan" type="button"
-                aria-label="Scan for networks">📡</button>
+    <form id="wifi-form" onsubmit="event.preventDefault(); goToStep2();" novalidate>
+      <div>
+        <label for="ssid" id="ssid-label">Network name (SSID)</label>
+        <div class="ssid-row">
+          <input type="text" id="ssid" spellcheck="false"
+                 inputmode="text" placeholder="My Home WiFi">
+          <button class="wifi-scan-btn" id="btn-wifi-scan" type="button"
+                  aria-label="Scan for networks">📡</button>
+        </div>
+        <div id="wifi-dropdown" class="wifi-dropdown hidden"></div>
       </div>
-      <div id="wifi-dropdown" class="wifi-dropdown hidden"></div>
-    </div>
 
-    <div>
-      <label for="password" id="password-label">Password</label>
-      <input type="password" id="password" autocomplete="new-password" placeholder="WiFi password">
-    </div>
+      <div>
+        <label for="password" id="password-label">Password</label>
+        <div class="ssid-row">
+          <input type="password" id="password" autocomplete="new-password" placeholder="WiFi password">
+          <button class="wifi-scan-btn" id="btn-pwd-toggle" type="button"
+                  aria-label="Show password" aria-pressed="false">👁</button>
+        </div>
+      </div>
 
-    <!-- Dedicated error div — never moved from here -->
-    <div id="s1-error" class="status-box hidden"></div>
+      <!-- Dedicated error div — never moved from here -->
+      <div id="s1-error" class="status-box hidden"></div>
 
-    <!-- WiFi AP inline pairing status (hidden on BLE path) -->
-    <div id="wifi-ap-status" class="status-box hidden" role="status" aria-live="polite"></div>
+      <!-- WiFi AP inline pairing status (hidden on BLE path) -->
+      <div id="wifi-ap-status" class="status-box hidden" role="status" aria-live="polite"></div>
 
-    <button class="btn btn-primary" id="btn-next" type="button">
-      <span id="btn-next-label">Next →</span>
-    </button>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn btn-primary" id="btn-next" type="submit">
+          <span id="btn-next-label">Next →</span>
+        </button>
+        <button class="btn btn-sm" id="btn-back" type="button"
+                style="background:var(--surface-2);color:var(--text)">
+          <span id="btn-back-label">← Back</span>
+        </button>
+      </div>
+    </form>
 
     <div class="help-banner">
       <span>❓</span>
@@ -511,10 +524,10 @@
 
   <!-- Step 2 — BLE pairing -->
   <div id="panel-ble" class="step-panel hidden">
-    <div class="step-title">
+    <h2 class="step-title">
       <span id="step2-title">Pair device via Bluetooth</span>
       <span class="badge" id="step2-badge">Chrome / Edge</span>
-    </div>
+    </h2>
     <p class="step-desc" id="step2-desc">Make sure your device is flashing rapidly (pairing mode).</p>
     <p class="step-hint" id="step2-hint">
       Put your Tuya device in pairing mode (factory reset or hold the pair button until
@@ -578,7 +591,7 @@
   <!-- Step 3 — Done -->
   <div id="panel-done" class="step-panel hidden">
     <div class="done-check">✅</div>
-    <div class="step-title" id="step3-title" style="text-align:center">Your device is ready!</div>
+    <h2 class="step-title" id="step3-title" style="text-align:center">Your device is ready!</h2>
     <dl id="result-grid" class="result-grid"></dl>
     <div id="ha-flow-msg" class="ha-flow-notice hidden">
       Home Assistant is setting up your device. You can close this window and continue in the Home Assistant UI.
@@ -592,6 +605,10 @@
       </svg>
       <span id="btn-add-ha-label">Add to Home Assistant</span>
     </a>
+    <button class="btn btn-sm hidden" id="btn-pair-another" type="button"
+            style="margin-top:4px;background:var(--surface-2);color:var(--text)">
+      <span id="btn-pair-another-label">← Pair Another Device</span>
+    </button>
   </div>
 
   <!-- Debug log (visible on all screens) -->

@@ -542,21 +542,8 @@ class PairingServer:
         client_ip = request.remote or "unknown"
 
         # Per-IP rate limiting (SEC-001 / PLAT-824)
-        now = time.monotonic()
-        timestamps = self._rate_limit.get(client_ip, [])
-        # Evict timestamps outside the sliding window
-        timestamps = [ts for ts in timestamps if now - ts < _RATE_LIMIT_WINDOW]
-        if len(timestamps) >= _RATE_LIMIT_MAX:
-            _LOGGER.warning(
-                "Rate limit exceeded for activation endpoint: ip=%s requests=%d",
-                client_ip,
-                len(timestamps),
-            )
+        if self._is_rate_limited(client_ip):
             return web.Response(status=429, text="Too Many Requests")
-        timestamps.append(now)
-        self._rate_limit[client_ip] = timestamps
-        # Evict IPs with no recent activity to prevent unbounded dict growth
-        self._rate_limit = {ip: ts_list for ip, ts_list in self._rate_limit.items() if ts_list}
 
         _LOGGER.debug("Activation request from %s", client_ip)
 
@@ -743,6 +730,15 @@ class PairingServer:
         Returns:
             JSON: ``{"ssids": [...], "current_ssid": str | null}``
         """
+        # Rate limit: wifi-scan is expensive (triggers OTA scan) — 5/min per IP
+        client_ip = request.remote or "unknown"
+        if self._is_rate_limited(client_ip, max_requests=5, window=60.0):
+            return web.Response(
+                status=429,
+                text="Too Many Requests",
+                headers={"Retry-After": "15"},
+            )
+
         seen: set[str] = set()
         ssids: list[str] = []
         current_ssid: str | None = await self._get_default_ssid()
@@ -816,6 +812,15 @@ class PairingServer:
         Returns:
             JSON: ``{"tuya_aps": [{"ssid": "SmartLife_AB12"}, ...]}``
         """
+        # Rate limit: quick-scan is cheap but still reveals nearby network names — 10/min per IP
+        client_ip = request.remote or "unknown"
+        if self._is_rate_limited(client_ip, max_requests=10, window=60.0):
+            return web.Response(
+                status=429,
+                text="Too Many Requests",
+                headers={"Retry-After": "6"},
+            )
+
         tuya_aps: list[dict[str, str]] = []
 
         try:
@@ -1254,6 +1259,37 @@ class PairingServer:
         except (FileNotFoundError, TimeoutError, OSError) as exc:
             _LOGGER.debug("Default SSID lookup unavailable: %s", exc)
         return None
+
+    def _is_rate_limited(
+        self,
+        client_ip: str,
+        max_requests: int = _RATE_LIMIT_MAX,
+        window: float = _RATE_LIMIT_WINDOW,
+    ) -> bool:
+        """Return True and log if ``client_ip`` has exceeded the rate limit.
+
+        Maintains the sliding-window bucket in :attr:`_rate_limit` and evicts
+        stale entries to prevent unbounded dict growth.
+
+        Args:
+            client_ip:    Remote IP address string.
+            max_requests: Max allowed requests in the window (default from constant).
+            window:       Sliding window in seconds (default from constant).
+        """
+        now = time.monotonic()
+        timestamps = self._rate_limit.get(client_ip, [])
+        timestamps = [ts for ts in timestamps if now - ts < window]
+        if len(timestamps) >= max_requests:
+            _LOGGER.warning(
+                "Rate limit exceeded: ip=%s requests=%d",
+                client_ip,
+                len(timestamps),
+            )
+            return True
+        timestamps.append(now)
+        self._rate_limit[client_ip] = timestamps
+        self._rate_limit = {ip: ts_list for ip, ts_list in self._rate_limit.items() if ts_list}
+        return False
 
     async def _broadcast_sse(self, event: str, data: str) -> None:
         """Push a Server-Sent Event to all connected browsers.
