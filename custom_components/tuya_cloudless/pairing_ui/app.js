@@ -627,3 +627,8 @@ function copyShareUrl() {
     }
   }
 })();
+
+// Exported for unit testing only — not used in the browser.
+if (typeof module !== "undefined") {
+  module.exports = { isSupportedBrowser, hasWebBluetooth, saveLastSsid, loadLastSsid, SSID_TTL_MS, SSID_STORAGE_KEY };
+}

@@ -23,7 +23,7 @@ python3 -m bandit -r lib/ -q || true
 echo ""
 echo "--- Detect-secrets scan ---"
 python3 -m detect_secrets scan --all-files \
-  --exclude-files "(\.git/.*|\.claude/.*|\.mypy_cache/.*|\.pytest_cache/.*|\.ruff_cache/.*|htmlcov/.*|strings\.json|translations/.*\.json|pairing_ui/i18n/.*\.json|tests/|docs/)" \
+  --exclude-files "(\.git/.*|\.claude/.*|\.mypy_cache/.*|\.pytest_cache/.*|\.ruff_cache/.*|htmlcov/.*|node_modules/.*|strings\.json|translations/.*\.json|pairing_ui/i18n/.*\.json|tests/|docs/)" \
   > /tmp/secrets-report.json
 python3 -c "
 import json
@@ -38,6 +38,10 @@ exit(1 if total else 0)
 echo ""
 echo "--- Pytest (unit + security) ---"
 python3 -m pytest tests/unit tests/security -v --tb=short --timeout=30
+
+echo ""
+echo "--- Jest (pairing UI) ---"
+npm test --silent
 
 echo ""
 echo "=== ALL CHECKS PASSED ==="

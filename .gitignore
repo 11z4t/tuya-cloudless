@@ -45,3 +45,4 @@ secrets.yaml
 .claude/worktrees/
 *.tmp.*
 tuya_cloudless.zip
+node_modules/
