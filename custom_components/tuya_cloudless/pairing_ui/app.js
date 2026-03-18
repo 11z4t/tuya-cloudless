@@ -303,6 +303,9 @@ async function scanWifi() {
   const btn = document.getElementById("btn-wifi-scan");
   if (!btn) return;
   btn.disabled = true;
+  const origIcon = btn.textContent;
+  btn.textContent = "\u29D6";  // ⧖ hourglass — visual scanning indicator
+  btn.setAttribute("aria-label", t("spin_scanning") || "Scanning…");
   dbg("WiFi scan started\u2026");
   // Close dropdown if already open
   const _ddInit = document.getElementById("wifi-dropdown");
@@ -330,6 +333,8 @@ async function scanWifi() {
     if (scanBtnEl) scanBtnEl.setAttribute("aria-expanded", "false");
   } finally {
     btn.disabled = false;
+    btn.textContent = origIcon;
+    btn.setAttribute("aria-label", "Scan for networks");
   }
 }
 
