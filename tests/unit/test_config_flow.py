@@ -1275,7 +1275,7 @@ class TestBlePairHttpsCheck:
         flow.async_abort.assert_not_called()
         flow.async_external_step.assert_called_once()
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio  # type: ignore[misc]
     async def test_proceeds_for_127_0_0_1(self) -> None:
         """127.0.0.1 is treated as a secure context and must not abort."""
         flow = self._make_ble_flow()
@@ -1292,3 +1292,1230 @@ class TestBlePairHttpsCheck:
 
         flow.async_abort.assert_not_called()
         flow.async_external_step.assert_called_once()
+
+
+# ── _get_profile_options ImportError fallback (lines 94-95) ───────────────────
+
+
+class TestGetProfileOptionsImportError:
+    def test_returns_fallback_on_import_error(self) -> None:
+        """When profiles module raises ImportError, returns Auto-detect + Generic Switch."""
+        import sys
+
+        from custom_components.tuya_cloudless.config_flow import _get_profile_options
+
+        saved = sys.modules.pop("tuya_cloudless.profiles", None)
+        try:
+            sys.modules["tuya_cloudless.profiles"] = None  # type: ignore[assignment]
+            opts = _get_profile_options()
+        finally:
+            if saved is not None:
+                sys.modules["tuya_cloudless.profiles"] = saved
+            else:
+                sys.modules.pop("tuya_cloudless.profiles", None)
+
+        assert any(o["value"] == "__auto_detect__" for o in opts)
+
+
+# ── _suggest_profile wildcard model branch (lines 135-136) ──────────────────
+
+
+class TestSuggestProfileWildcard:
+    def test_returns_auto_when_match_has_wildcard_model(self) -> None:
+        """When matched profile has model='*', return __auto_detect__ not the profile name."""
+        from unittest.mock import MagicMock, patch
+
+        from custom_components.tuya_cloudless import config_flow as cf_mod
+
+        cf_mod._suggest_profile.cache_clear()
+
+        mock_profile = MagicMock()
+        mock_profile.name = "Generic Device"
+        mock_profile.model = "*"
+
+        with patch(
+            "tuya_cloudless.profiles.find_profile_by_product_key",
+            return_value=mock_profile,
+        ):
+            result = cf_mod._suggest_profile("key_wildcard_test_unique")
+
+        cf_mod._suggest_profile.cache_clear()
+        assert result == "__auto_detect__"
+
+
+# ── _suggest_profile ImportError branch (lines 135-136) ──────────────────────
+
+
+class TestSuggestProfileImportErrorNew:
+    def test_returns_auto_when_import_fails(self) -> None:
+        """When tuya_cloudless.profiles is unavailable, return __auto_detect__."""
+        import sys
+
+        from custom_components.tuya_cloudless import config_flow as cf_mod
+
+        cf_mod._suggest_profile.cache_clear()
+
+        saved = sys.modules.pop("tuya_cloudless.profiles", None)
+        try:
+            sys.modules["tuya_cloudless.profiles"] = None  # type: ignore[assignment]
+            result = cf_mod._suggest_profile("key_import_err_unique2")
+        finally:
+            if saved is not None:
+                sys.modules["tuya_cloudless.profiles"] = saved
+            else:
+                sys.modules.pop("tuya_cloudless.profiles", None)
+            cf_mod._suggest_profile.cache_clear()
+
+        assert result == "__auto_detect__"
+
+
+# ── async_step_pair (lines 173-192) ───────────────────────────────────────────
+
+
+class TestConfigFlowStepPairNew:
+    def _make_pair_flow(self) -> Any:
+        from custom_components.tuya_cloudless.config_flow import TuyaCloudlessConfigFlow
+
+        flow = TuyaCloudlessConfigFlow.__new__(TuyaCloudlessConfigFlow)
+        flow._discovered = []
+        flow._device = {}
+        flow.async_show_form = MagicMock(return_value={"type": "form"})
+        flow.async_create_entry = MagicMock(return_value={"type": "create_entry"})
+        flow.async_set_unique_id = AsyncMock()
+        flow._abort_if_unique_id_configured = MagicMock()
+        flow.async_step_manual = AsyncMock(return_value={"type": "form", "step_id": "manual"})
+        flow.async_step_local_key = AsyncMock(return_value={"type": "form", "step_id": "local_key"})
+        return flow
+
+    @pytest.mark.asyncio
+    async def test_valid_input_advances_to_local_key(self) -> None:
+        from custom_components.tuya_cloudless.const import (
+            CONF_GW_ID,
+            CONF_IP_ADDRESS,
+            CONF_LOCAL_KEY,
+        )
+
+        flow = self._make_pair_flow()
+        _restore_method(flow, "async_step_pair")
+
+        user_input = {
+            CONF_GW_ID: "bf123device",
+            CONF_LOCAL_KEY: "0123456789abcdef",
+            CONF_IP_ADDRESS: "10.0.0.50",
+        }
+        await flow.async_step_pair(user_input=user_input)
+
+        flow.async_step_local_key.assert_called_once()
+        assert flow._device[CONF_GW_ID] == "bf123device"
+        assert flow._device[CONF_LOCAL_KEY] == "0123456789abcdef"
+        assert flow._device[CONF_IP_ADDRESS] == "10.0.0.50"
+
+    @pytest.mark.asyncio
+    async def test_none_input_falls_through_to_manual(self) -> None:
+        flow = self._make_pair_flow()
+        _restore_method(flow, "async_step_pair")
+
+        await flow.async_step_pair(user_input=None)
+        flow.async_step_manual.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_short_key_falls_through_to_manual(self) -> None:
+        from custom_components.tuya_cloudless.const import (
+            CONF_GW_ID,
+            CONF_IP_ADDRESS,
+            CONF_LOCAL_KEY,
+        )
+
+        flow = self._make_pair_flow()
+        _restore_method(flow, "async_step_pair")
+
+        await flow.async_step_pair(
+            user_input={CONF_GW_ID: "bf123", CONF_LOCAL_KEY: "short", CONF_IP_ADDRESS: "10.0.0.1"}
+        )
+        flow.async_step_manual.assert_called_once()
+
+
+# ── async_step_ble_pair second call (lines 217-223) ─────────────────────────
+
+
+class TestBlePairSecondCallNew:
+    @pytest.mark.asyncio
+    async def test_second_call_stores_device_and_returns_done(self) -> None:
+        from custom_components.tuya_cloudless.config_flow import TuyaCloudlessConfigFlow
+
+        flow = TuyaCloudlessConfigFlow.__new__(TuyaCloudlessConfigFlow)
+        flow._discovered = []
+        flow._device = {}
+        flow.hass = MagicMock()
+        flow.flow_id = "test-flow-id"
+        flow.async_external_step_done = MagicMock(return_value={"type": "create_entry"})
+        flow.async_external_step = MagicMock(return_value={"type": "external"})
+        flow.async_abort = MagicMock(return_value={"type": "abort"})
+
+        user_input = {
+            "gw_id": "bf456",
+            "local_key": "abcdef0123456789",
+            "ip_address": "10.0.1.2",
+            "product_key": "pk789",
+        }
+        result = await flow.async_step_ble_pair(user_input=user_input)
+
+        flow.async_external_step_done.assert_called_once_with(next_step_id="ble_confirm")
+        assert result["type"] == "create_entry"
+        assert flow._device["gw_id"] == "bf456"
+
+
+# ── async_step_ble_pair OSError (lines 230-232) ──────────────────────────────
+
+
+class TestBlePairOsErrorNew:
+    @pytest.mark.asyncio
+    async def test_oserror_aborts_with_pairing_server_unavailable(self) -> None:
+        from custom_components.tuya_cloudless.config_flow import TuyaCloudlessConfigFlow
+
+        flow = TuyaCloudlessConfigFlow.__new__(TuyaCloudlessConfigFlow)
+        flow._discovered = []
+        flow._device = {}
+        flow.hass = MagicMock()
+        flow.flow_id = "test-flow-id"
+        flow.async_abort = MagicMock(return_value={"type": "abort"})
+
+        with patch(
+            "custom_components.tuya_cloudless.pairing_server.ensure_pairing_server",
+            new_callable=AsyncMock,
+            side_effect=OSError("port in use"),
+        ):
+            result = await flow.async_step_ble_pair(user_input=None)
+
+        flow.async_abort.assert_called_once_with(reason="pairing_server_unavailable")
+        assert result["type"] == "abort"
+
+
+# ── async_step_ble_confirm (lines 277-322) ───────────────────────────────────
+
+
+class TestBlePairConfirmNew:
+    def _make_ble_confirm_flow(self) -> Any:
+        from custom_components.tuya_cloudless.config_flow import TuyaCloudlessConfigFlow
+
+        flow = TuyaCloudlessConfigFlow.__new__(TuyaCloudlessConfigFlow)
+        flow._discovered = []
+        flow._device = {
+            "gw_id": "bf001",
+            "local_key": "0123456789abcdef",
+            "ip_address": "10.0.0.1",
+            "product_key": "pk001",
+        }
+        flow.hass = MagicMock()
+        flow.flow_id = "ble-flow-id"
+        flow.async_show_form = MagicMock(return_value={"type": "form"})
+        flow.async_create_entry = MagicMock(return_value={"type": "create_entry"})
+        flow.async_set_unique_id = AsyncMock()
+        flow._abort_if_unique_id_configured = MagicMock()
+        return flow
+
+    @pytest.mark.asyncio
+    async def test_no_input_shows_form(self) -> None:
+        flow = self._make_ble_confirm_flow()
+        _restore_method(flow, "async_step_ble_confirm")
+
+        with patch(
+            "custom_components.tuya_cloudless.pairing_server.get_pairing_server",
+            return_value=None,
+        ):
+            result = await flow.async_step_ble_confirm(user_input=None)
+
+        assert result["type"] == "form"
+        flow.async_show_form.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_submit_creates_entry(self) -> None:
+        flow = self._make_ble_confirm_flow()
+        _restore_method(flow, "async_step_ble_confirm")
+
+        with patch(
+            "custom_components.tuya_cloudless.pairing_server.get_pairing_server",
+            return_value=None,
+        ):
+            result = await flow.async_step_ble_confirm(
+                user_input={"device_name": "My BLE Device", "profile": "Generic Switch"}
+            )
+
+        assert result["type"] == "create_entry"
+        flow.async_create_entry.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_unregisters_flow_on_confirm(self) -> None:
+        flow = self._make_ble_confirm_flow()
+        _restore_method(flow, "async_step_ble_confirm")
+
+        mock_server = MagicMock()
+        mock_server.unregister_flow = MagicMock()
+
+        with patch(
+            "custom_components.tuya_cloudless.pairing_server.get_pairing_server",
+            return_value=mock_server,
+        ):
+            await flow.async_step_ble_confirm(
+                user_input={"device_name": "Test", "profile": "Generic Switch"}
+            )
+
+        mock_server.unregister_flow.assert_called_once_with("ble-flow-id")
+
+
+# ── async_step_confirm auto-detect profile (lines 498-503) ───────────────────
+
+
+class TestConfigFlowConfirmAutoDetectNew:
+    @pytest.mark.asyncio
+    async def test_auto_detect_profile_is_invoked(self) -> None:
+        from custom_components.tuya_cloudless.const import (
+            CONF_GW_ID,
+            CONF_IP_ADDRESS,
+            CONF_LOCAL_KEY,
+            CONF_PROFILE,
+            CONF_PROTOCOL_VERSION,
+        )
+
+        flow = _make_config_flow()
+        _restore_method(flow, "async_step_confirm")
+
+        flow._device = {
+            CONF_GW_ID: "gw_auto",
+            CONF_IP_ADDRESS: "10.0.0.1",
+            CONF_LOCAL_KEY: "0123456789abcdef",
+            CONF_PROTOCOL_VERSION: "3.3",
+            CONF_PROFILE: "__auto_detect__",
+            "device_name": "AutoDevice",
+        }
+
+        flow._auto_detect_profile = AsyncMock(return_value="Smart Plug")
+
+        await flow.async_step_confirm(user_input={})
+
+        flow._auto_detect_profile.assert_awaited_once()
+        flow.async_create_entry.assert_called_once()
+        call_kwargs = flow.async_create_entry.call_args[1]
+        assert call_kwargs["data"][CONF_PROFILE] == "Smart Plug"
+
+
+# ── async_step_zeroconf (lines 695-715) ──────────────────────────────────────
+
+
+class TestConfigFlowZeroconfigNew:
+    def _make_zeroconf_flow(self) -> Any:
+        from custom_components.tuya_cloudless.config_flow import TuyaCloudlessConfigFlow
+
+        flow = TuyaCloudlessConfigFlow.__new__(TuyaCloudlessConfigFlow)
+        flow._discovered = []
+        flow._device = {}
+        flow.hass = MagicMock()
+        flow.context = {}
+        flow.async_show_form = MagicMock(return_value={"type": "form"})
+        flow.async_create_entry = MagicMock(return_value={"type": "create_entry"})
+        flow.async_abort = MagicMock(return_value={"type": "abort"})
+        flow.async_set_unique_id = AsyncMock()
+        flow._abort_if_unique_id_configured = MagicMock()
+        flow.async_step_discovery = AsyncMock(return_value={"type": "form"})
+        return flow
+
+    @pytest.mark.asyncio
+    async def test_zeroconf_populates_device_and_calls_discovery(self) -> None:
+        from custom_components.tuya_cloudless.const import CONF_GW_ID, CONF_IP_ADDRESS
+
+        flow = self._make_zeroconf_flow()
+        _restore_method(flow, "async_step_zeroconf")
+
+        discovery_info = MagicMock()
+        discovery_info.host = "10.0.0.5"
+        discovery_info.properties = {"gwId": "bf_zeroconf_001", "version": "3.4"}
+        discovery_info.name = "bf_zeroconf_001._tuya._tcp.local."
+
+        await flow.async_step_zeroconf(discovery_info)
+
+        flow.async_step_discovery.assert_called_once()
+        assert flow._device[CONF_GW_ID] == "bf_zeroconf_001"
+        assert flow._device[CONF_IP_ADDRESS] == "10.0.0.5"
+
+    @pytest.mark.asyncio
+    async def test_zeroconf_falls_back_to_name_when_no_gwid(self) -> None:
+        from custom_components.tuya_cloudless.const import CONF_GW_ID
+
+        flow = self._make_zeroconf_flow()
+        _restore_method(flow, "async_step_zeroconf")
+
+        discovery_info = MagicMock()
+        discovery_info.host = "10.0.0.6"
+        discovery_info.properties = {}
+        discovery_info.name = "mydevice123._tuya._tcp.local."
+
+        await flow.async_step_zeroconf(discovery_info)
+
+        flow.async_step_discovery.assert_called_once()
+        assert flow._device[CONF_GW_ID] == "mydevice123"
+
+    @pytest.mark.asyncio
+    async def test_zeroconf_aborts_when_no_gw_id_anywhere(self) -> None:
+        flow = self._make_zeroconf_flow()
+        _restore_method(flow, "async_step_zeroconf")
+
+        discovery_info = MagicMock()
+        discovery_info.host = "10.0.0.7"
+        discovery_info.properties = {}
+        discovery_info.name = "._tuya._tcp.local."
+
+        await flow.async_step_zeroconf(discovery_info)
+
+        flow.async_abort.assert_called_once_with(reason="no_device_id")
+
+
+# ── async_step_dhcp (lines 731-753) ──────────────────────────────────────────
+
+
+class TestConfigFlowDhcpNew:
+    def _make_dhcp_flow(self) -> Any:
+        from custom_components.tuya_cloudless.config_flow import TuyaCloudlessConfigFlow
+
+        flow = TuyaCloudlessConfigFlow.__new__(TuyaCloudlessConfigFlow)
+        flow._discovered = []
+        flow._device = {}
+        flow.hass = MagicMock()
+        flow.context = {}
+        flow.async_abort = MagicMock(return_value={"type": "abort"})
+        flow.async_set_unique_id = AsyncMock()
+        flow._abort_if_unique_id_configured = MagicMock()
+        flow.async_step_discovery = AsyncMock(return_value={"type": "form"})
+        return flow
+
+    @pytest.mark.asyncio
+    async def test_dhcp_finds_device_and_calls_discovery(self) -> None:
+        from custom_components.tuya_cloudless.const import (
+            CONF_GW_ID,
+            CONF_IP_ADDRESS,
+            CONF_PROTOCOL_VERSION,
+        )
+
+        flow = self._make_dhcp_flow()
+        _restore_method(flow, "async_step_dhcp")
+
+        discovery_info = MagicMock()
+        discovery_info.ip = "10.0.0.99"
+
+        device = {
+            CONF_GW_ID: "bf_dhcp_001",
+            CONF_IP_ADDRESS: "10.0.0.99",
+            CONF_PROTOCOL_VERSION: "3.3",
+        }
+
+        with patch(
+            "custom_components.tuya_cloudless.config_flow.asyncio.wait_for",
+            new_callable=AsyncMock,
+            return_value=[device],
+        ):
+            await flow.async_step_dhcp(discovery_info)
+
+        flow.async_step_discovery.assert_called_once()
+        assert flow._device[CONF_GW_ID] == "bf_dhcp_001"
+
+    @pytest.mark.asyncio
+    async def test_dhcp_aborts_when_device_not_in_discovered(self) -> None:
+        from custom_components.tuya_cloudless.const import (
+            CONF_GW_ID,
+            CONF_IP_ADDRESS,
+            CONF_PROTOCOL_VERSION,
+        )
+
+        flow = self._make_dhcp_flow()
+        _restore_method(flow, "async_step_dhcp")
+
+        discovery_info = MagicMock()
+        discovery_info.ip = "10.0.0.200"
+
+        device = {
+            CONF_GW_ID: "bf_other",
+            CONF_IP_ADDRESS: "10.0.0.99",
+            CONF_PROTOCOL_VERSION: "3.3",
+        }
+
+        with patch(
+            "custom_components.tuya_cloudless.config_flow.asyncio.wait_for",
+            new_callable=AsyncMock,
+            return_value=[device],
+        ):
+            await flow.async_step_dhcp(discovery_info)
+
+        flow.async_abort.assert_called_once_with(reason="no_device_id")
+
+    @pytest.mark.asyncio
+    async def test_dhcp_aborts_on_discovery_timeout(self) -> None:
+        flow = self._make_dhcp_flow()
+        _restore_method(flow, "async_step_dhcp")
+
+        discovery_info = MagicMock()
+        discovery_info.ip = "10.0.0.1"
+
+        with patch(
+            "custom_components.tuya_cloudless.config_flow.asyncio.wait_for",
+            side_effect=TimeoutError(),
+        ):
+            await flow.async_step_dhcp(discovery_info)
+
+        flow.async_abort.assert_called_once_with(reason="no_device_id")
+
+
+# ── async_remove (lines 919-923) ─────────────────────────────────────────────
+
+
+class TestConfigFlowAsyncRemoveNew:
+    @pytest.mark.asyncio
+    async def test_unregisters_flow_from_server(self) -> None:
+        from custom_components.tuya_cloudless.config_flow import TuyaCloudlessConfigFlow
+
+        flow = TuyaCloudlessConfigFlow.__new__(TuyaCloudlessConfigFlow)
+        flow._discovered = []
+        flow._device = {}
+        flow.hass = MagicMock()
+        flow.flow_id = "remove-test-id"
+
+        mock_server = MagicMock()
+        mock_server.unregister_flow = MagicMock()
+
+        with patch(
+            "custom_components.tuya_cloudless.pairing_server.get_pairing_server",
+            return_value=mock_server,
+        ):
+            await flow.async_remove()
+
+        mock_server.unregister_flow.assert_called_once_with("remove-test-id")
+
+    @pytest.mark.asyncio
+    async def test_no_error_when_no_server(self) -> None:
+        from custom_components.tuya_cloudless.config_flow import TuyaCloudlessConfigFlow
+
+        flow = TuyaCloudlessConfigFlow.__new__(TuyaCloudlessConfigFlow)
+        flow._discovered = []
+        flow._device = {}
+        flow.hass = MagicMock()
+        flow.flow_id = "remove-none-id"
+
+        with patch(
+            "custom_components.tuya_cloudless.pairing_server.get_pairing_server",
+            return_value=None,
+        ):
+            await flow.async_remove()
+
+
+# ── _pairing_tool_url fallbacks (lines 941-953) ──────────────────────────────
+
+
+class TestPairingToolUrlNew:
+    def _make_flow_with_hass(self, internal_url: str | None = None) -> Any:
+        from custom_components.tuya_cloudless.config_flow import TuyaCloudlessConfigFlow
+
+        flow = TuyaCloudlessConfigFlow.__new__(TuyaCloudlessConfigFlow)
+        flow._discovered = []
+        flow._device = {}
+        flow.hass = MagicMock()
+        flow.hass.config.internal_url = internal_url
+        return flow
+
+    def test_fallback_to_internal_url(self) -> None:
+        flow = self._make_flow_with_hass(internal_url="http://192.168.1.50:8123")
+
+        with patch(
+            "homeassistant.helpers.network.get_url",
+            side_effect=Exception("no url"),
+        ):
+            url = flow._pairing_tool_url()
+
+        assert "192.168.1.50" in url
+
+    def test_fallback_to_hostname_when_all_fail(self) -> None:
+        flow = self._make_flow_with_hass(internal_url=None)
+
+        with patch(
+            "homeassistant.helpers.network.get_url",
+            side_effect=Exception("no url"),
+        ):
+            url = flow._pairing_tool_url()
+
+        assert url.startswith("http://")
+
+
+# ── TuyaCloudlessOptionsFlow.async_step_init ─────────────────────────────────
+
+
+class TestOptionsFlowInitNew:
+    def _make_options_flow_full(self, options: dict[str, Any] | None = None) -> Any:
+        from custom_components.tuya_cloudless.config_flow import TuyaCloudlessOptionsFlow
+        from custom_components.tuya_cloudless.const import (
+            DEFAULT_OPT_COMMAND_TIMEOUT,
+            DEFAULT_OPT_HEARTBEAT_INTERVAL,
+            DEFAULT_OPT_RECONNECT_MAX_DELAY,
+        )
+
+        flow = TuyaCloudlessOptionsFlow.__new__(TuyaCloudlessOptionsFlow)
+        mock_entry = MagicMock()
+        mock_entry.options = options or {
+            "heartbeat_interval": DEFAULT_OPT_HEARTBEAT_INTERVAL,
+            "command_timeout": DEFAULT_OPT_COMMAND_TIMEOUT,
+            "reconnect_max_delay": DEFAULT_OPT_RECONNECT_MAX_DELAY,
+        }
+        flow._config_entry = mock_entry
+        flow.async_show_form = MagicMock(return_value={"type": "form"})
+        flow.async_create_entry = MagicMock(return_value={"type": "create_entry"})
+        return flow
+
+    @pytest.mark.asyncio
+    async def test_no_input_shows_form(self) -> None:
+        flow = self._make_options_flow_full()
+        result = await flow.async_step_init(user_input=None)
+        assert result["type"] == "form"
+        flow.async_show_form.assert_called_once()
+        call_kwargs = flow.async_show_form.call_args[1]
+        assert call_kwargs.get("step_id") == "init"
+
+    @pytest.mark.asyncio
+    async def test_with_user_input_creates_entry(self) -> None:
+        from custom_components.tuya_cloudless.const import (
+            CONF_OPT_COMMAND_TIMEOUT,
+            CONF_OPT_HEARTBEAT_INTERVAL,
+            CONF_OPT_RECONNECT_MAX_DELAY,
+        )
+
+        flow = self._make_options_flow_full()
+        user_input = {
+            CONF_OPT_HEARTBEAT_INTERVAL: 45,
+            CONF_OPT_COMMAND_TIMEOUT: 8,
+            CONF_OPT_RECONNECT_MAX_DELAY: 180,
+        }
+        result = await flow.async_step_init(user_input=user_input)
+        assert result["type"] == "create_entry"
+        flow.async_create_entry.assert_called_once_with(data=user_input)
+
+    @pytest.mark.asyncio
+    async def test_empty_options_uses_defaults(self) -> None:
+        flow = self._make_options_flow_full(options={})
+        result = await flow.async_step_init(user_input=None)
+        assert result["type"] == "form"
+        flow.async_show_form.assert_called_once()
+
+
+# ── _auto_detect_profile (lines 989-1074) ────────────────────────────────────
+
+
+class TestAutoDetectProfileNew:
+    @pytest.mark.asyncio
+    async def test_returns_generic_on_connection_timeout(self) -> None:
+        flow = _make_config_flow()
+        _restore_method(flow, "_auto_detect_profile")
+
+        with patch(
+            "custom_components.tuya_cloudless.config_flow.asyncio.wait_for",
+            side_effect=TimeoutError(),
+        ):
+            result = await flow._auto_detect_profile(
+                "10.0.0.1", local_key="0123456789abcdef", version="3.3"
+            )
+
+        assert result == "Generic Switch"
+
+    @pytest.mark.asyncio
+    async def test_returns_generic_on_oserror(self) -> None:
+        flow = _make_config_flow()
+        _restore_method(flow, "_auto_detect_profile")
+
+        with patch(
+            "custom_components.tuya_cloudless.config_flow.asyncio.wait_for",
+            side_effect=OSError("connection refused"),
+        ):
+            result = await flow._auto_detect_profile(
+                "10.0.0.1", local_key="0123456789abcdef", version="3.3"
+            )
+
+        assert result == "Generic Switch"
+
+
+# ── _validate_local_key edge branches (lines 1197-1222) ─────────────────────
+
+
+class TestValidateLocalKeyEdgeBranchesNew:
+    @pytest.mark.asyncio
+    async def test_returns_empty_when_heartbeat_encode_raises_unsupported(self) -> None:
+        from tuya_cloudless.exceptions import UnsupportedVersionError
+
+        flow = _make_config_flow()
+        _restore_method(flow, "_validate_local_key")
+
+        mock_reader = MagicMock()
+        mock_writer = MagicMock()
+        mock_writer.get_extra_info = MagicMock(return_value="")
+
+        with patch(
+            "tuya_cloudless.protocol.encode_heartbeat",
+            side_effect=UnsupportedVersionError("bad version"),
+        ):
+            result = await flow._validate_local_key(
+                mock_reader,
+                mock_writer,
+                local_key="0123456789abcdef",
+                version="3.9",
+            )
+
+        assert result == {}
+
+    @pytest.mark.asyncio
+    async def test_returns_empty_when_write_raises_oserror(self) -> None:
+        flow = _make_config_flow()
+        _restore_method(flow, "_validate_local_key")
+
+        mock_reader = MagicMock()
+        mock_writer = MagicMock()
+        mock_writer.write = MagicMock(side_effect=OSError("broken pipe"))
+        mock_writer.get_extra_info = MagicMock(return_value="")
+
+        with patch(
+            "tuya_cloudless.protocol.encode_heartbeat",
+            return_value=b"\x00" * 24,
+        ):
+            result = await flow._validate_local_key(
+                mock_reader,
+                mock_writer,
+                local_key="0123456789abcdef",
+                version="3.3",
+            )
+
+        assert result == {}
+
+    @pytest.mark.asyncio
+    async def test_returns_empty_when_empty_raw_response(self) -> None:
+        flow = _make_config_flow()
+        _restore_method(flow, "_validate_local_key")
+
+        mock_reader = MagicMock()
+        mock_writer = MagicMock()
+        mock_writer.write = MagicMock()
+        mock_writer.drain = AsyncMock()
+        mock_writer.get_extra_info = MagicMock(return_value="")
+
+        with (
+            patch(
+                "tuya_cloudless.protocol.encode_heartbeat",
+                return_value=b"\x00" * 24,
+            ),
+            patch(
+                "custom_components.tuya_cloudless.config_flow.asyncio.wait_for",
+                return_value=b"",
+            ),
+        ):
+            result = await flow._validate_local_key(
+                mock_reader,
+                mock_writer,
+                local_key="0123456789abcdef",
+                version="3.3",
+            )
+
+        assert result == {}
+
+
+# ── TuyaCloudlessConfigFlow.__init__ (lines 152-153) ─────────────────────────
+
+
+class TestConfigFlowInit:
+    def test_init_sets_discovered_and_device(self) -> None:
+        """TuyaCloudlessConfigFlow.__init__ must set _discovered=[] and _device={}."""
+        from custom_components.tuya_cloudless.config_flow import TuyaCloudlessConfigFlow
+
+        # Call __init__ directly (not via __new__)
+        flow = object.__new__(TuyaCloudlessConfigFlow)
+        TuyaCloudlessConfigFlow.__init__(flow)
+
+        assert flow._discovered == []
+        assert flow._device == {}
+
+
+# ── _pairing_tool_url successful get_url path (lines 941-943) ─────────────────
+
+
+class TestPairingToolUrlSuccess:
+    def test_returns_url_when_get_url_succeeds(self) -> None:
+        """When get_url returns a valid URL, _pairing_tool_url uses it."""
+        from custom_components.tuya_cloudless.config_flow import TuyaCloudlessConfigFlow
+
+        flow = TuyaCloudlessConfigFlow.__new__(TuyaCloudlessConfigFlow)
+        flow._discovered = []
+        flow._device = {}
+        flow.hass = MagicMock()
+
+        with patch(
+            "homeassistant.helpers.network.get_url",
+            return_value="http://my-ha.local:8123",
+        ):
+            url = flow._pairing_tool_url()
+
+        assert "my-ha.local" in url
+
+
+# ── _auto_detect_profile ImportError (lines 998-999) ─────────────────────────
+
+
+class TestAutoDetectProfileImportError:
+    @pytest.mark.asyncio
+    async def test_returns_generic_when_import_fails(self) -> None:
+        """When tuya_cloudless library can't be imported, return 'Generic Switch'."""
+        import sys
+
+        flow = _make_config_flow()
+        _restore_method(flow, "_auto_detect_profile")
+
+        saved = sys.modules.pop("tuya_cloudless.crypto", None)
+        try:
+            sys.modules["tuya_cloudless.crypto"] = None  # type: ignore[assignment]
+            result = await flow._auto_detect_profile(
+                "10.0.0.1", local_key="0123456789abcdef", version="3.3"
+            )
+        finally:
+            if saved is not None:
+                sys.modules["tuya_cloudless.crypto"] = saved
+            else:
+                sys.modules.pop("tuya_cloudless.crypto", None)
+
+        assert result == "Generic Switch"
+
+
+# ── _run_discovery ImportError (lines 1085-1087) ──────────────────────────────
+
+
+class TestRunDiscoveryImportError:
+    @pytest.mark.asyncio
+    async def test_returns_empty_list_when_import_fails(self) -> None:
+        """When DiscoveryListener can't be imported, return empty list."""
+        import sys
+
+        flow = _make_config_flow()
+        _restore_method(flow, "_run_discovery")
+
+        saved = sys.modules.pop("tuya_cloudless.discovery", None)
+        try:
+            sys.modules["tuya_cloudless.discovery"] = None  # type: ignore[assignment]
+            result = await flow._run_discovery()
+        finally:
+            if saved is not None:
+                sys.modules["tuya_cloudless.discovery"] = saved
+            else:
+                sys.modules.pop("tuya_cloudless.discovery", None)
+
+        assert result == []
+
+
+# ── _validate_local_key OSError on read (lines 1216-1218) ────────────────────
+
+
+class TestValidateLocalKeyOsErrorRead:
+    @pytest.mark.asyncio
+    async def test_returns_empty_on_oserror_during_read(self) -> None:
+        """OSError raised during asyncio.wait_for(reader.read) returns {}."""
+        flow = _make_config_flow()
+        _restore_method(flow, "_validate_local_key")
+
+        mock_reader = AsyncMock()
+        mock_writer = MagicMock()
+        mock_writer.write = MagicMock()
+        mock_writer.drain = AsyncMock()
+        mock_writer.get_extra_info = MagicMock(return_value="")
+
+        # Patch encode_heartbeat to succeed, then patch wait_for to raise OSError
+        # on the second call (first call is open_connection, second is reader.read)
+        call_count = 0
+
+        async def fake_wait_for(coro: object, timeout: float = 0) -> object:
+            nonlocal call_count
+            call_count += 1
+            raise OSError("read error")
+
+        with (
+            patch(
+                "tuya_cloudless.protocol.encode_heartbeat",
+                return_value=b"\x00" * 24,
+            ),
+            patch(
+                "custom_components.tuya_cloudless.config_flow.asyncio.wait_for",
+                side_effect=fake_wait_for,
+            ),
+        ):
+            result = await flow._validate_local_key(
+                mock_reader,
+                mock_writer,
+                local_key="0123456789abcdef",
+                version="3.3",
+            )
+
+        assert result == {}
+
+
+# ── _auto_detect_profile body paths (lines 1011-1074) ─────────────────────────
+
+
+class TestAutoDetectProfileBody:
+    """Tests for _auto_detect_profile body after TCP connection succeeds."""
+
+    def _make_connected_flow(self) -> Any:
+        """Return a flow with _auto_detect_profile restored."""
+        flow = _make_config_flow()
+        _restore_method(flow, "_auto_detect_profile")
+        return flow
+
+    def _mock_open_connection(
+        self,
+        *,
+        raw_data: bytes = b"",
+        read_side_effect: object = None,
+        write_side_effect: object = None,
+        drain_side_effect: object = None,
+    ) -> Any:
+        """Return a patch ctx for asyncio.wait_for: yields mock reader/writer on first call."""
+        mock_reader = AsyncMock()
+        mock_writer = MagicMock()
+        mock_writer.close = MagicMock()
+        mock_writer.wait_closed = AsyncMock()
+        mock_writer.drain = AsyncMock(side_effect=drain_side_effect)
+        if write_side_effect:
+            mock_writer.write = MagicMock(side_effect=write_side_effect)
+        else:
+            mock_writer.write = MagicMock()
+
+        call_count = 0
+
+        async def fake_wait_for(coro: object, timeout: float = 0) -> object:
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                # First call: open_connection
+                return (mock_reader, mock_writer)
+            # Second call: reader.read
+            if read_side_effect:
+                raise read_side_effect
+            return raw_data
+
+        return patch(
+            "custom_components.tuya_cloudless.config_flow.asyncio.wait_for",
+            side_effect=fake_wait_for,
+        )
+
+    @pytest.mark.asyncio
+    async def test_returns_generic_on_write_oserror(self) -> None:
+        """OSError during writer.write returns 'Generic Switch'."""
+        flow = self._make_connected_flow()
+        mock_reader = AsyncMock()
+        mock_writer = MagicMock()
+        mock_writer.close = MagicMock()
+        mock_writer.wait_closed = AsyncMock()
+        mock_writer.drain = AsyncMock()
+        mock_writer.write = MagicMock(side_effect=OSError("write failed"))
+
+        call_count = 0
+
+        async def fake_wait_for(coro: object, timeout: float = 0) -> object:
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                return (mock_reader, mock_writer)
+            return b""
+
+        with patch(
+            "custom_components.tuya_cloudless.config_flow.asyncio.wait_for",
+            side_effect=fake_wait_for,
+        ):
+            result = await flow._auto_detect_profile(
+                "10.0.0.1", local_key="0123456789abcdef", version="3.3"
+            )
+
+        assert result == "Generic Switch"
+
+    @pytest.mark.asyncio
+    async def test_returns_generic_on_empty_raw_response(self) -> None:
+        """Empty raw bytes from reader returns 'Generic Switch'."""
+        flow = self._make_connected_flow()
+        mock_reader = AsyncMock()
+        mock_writer = MagicMock()
+        mock_writer.close = MagicMock()
+        mock_writer.wait_closed = AsyncMock()
+        mock_writer.drain = AsyncMock()
+        mock_writer.write = MagicMock()
+
+        call_count = 0
+
+        async def fake_wait_for(coro: object, timeout: float = 0) -> object:
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                return (mock_reader, mock_writer)
+            return b""  # empty
+
+        with patch(
+            "custom_components.tuya_cloudless.config_flow.asyncio.wait_for",
+            side_effect=fake_wait_for,
+        ):
+            result = await flow._auto_detect_profile(
+                "10.0.0.1", local_key="0123456789abcdef", version="3.3"
+            )
+
+        assert result == "Generic Switch"
+
+    @pytest.mark.asyncio
+    async def test_returns_generic_on_read_timeout(self) -> None:
+        """TimeoutError during reader.read returns 'Generic Switch'."""
+        flow = self._make_connected_flow()
+        mock_reader = AsyncMock()
+        mock_writer = MagicMock()
+        mock_writer.close = MagicMock()
+        mock_writer.wait_closed = AsyncMock()
+        mock_writer.drain = AsyncMock()
+        mock_writer.write = MagicMock()
+
+        call_count = 0
+
+        async def fake_wait_for(coro: object, timeout: float = 0) -> object:
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                return (mock_reader, mock_writer)
+            raise TimeoutError()
+
+        with patch(
+            "custom_components.tuya_cloudless.config_flow.asyncio.wait_for",
+            side_effect=fake_wait_for,
+        ):
+            result = await flow._auto_detect_profile(
+                "10.0.0.1", local_key="0123456789abcdef", version="3.3"
+            )
+
+        assert result == "Generic Switch"
+
+    @pytest.mark.asyncio
+    async def test_returns_generic_on_no_frames(self) -> None:
+        """Non-empty raw bytes that produce no frames returns 'Generic Switch'."""
+        flow = self._make_connected_flow()
+        mock_reader = AsyncMock()
+        mock_writer = MagicMock()
+        mock_writer.close = MagicMock()
+        mock_writer.wait_closed = AsyncMock()
+        mock_writer.drain = AsyncMock()
+        mock_writer.write = MagicMock()
+
+        call_count = 0
+
+        async def fake_wait_for(coro: object, timeout: float = 0) -> object:
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                return (mock_reader, mock_writer)
+            return b"\x00\x01\x02"  # non-empty but no valid frames
+
+        with (
+            patch(
+                "custom_components.tuya_cloudless.config_flow.asyncio.wait_for",
+                side_effect=fake_wait_for,
+            ),
+            patch(
+                "tuya_cloudless.protocol.split_frames",
+                return_value=([], b""),
+            ),
+        ):
+            result = await flow._auto_detect_profile(
+                "10.0.0.1", local_key="0123456789abcdef", version="3.3"
+            )
+
+        assert result == "Generic Switch"
+
+    @pytest.mark.asyncio
+    async def test_returns_generic_on_decode_error(self) -> None:
+        """CryptoError during decode_frame returns 'Generic Switch'."""
+        from tuya_cloudless.crypto import CryptoError
+
+        flow = self._make_connected_flow()
+        mock_reader = AsyncMock()
+        mock_writer = MagicMock()
+        mock_writer.close = MagicMock()
+        mock_writer.wait_closed = AsyncMock()
+        mock_writer.drain = AsyncMock()
+        mock_writer.write = MagicMock()
+
+        call_count = 0
+
+        async def fake_wait_for(coro: object, timeout: float = 0) -> object:
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                return (mock_reader, mock_writer)
+            return b"\x00\x01\x02"
+
+        with (
+            patch(
+                "custom_components.tuya_cloudless.config_flow.asyncio.wait_for",
+                side_effect=fake_wait_for,
+            ),
+            patch(
+                "tuya_cloudless.protocol.split_frames",
+                return_value=([b"frame"], b""),
+            ),
+            patch(
+                "tuya_cloudless.protocol.decode_frame",
+                side_effect=CryptoError("bad key"),
+            ),
+        ):
+            result = await flow._auto_detect_profile(
+                "10.0.0.1", local_key="0123456789abcdef", version="3.3"
+            )
+
+        assert result == "Generic Switch"
+
+    @pytest.mark.asyncio
+    async def test_returns_generic_when_no_dp_ids(self) -> None:
+        """When decoded frame has no DP IDs, returns 'Generic Switch'."""
+        flow = self._make_connected_flow()
+        mock_reader = AsyncMock()
+        mock_writer = MagicMock()
+        mock_writer.close = MagicMock()
+        mock_writer.wait_closed = AsyncMock()
+        mock_writer.drain = AsyncMock()
+        mock_writer.write = MagicMock()
+
+        mock_frame = MagicMock()
+        mock_frame.dps = {}  # empty dict — no DP IDs
+
+        call_count = 0
+
+        async def fake_wait_for(coro: object, timeout: float = 0) -> object:
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                return (mock_reader, mock_writer)
+            return b"\x00\x01\x02"
+
+        with (
+            patch(
+                "custom_components.tuya_cloudless.config_flow.asyncio.wait_for",
+                side_effect=fake_wait_for,
+            ),
+            patch(
+                "tuya_cloudless.protocol.split_frames",
+                return_value=([b"frame"], b""),
+            ),
+            patch(
+                "tuya_cloudless.protocol.decode_frame",
+                return_value=mock_frame,
+            ),
+        ):
+            result = await flow._auto_detect_profile(
+                "10.0.0.1", local_key="0123456789abcdef", version="3.3"
+            )
+
+        assert result == "Generic Switch"
+
+    @pytest.mark.asyncio
+    async def test_returns_profile_name_when_detected(self) -> None:
+        """When a profile is matched from DP IDs, returns the profile name."""
+        flow = self._make_connected_flow()
+        mock_reader = AsyncMock()
+        mock_writer = MagicMock()
+        mock_writer.close = MagicMock()
+        mock_writer.wait_closed = AsyncMock()
+        mock_writer.drain = AsyncMock()
+        mock_writer.write = MagicMock()
+
+        mock_frame = MagicMock()
+        mock_frame.dps = {"dps": {"1": True, "2": 100}}
+
+        mock_match = MagicMock()
+        mock_match.name = "Smart Dimmer"
+
+        call_count = 0
+
+        async def fake_wait_for(coro: object, timeout: float = 0) -> object:
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                return (mock_reader, mock_writer)
+            return b"\x00\x01\x02"
+
+        with (
+            patch(
+                "custom_components.tuya_cloudless.config_flow.asyncio.wait_for",
+                side_effect=fake_wait_for,
+            ),
+            patch(
+                "tuya_cloudless.protocol.split_frames",
+                return_value=([b"frame"], b""),
+            ),
+            patch(
+                "tuya_cloudless.protocol.decode_frame",
+                return_value=mock_frame,
+            ),
+            patch(
+                "tuya_cloudless.profiles.list_profiles",
+                return_value=[mock_match],
+            ),
+            patch(
+                "tuya_cloudless.profiles.detect_profile_from_dps",
+                return_value=mock_match,
+            ),
+        ):
+            result = await flow._auto_detect_profile(
+                "10.0.0.1", local_key="0123456789abcdef", version="3.3"
+            )
+
+        assert result == "Smart Dimmer"
+
+    @pytest.mark.asyncio
+    async def test_returns_generic_when_no_profile_match(self) -> None:
+        """When no profile matches the DP IDs, returns 'Generic Switch'."""
+        flow = self._make_connected_flow()
+        mock_reader = AsyncMock()
+        mock_writer = MagicMock()
+        mock_writer.close = MagicMock()
+        mock_writer.wait_closed = AsyncMock()
+        mock_writer.drain = AsyncMock()
+        mock_writer.write = MagicMock()
+
+        mock_frame = MagicMock()
+        mock_frame.dps = {"dps": {"1": True}}
+
+        mock_profile = MagicMock()
+
+        call_count = 0
+
+        async def fake_wait_for(coro: object, timeout: float = 0) -> object:
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                return (mock_reader, mock_writer)
+            return b"\x00\x01\x02"
+
+        with (
+            patch(
+                "custom_components.tuya_cloudless.config_flow.asyncio.wait_for",
+                side_effect=fake_wait_for,
+            ),
+            patch(
+                "tuya_cloudless.protocol.split_frames",
+                return_value=([b"frame"], b""),
+            ),
+            patch(
+                "tuya_cloudless.protocol.decode_frame",
+                return_value=mock_frame,
+            ),
+            patch(
+                "tuya_cloudless.profiles.list_profiles",
+                return_value=[mock_profile],
+            ),
+            patch(
+                "tuya_cloudless.profiles.detect_profile_from_dps",
+                return_value=None,  # no match
+            ),
+        ):
+            result = await flow._auto_detect_profile(
+                "10.0.0.1", local_key="0123456789abcdef", version="3.3"
+            )
+
+        assert result == "Generic Switch"

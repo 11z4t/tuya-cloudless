@@ -6,12 +6,14 @@ and helper utilities — without needing a real HA instance or Tuya device.
 
 from __future__ import annotations
 
+import asyncio
 import sys
 import time
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from aiohttp import web
 from aiohttp.test_utils import TestClient, TestServer
 
 # Add lib/ and custom_components parent to import path for test environment
@@ -22,7 +24,12 @@ for _p in [str(_REPO / "lib"), str(_REPO)]:
 
 from custom_components.tuya_cloudless.pairing_server import (  # noqa: E402
     ActivationResult,
+    PairingRedirectView,
     PairingServer,
+    ensure_pairing_server,
+    get_pairing_server,
+    register_redirect_view,
+    stop_pairing_server,
 )
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
@@ -503,3 +510,739 @@ class TestIconEndpoint:
                 assert resp.status == 404
             finally:
                 await cli.close()
+
+
+# ── PairingServer.start / stop ────────────────────────────────────────────────
+
+
+class TestStartStop:
+    async def test_start_sets_runner_and_site(self) -> None:
+        """start() must set _runner and _site."""
+        hass = _make_hass()
+        srv = PairingServer(hass, port=0)
+
+        mock_runner = MagicMock()
+        mock_runner.setup = AsyncMock()
+        mock_site = MagicMock()
+        mock_site.start = AsyncMock()
+
+        with (
+            patch(
+                "custom_components.tuya_cloudless.pairing_server.web.AppRunner",
+                return_value=mock_runner,
+            ),
+            patch(
+                "custom_components.tuya_cloudless.pairing_server.web.TCPSite",
+                return_value=mock_site,
+            ),
+            patch(
+                "custom_components.tuya_cloudless.pairing_server.register_redirect_view",
+                new_callable=AsyncMock,
+            ),
+        ):
+            await srv.start()
+
+        assert srv._runner is mock_runner
+        assert srv._site is mock_site
+        mock_runner.setup.assert_awaited_once()
+        mock_site.start.assert_awaited_once()
+
+    async def test_stop_clears_sse_queues_and_cleans_runner(self) -> None:
+        """stop() must signal SSE subscribers, clear queues, and call runner.cleanup()."""
+        hass = _make_hass()
+        srv = PairingServer(hass, port=0)
+
+        # Inject a mock runner
+        mock_runner = MagicMock()
+        mock_runner.cleanup = AsyncMock()
+        srv._runner = mock_runner
+        srv._site = MagicMock()
+
+        # Add a fake SSE queue
+        q: asyncio.Queue[str | None] = asyncio.Queue()
+        srv._sse_queues.append(q)
+
+        await srv.stop()
+
+        # Queue should have received None (close signal)
+        assert not q.empty()
+        msg = q.get_nowait()
+        assert msg is None
+
+        # SSE queue list should be cleared
+        assert srv._sse_queues == []
+
+        # Runner should have been cleaned up and cleared
+        mock_runner.cleanup.assert_awaited_once()
+        assert srv._runner is None
+        assert srv._site is None
+
+    async def test_stop_cancels_auto_stop_task(self) -> None:
+        """stop() must cancel any pending auto-stop task."""
+        hass = _make_hass()
+        srv = PairingServer(hass, port=0)
+
+        mock_runner = MagicMock()
+        mock_runner.cleanup = AsyncMock()
+        srv._runner = mock_runner
+
+        # Use a MagicMock task to verify cancel() is called
+        mock_task = MagicMock()
+        mock_task.cancel = MagicMock()
+        srv._auto_stop_task = mock_task
+
+        await srv.stop()
+
+        mock_task.cancel.assert_called_once()
+        assert srv._auto_stop_task is None
+
+    async def test_stop_when_no_runner(self) -> None:
+        """stop() must not crash when called before start()."""
+        srv = PairingServer(_make_hass(), port=0)
+        # No runner set — should not raise
+        await srv.stop()
+        assert srv._runner is None
+
+
+# ── ha_local_url fallbacks ────────────────────────────────────────────────────
+
+
+class TestHaLocalUrlFallbacks:
+    def test_fallback_to_internal_url(self) -> None:
+        """When get_url raises, fall back to hass.config.internal_url."""
+        hass = _make_hass()
+        hass.config.internal_url = "http://192.168.1.100:8123"
+
+        srv = PairingServer(hass, port=8099)
+
+        with patch(
+            "homeassistant.helpers.network.get_url",
+            side_effect=Exception("no url"),
+        ):
+            url = srv.ha_local_url()
+
+        # Should have fallen back to internal_url hostname
+        assert "192.168.1.100" in url
+        assert ":8099" in url
+
+    def test_fallback_to_hostname_when_all_fail(self) -> None:
+        """When get_url and internal_url both fail, return the machine hostname."""
+        hass = _make_hass()
+        hass.config.internal_url = None  # no internal URL
+
+        srv = PairingServer(hass, port=8099)
+
+        with patch(
+            "homeassistant.helpers.network.get_url",
+            side_effect=Exception("no url"),
+        ):
+            url = srv.ha_local_url()
+
+        assert url.startswith("http://")
+        assert ":8099" in url
+
+    def test_register_flow_cancels_auto_stop(self) -> None:
+        """register_flow() must cancel any existing auto-stop task."""
+        srv = PairingServer(_make_hass(), port=0)
+
+        # Inject a fake task
+        mock_task = MagicMock()
+        srv._auto_stop_task = mock_task
+
+        srv.register_flow("flow-abc")
+
+        mock_task.cancel.assert_called_once()
+        assert srv._auto_stop_task is None
+        assert "flow-abc" in srv._pending_flows
+
+    def test_unregister_flow_schedules_auto_stop(self) -> None:
+        """unregister_flow() must schedule idle-stop when no flows remain."""
+        srv = PairingServer(_make_hass(), port=0)
+        srv._pending_flows.add("flow-xyz")
+
+        # Patch ensure_future so we don't need a real event loop
+        with patch("asyncio.ensure_future", return_value=MagicMock()) as mock_ef:
+            srv.unregister_flow("flow-xyz")
+
+        assert "flow-xyz" not in srv._pending_flows
+        mock_ef.assert_called_once()
+
+    def test_unregister_flow_no_schedule_when_others_remain(self) -> None:
+        """unregister_flow() must NOT schedule idle-stop while other flows are registered."""
+        srv = PairingServer(_make_hass(), port=0)
+        srv._pending_flows.add("flow-1")
+        srv._pending_flows.add("flow-2")
+
+        with patch("asyncio.ensure_future", return_value=MagicMock()) as mock_ef:
+            srv.unregister_flow("flow-1")
+
+        mock_ef.assert_not_called()
+
+
+# ── _handle_qr ────────────────────────────────────────────────────────────────
+
+
+class TestQrEndpoint:
+    async def test_returns_503_when_qrcode_not_installed(self, client: TestClient) -> None:
+        """Without qrcode library, /api/provision/qr.svg returns 503."""
+        import builtins
+
+        real_import = builtins.__import__
+
+        def _no_qrcode(name: str, *args: object, **kwargs: object) -> object:
+            if name.startswith("qrcode"):
+                raise ImportError("qrcode not installed")
+            return real_import(name, *args, **kwargs)
+
+        with patch("builtins.__import__", side_effect=_no_qrcode):
+            resp = await client.get("/api/provision/qr.svg")
+
+        assert resp.status == 503
+
+    async def test_returns_svg_when_qrcode_installed(self, client: TestClient) -> None:
+        """When qrcode is available, /api/provision/qr.svg returns SVG content."""
+        try:
+            import qrcode  # noqa: F401
+        except ImportError:
+            pytest.skip("qrcode not installed in test environment")
+
+        resp = await client.get("/api/provision/qr.svg")
+        assert resp.status == 200
+        assert "svg" in resp.content_type.lower()
+
+
+# ── _handle_activate bad JSON ─────────────────────────────────────────────────
+
+
+class TestActivateBadJson:
+    async def test_bad_json_body_still_returns_200(self, client: TestClient) -> None:
+        """Body that is not valid JSON must be accepted gracefully (body defaults to {})."""
+        resp = await client.post(
+            "/api/tuya/device/active",
+            data=b"not-json-at-all",
+            headers={"Content-Type": "application/json"},
+        )
+        # CSRF guard passes (JSON content-type), body parse falls back to {}
+        assert resp.status == 200
+        body = await resp.json()
+        assert body["success"] is True
+
+
+# ── _handle_activate with pending flow ────────────────────────────────────────
+
+
+class TestActivateFlowResume:
+    async def test_pending_flow_gets_resumed(self, client: TestClient) -> None:
+        """When _pending_flows has a flow_id, activation creates a task to resume it."""
+        # We create a fresh server and client to have full control.
+        hass = _make_hass()
+        hass.async_create_task = MagicMock()
+        hass.config_entries = MagicMock()
+
+        fresh_server = PairingServer(hass, port=0)
+        fresh_server._pending_flows.add("test-flow-001")
+
+        ts = TestServer(fresh_server._app)
+        cli = TestClient(ts)
+        await cli.start_server()
+        try:
+            resp = await cli.post(
+                "/api/tuya/device/active",
+                json={"gw_id": "gw001", "token": "tok001"},
+            )
+            assert resp.status == 200
+            # async_create_task should have been called for the pending flow
+            hass.async_create_task.assert_called_once()
+        finally:
+            await cli.close()
+
+
+# ── _handle_sse ────────────────────────────────────────────────────────────────
+
+
+class TestSseEndpoint:
+    async def test_sse_initial_connected_comment(self, client: TestClient) -> None:
+        """SSE stream sends an initial : connected comment."""
+        # Use a short-lived connection: we read a chunk and then close
+        async with client.session.get(
+            client.make_url("/api/provision/events"),
+        ) as resp:
+            assert resp.status == 200
+            assert resp.content_type == "text/event-stream"
+            # Read the initial keep-alive comment
+            chunk = await asyncio.wait_for(resp.content.read(64), timeout=5)
+            assert b": connected" in chunk
+
+
+# ── _broadcast_sse ────────────────────────────────────────────────────────────
+
+
+class TestBroadcastSse:
+    async def test_puts_message_in_all_queues(self, server: PairingServer) -> None:
+        """_broadcast_sse must put the formatted message into every SSE queue."""
+        q1: asyncio.Queue[str | None] = asyncio.Queue()
+        q2: asyncio.Queue[str | None] = asyncio.Queue()
+        server._sse_queues.extend([q1, q2])
+
+        await server._broadcast_sse("activated", '{"gw_id":"test"}')
+
+        msg1 = q1.get_nowait()
+        msg2 = q2.get_nowait()
+        assert "event: activated" in msg1
+        assert '{"gw_id":"test"}' in msg1
+        assert msg1 == msg2
+
+    async def test_broadcast_to_empty_queues(self, server: PairingServer) -> None:
+        """_broadcast_sse with no subscribers must not raise."""
+        # No queues — should be a no-op
+        await server._broadcast_sse("activated", "{}")
+
+
+# ── _auto_stop_after_idle ──────────────────────────────────────────────────────
+
+
+class TestAutoStopAfterIdle:
+    async def test_does_not_stop_when_pending_flows_remain(self) -> None:
+        """If flows are still registered after sleep, the server must not stop."""
+        hass = _make_hass()
+        hass.data = {}
+        srv = PairingServer(hass, port=0)
+        srv._pending_flows.add("flow-still-active")
+
+        stop_called = []
+
+        async def fake_stop_pairing_server(h: object) -> None:
+            stop_called.append(True)
+
+        with (
+            patch("asyncio.sleep", new_callable=AsyncMock),
+            patch(
+                "custom_components.tuya_cloudless.pairing_server.stop_pairing_server",
+                side_effect=fake_stop_pairing_server,
+            ),
+        ):
+            await srv._auto_stop_after_idle()
+
+        assert not stop_called
+
+    async def test_stops_when_idle_and_is_current_server(self) -> None:
+        """When no flows remain and this is the active server, stop_pairing_server is called."""
+        from custom_components.tuya_cloudless.const import DOMAIN
+        from custom_components.tuya_cloudless.pairing_server import _KEY_PAIRING_SERVER
+
+        hass = _make_hass()
+        hass.data = {}
+
+        srv = PairingServer(hass, port=0)
+        # Register this server as the active one
+        hass.data[DOMAIN] = {_KEY_PAIRING_SERVER: srv}
+
+        stop_called = []
+
+        async def fake_stop_pairing_server(h: object) -> None:
+            stop_called.append(True)
+
+        with (
+            patch("asyncio.sleep", new_callable=AsyncMock),
+            patch(
+                "custom_components.tuya_cloudless.pairing_server.stop_pairing_server",
+                side_effect=fake_stop_pairing_server,
+            ),
+        ):
+            await srv._auto_stop_after_idle()
+
+        assert stop_called
+
+
+# ── get_pairing_server ────────────────────────────────────────────────────────
+
+
+class TestGetPairingServer:
+    def test_returns_none_when_hass_data_empty(self) -> None:
+        """get_pairing_server must return None when no server is stored."""
+        hass = _make_hass()
+        hass.data = {}
+        result = get_pairing_server(hass)
+        assert result is None
+
+    def test_returns_server_when_stored(self) -> None:
+        """get_pairing_server must return the stored PairingServer."""
+        from custom_components.tuya_cloudless.const import DOMAIN
+        from custom_components.tuya_cloudless.pairing_server import _KEY_PAIRING_SERVER
+
+        hass = _make_hass()
+        srv = PairingServer(hass, port=0)
+        hass.data = {DOMAIN: {_KEY_PAIRING_SERVER: srv}}
+
+        result = get_pairing_server(hass)
+        assert result is srv
+
+
+# ── ensure_pairing_server ─────────────────────────────────────────────────────
+
+
+class TestEnsurePairingServer:
+    async def test_creates_and_starts_new_server(self) -> None:
+        """ensure_pairing_server must create a new server if none exists."""
+        from custom_components.tuya_cloudless.const import DOMAIN
+        from custom_components.tuya_cloudless.pairing_server import _KEY_PAIRING_SERVER
+
+        hass = _make_hass()
+        hass.data = {}
+
+        start_calls: list[object] = []
+
+        async def fake_start(self_srv: PairingServer) -> None:
+            start_calls.append(self_srv)
+
+        with patch.object(PairingServer, "start", fake_start):
+            result = await ensure_pairing_server(hass)
+
+        assert isinstance(result, PairingServer)
+        assert len(start_calls) == 1
+        assert hass.data[DOMAIN][_KEY_PAIRING_SERVER] is result
+
+    async def test_returns_existing_server(self) -> None:
+        """ensure_pairing_server must return the existing server without restarting."""
+        from custom_components.tuya_cloudless.const import DOMAIN
+        from custom_components.tuya_cloudless.pairing_server import _KEY_PAIRING_SERVER
+
+        hass = _make_hass()
+        existing = PairingServer(hass, port=0)
+        hass.data = {DOMAIN: {_KEY_PAIRING_SERVER: existing}}
+
+        start_calls: list[object] = []
+
+        async def fake_start(self_srv: PairingServer) -> None:  # pragma: no cover
+            start_calls.append(self_srv)
+
+        with patch.object(PairingServer, "start", fake_start):
+            result = await ensure_pairing_server(hass)
+
+        assert result is existing
+        assert len(start_calls) == 0
+
+
+# ── PairingRedirectView ───────────────────────────────────────────────────────
+
+
+class TestPairingRedirectView:
+    def test_init_stores_port(self) -> None:
+        """PairingRedirectView.__init__ must store the port."""
+        view = PairingRedirectView(port=1234)
+        assert view._port == 1234
+
+    def test_init_default_port(self) -> None:
+        """Default port comes from PAIRING_SERVER_PORT."""
+        from custom_components.tuya_cloudless.pairing_server import PAIRING_SERVER_PORT
+
+        view = PairingRedirectView()
+        assert view._port == PAIRING_SERVER_PORT
+
+    async def test_get_raises_http_found(self) -> None:
+        """get() must raise HTTPFound with a redirect to the pairing server."""
+        view = PairingRedirectView(port=8099)
+
+        mock_request = MagicMock()
+        mock_request.url.host = "192.168.1.50"
+
+        with pytest.raises(web.HTTPFound) as exc_info:
+            await view.get(mock_request, "my-flow-id")
+
+        location = exc_info.value.location
+        assert "192.168.1.50" in str(location)
+        assert "8099" in str(location)
+        assert "my-flow-id" in str(location)
+
+    async def test_get_uses_fallback_host_when_empty(self) -> None:
+        """When request.url.host is empty, falls back to homeassistant.local."""
+        view = PairingRedirectView(port=8099)
+
+        mock_request = MagicMock()
+        mock_request.url.host = ""
+
+        with pytest.raises(web.HTTPFound) as exc_info:
+            await view.get(mock_request, "flow-id")
+
+        assert "homeassistant.local" in str(exc_info.value.location)
+
+
+# ── register_redirect_view ────────────────────────────────────────────────────
+
+
+class TestRegisterRedirectView:
+    async def test_calls_hass_http_register_view(self) -> None:
+        """register_redirect_view must call hass.http.register_view with a view."""
+        hass = _make_hass()
+        hass.http = MagicMock()
+
+        await register_redirect_view(hass, port=9999)
+
+        hass.http.register_view.assert_called_once()
+        # The argument should be a view instance (not the class)
+        call_arg = hass.http.register_view.call_args[0][0]
+        assert hasattr(call_arg, "url")
+        assert hasattr(call_arg, "name")
+        assert call_arg._port == 9999
+
+
+# ── stop_pairing_server ───────────────────────────────────────────────────────
+
+
+class TestStopPairingServer:
+    async def test_stops_and_removes_server(self) -> None:
+        """stop_pairing_server must call server.stop() and remove it from hass.data."""
+        from custom_components.tuya_cloudless.const import DOMAIN
+        from custom_components.tuya_cloudless.pairing_server import _KEY_PAIRING_SERVER
+
+        hass = _make_hass()
+        srv = PairingServer(hass, port=0)
+        srv.stop = AsyncMock()
+        hass.data = {DOMAIN: {_KEY_PAIRING_SERVER: srv}}
+
+        await stop_pairing_server(hass)
+
+        srv.stop.assert_awaited_once()
+        assert _KEY_PAIRING_SERVER not in hass.data.get(DOMAIN, {})
+
+    async def test_no_error_when_hass_data_empty(self) -> None:
+        """stop_pairing_server must not raise when no server is stored."""
+        hass = _make_hass()
+        hass.data = {}
+        # Should complete without error
+        await stop_pairing_server(hass)
+
+    async def test_no_error_when_domain_data_not_dict(self) -> None:
+        """stop_pairing_server must not raise when domain data is not a dict."""
+        from custom_components.tuya_cloudless.const import DOMAIN
+
+        hass = _make_hass()
+        hass.data = {DOMAIN: "unexpected_value"}
+        # Should return early without error
+        await stop_pairing_server(hass)
+
+
+# ── ha_local_url internal_url exception branch (lines 242-243) ───────────────
+
+
+class TestHaLocalUrlInternalUrlException:
+    def test_exception_in_internal_url_falls_back_to_hostname(self) -> None:
+        """When accessing internal_url raises, fall back to machine hostname."""
+        hass = _make_hass()
+
+        # Make internal_url raise when accessed
+        type(hass.config).internal_url = property(
+            lambda self: (_ for _ in ()).throw(RuntimeError("no attr"))
+        )
+
+        srv = PairingServer(hass, port=8099)
+
+        with patch(
+            "homeassistant.helpers.network.get_url",
+            side_effect=Exception("no url"),
+        ):
+            url = srv.ha_local_url()
+
+        # Should fall through to hostname fallback
+        assert url.startswith("http://")
+        assert ":8099" in url
+
+
+# ── _handle_index returns HTML when UI dir exists (line 308 area) ─────────────
+
+
+class TestIndexPageHtml:
+    async def test_returns_html_when_ui_dir_exists(self, tmp_path: Path) -> None:
+        """When index.html exists in _UI_DIR, responds with its content."""
+        import custom_components.tuya_cloudless.pairing_server as ps_mod
+
+        ui_dir = tmp_path / "pairing_ui"
+        ui_dir.mkdir()
+        index_html = ui_dir / "index.html"
+        index_html.write_text("<html><body>Test</body></html>", encoding="utf-8")
+
+        with patch.object(ps_mod, "_UI_DIR", ui_dir):
+            srv = PairingServer(_make_hass(), port=0)
+            ts = TestServer(srv._app)
+            cli = TestClient(ts)
+            await cli.start_server()
+            try:
+                resp = await cli.get("/")
+                assert resp.status == 200
+                assert "text/html" in resp.content_type
+                body = await resp.text()
+                assert "Test" in body
+            finally:
+                await cli.close()
+
+
+# ── SSE keepalive and message delivery (lines 585-591) ────────────────────────
+
+
+class TestSseMessageDelivery:
+    async def test_sse_delivers_message_after_activation(self, client: TestClient) -> None:
+        """After an activation POST, the SSE stream receives the activated event."""
+        # Connect to SSE first, then trigger activation
+        # We use a short timeout since the SSE stream is long-lived
+        async with client.session.get(
+            client.make_url("/api/provision/events"),
+        ) as resp:
+            assert resp.status == 200
+
+            # Read the initial connected comment
+            initial = await asyncio.wait_for(resp.content.read(64), timeout=5)
+            assert b": connected" in initial
+
+            # Now trigger an activation (this sends to SSE queues)
+            await client.post(
+                "/api/tuya/device/active",
+                json={"gw_id": "gw_sse_test", "token": "tok_sse"},
+            )
+
+            # Read the activated event
+            data = await asyncio.wait_for(resp.content.read(512), timeout=5)
+            assert b"event: activated" in data
+            assert b"gw_sse_test" in data
+
+
+# ── _handle_qr with mocked qrcode (lines 391, 401-409) ──────────────────────
+
+
+class TestQrEndpointMocked:
+    async def test_returns_svg_when_qrcode_mocked(self, client: TestClient) -> None:
+        """With a mocked qrcode library, /api/provision/qr.svg returns SVG."""
+        import types
+
+        # Build minimal mock qrcode modules
+        mock_qrcode_mod = types.ModuleType("qrcode")
+        mock_svg_mod = types.ModuleType("qrcode.image.svg")
+
+        # SvgPathImage factory (class-level mock)
+        mock_factory = MagicMock()
+        mock_svg_mod.SvgPathImage = mock_factory
+
+        # qrcode.make returns an image object whose save() writes SVG bytes
+        fake_svg = b"<svg>test</svg>"
+
+        def _mock_save(buf: object) -> None:
+            import io
+
+            if isinstance(buf, io.BytesIO):
+                buf.write(fake_svg)
+
+        mock_img = MagicMock()
+        mock_img.save = _mock_save
+        mock_qrcode_mod.make = MagicMock(return_value=mock_img)
+        mock_qrcode_mod.image = MagicMock()
+        mock_qrcode_mod.image.svg = mock_svg_mod
+
+        import sys
+
+        saved_qrcode = sys.modules.get("qrcode")
+        saved_svg = sys.modules.get("qrcode.image.svg")
+
+        sys.modules["qrcode"] = mock_qrcode_mod
+        sys.modules["qrcode.image.svg"] = mock_svg_mod
+        try:
+            resp = await client.get("/api/provision/qr.svg")
+        finally:
+            if saved_qrcode is not None:
+                sys.modules["qrcode"] = saved_qrcode
+            else:
+                sys.modules.pop("qrcode", None)
+            if saved_svg is not None:
+                sys.modules["qrcode.image.svg"] = saved_svg
+            else:
+                sys.modules.pop("qrcode.image.svg", None)
+
+        assert resp.status == 200
+        assert "svg" in resp.content_type.lower()
+
+
+# ── _auto_detect_profile successful path (lines 1011-1074) ───────────────────
+# These lines are in config_flow.py and tested via TestAutoDetectProfileNew above.
+# The SSE timeout path for pairing_server needs a dedicated test.
+
+
+# ── _handle_index 404 when index.html is missing (line 308) ─────────────────
+
+
+class TestIndexPage404WhenMissing:
+    async def test_returns_404_when_index_html_missing(self, tmp_path: Path) -> None:
+        """When _UI_DIR exists but has no index.html, return 404 with error text."""
+        import custom_components.tuya_cloudless.pairing_server as ps_mod
+
+        ui_dir = tmp_path / "empty_ui"
+        ui_dir.mkdir()
+        # No index.html — only the directory exists
+
+        with patch.object(ps_mod, "_UI_DIR", ui_dir):
+            srv = PairingServer(_make_hass(), port=0)
+            ts = TestServer(srv._app)
+            cli = TestClient(ts)
+            await cli.start_server()
+            try:
+                resp = await cli.get("/")
+                assert resp.status == 404
+                text = await resp.text()
+                assert "Pairing UI not found" in text
+            finally:
+                await cli.close()
+
+
+# ── SSE keepalive timeout path (lines 585-586) ───────────────────────────────
+# Line 585-586: after TimeoutError in queue.get, writes keepalive and continues
+# Line 589: after queue.get returns a real message, writes message.encode()
+
+
+class TestSseKeepaliveAndMessage:
+    async def test_sse_keepalive_and_message_written(self, server: PairingServer) -> None:
+        """SSE handler writes keepalive on timeout, then writes real message."""
+        import asyncio
+
+        # We inject: first TimeoutError (keepalive), then a real message, then None (close)
+        call_count = 0
+        original_wait_for = asyncio.wait_for
+
+        async def fake_wait_for(coro: object, timeout: float = 0) -> object:
+            nonlocal call_count
+            # Only intercept queue.get calls (short timeout = 25.0)
+            if abs(timeout - 25.0) < 1.0:
+                call_count += 1
+                if call_count == 1:
+                    raise TimeoutError()  # triggers keepalive
+                if call_count == 2:
+                    return "event: test\ndata: hello\n\n"  # real message
+                return None  # close signal
+            return await original_wait_for(coro, timeout=timeout)
+
+        # Build a fake request and response that capture writes
+        written: list[bytes] = []
+
+        mock_response = MagicMock()
+        mock_response.prepare = AsyncMock()
+
+        async def fake_write(data: bytes) -> None:
+            written.append(data)
+
+        mock_response.write = fake_write
+
+        mock_request = MagicMock()
+        mock_request.protocol = MagicMock()
+
+        with (
+            patch(
+                "custom_components.tuya_cloudless.pairing_server.asyncio.wait_for",
+                side_effect=fake_wait_for,
+            ),
+            patch(
+                "custom_components.tuya_cloudless.pairing_server.web.StreamResponse",
+                return_value=mock_response,
+            ),
+        ):
+            await server._handle_sse(mock_request)
+
+        # Verify the keepalive was written
+        assert any(b": keepalive" in w for w in written)
+        # Verify the real message was written
+        assert any(b"event: test" in w for w in written)
