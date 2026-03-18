@@ -137,6 +137,12 @@ function applyStrings() {
   if (el("devices-desc"))          el("devices-desc").textContent          = t("device_panel_desc");
   if (el("devices-scanning-label")) el("devices-scanning-label").textContent = t("looking_for_devices");
   if (el("btn-ble-scan-label"))    el("btn-ble-scan-label").textContent    = t("pair_via_ble");
+  // Re-apply btn-pwd-toggle aria-label in the current show/hide state
+  const pwdToggle = document.getElementById("btn-pwd-toggle");
+  if (pwdToggle) {
+    const isShowing = document.getElementById("password")?.type === "text";
+    pwdToggle.setAttribute("aria-label", isShowing ? t("hide_password") : t("show_password"));
+  }
   // Re-apply step counter with new language
   updateStepCounter(_currentStep);
   // Re-apply debug summary count
@@ -428,6 +434,13 @@ function goToDevices() {
   }
   _pairMethod = null;
   _selectedApSsid = null;
+  // Clear form state so credentials from a previous pairing cannot be reused accidentally
+  _ssid = "";
+  _pwd  = "";
+  const ssidEl = document.getElementById("ssid");
+  const pwdEl  = document.getElementById("password");
+  if (ssidEl) ssidEl.value = "";
+  if (pwdEl)  pwdEl.value  = "";
   document.getElementById("panel-wifi").classList.add("hidden");
   document.getElementById("panel-ble").classList.add("hidden");
   document.getElementById("panel-done").classList.add("hidden");
@@ -499,15 +512,23 @@ function showDone(gw_id, local_key, ip_address) {
     "<dt class=\"result-label\">" + esc(t("label_ip")) + "</dt>" +
     "<dd class=\"result-value\">" + esc(ip_address) + "</dd>" +
     "<dt class=\"result-label\">" + esc(t("label_local_key")) + "</dt>" +
-    "<dd class=\"result-value key-value\">" + esc(local_key) + "</dd>";
+    "<dd class=\"result-value key-value\" style=\"display:flex;align-items:center;gap:8px\">" +
+    "<span id=\"key-masked\">\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022 (hidden)</span>" +
+    "<span id=\"key-revealed\" style=\"display:none;word-break:break-all\">" + esc(local_key) + "</span>" +
+    "<button type=\"button\" id=\"btn-reveal-key\" class=\"btn-sm\" " +
+    "style=\"padding:2px 8px;font-size:0.75rem;background:var(--surface-2);border:1px solid var(--border);border-radius:6px;cursor:pointer\">" +
+    t("label_reveal_key") + "</button>" +
+    "</dd>";
 
   if (_haFlowId) {
     document.getElementById("ha-flow-msg").classList.remove("hidden");
   } else {
     // Validate params before building deep-link to avoid garbage values
     const safeGwId = /^[a-zA-Z0-9_-]{1,64}$/.test(gw_id) ? gw_id : "";
-    const safeKey  = /^[a-f0-9]{32}$/i.test(local_key) ? local_key : "";
-    const safeIp   = /^\d{1,3}(?:\.\d{1,3}){3}$/.test(ip_address) ? ip_address : "";
+    // Accept 16-char keys (some device types) or 32-char keys; reject anything else
+    const safeKey  = /^[a-f0-9]{16,32}$/i.test(local_key) ? local_key : "";
+    // Accept IPv4 or IPv6 (link-local, global) — let HA validate the exact format
+    const safeIp   = /^[a-f0-9:.\[\]%]{2,45}$/i.test(ip_address) ? ip_address : "";
     if (safeGwId && safeKey) {
       const params = new URLSearchParams({ domain: "tuya_cloudless", gw_id: safeGwId, local_key: safeKey, ip_address: safeIp });
       document.getElementById("btn-add-ha").href = "/config/integrations/add?" + params;
@@ -515,6 +536,19 @@ function showDone(gw_id, local_key, ip_address) {
     }
   }
   document.getElementById("btn-pair-another").classList.remove("hidden");
+
+  // Wire up the key reveal toggle
+  const revealBtn = document.getElementById("btn-reveal-key");
+  if (revealBtn) {
+    revealBtn.addEventListener("click", function() {
+      const masked   = document.getElementById("key-masked");
+      const revealed = document.getElementById("key-revealed");
+      const showing  = revealed && revealed.style.display !== "none";
+      if (masked)   masked.style.display   = showing ? "" : "none";
+      if (revealed) revealed.style.display = showing ? "none" : "";
+      this.textContent = showing ? t("label_reveal_key") : t("label_hide_key");
+    }, { once: false });
+  }
 }
 
 // ── CRC-16/MODBUS ─────────────────────────────────────────────────────────────
@@ -652,14 +686,16 @@ function listenForActivation(token) {
   es.addEventListener("activated", (e) => {
     try {
       const d = JSON.parse(e.data);
-      if (!token || d.token === token || !d.token) {
+      if ((!token || d.token === token || !d.token) && d.gw_id && d.local_key) {
         es.close();
         setPairStatus("status-success", t("success_activated"));
-        dbg("Device activated: " + d.gw_id + " \u2713");
+        dbg("Device activated: " + esc(d.gw_id) + " \u2713");
         // PLAT-811: Persist the SSID used for successful activation (with 90-day TTL)
         if (_ssid) { saveLastSsid(_ssid); }
         showDone(d.gw_id, d.local_key, d.ip_address);
         document.getElementById("btn-pair").disabled = false;
+      } else if (d.gw_id === undefined || d.local_key === undefined) {
+        dbg("SSE activated: missing gw_id or local_key");
       }
     } catch (err) { dbg("SSE parse error: " + err.message); }
   });
@@ -697,8 +733,11 @@ async function pairViaWifiAp() {
   _currentEventSource = es;
   let token = null;
   let wifiApTimer = null;
+  let _wifiApDone = false;  // dedup guard — first event wins
 
   const wifiApCleanup = (enableBtn) => {
+    if (_wifiApDone) return;  // already handled
+    _wifiApDone = true;
     es.close();
     clearTimeout(wifiApTimer);
     if (enableBtn) btn.disabled = false;
@@ -707,12 +746,14 @@ async function pairViaWifiAp() {
   es.addEventListener("activated", (e) => {
     try {
       const d = JSON.parse(e.data);
-      if (!token || d.token === token || !d.token) {
+      if ((!token || d.token === token || !d.token) && d.gw_id && d.local_key) {
         wifiApCleanup(true);
         if (_ssid) saveLastSsid(_ssid);  // save only on confirmed activation
         setWifiApStatus("status-success", t("success_activated"));
-        dbg("Device activated: " + d.gw_id + " \u2713");
+        dbg("Device activated: " + esc(d.gw_id) + " \u2713");
         showDone(d.gw_id, d.local_key, d.ip_address);
+      } else if (d.gw_id === undefined || d.local_key === undefined) {
+        dbg("SSE activated: missing gw_id or local_key in payload");
       }
     } catch (err) { dbg("SSE parse error (activated): " + err.message); }
   });
@@ -726,7 +767,7 @@ async function pairViaWifiAp() {
       }
     } catch (err) { dbg("SSE parse error (wifi_ap_error): " + err.message); }
   });
-  es.onerror = () => wifiApCleanup(true);
+  es.onerror = () => { if (!_wifiApDone) wifiApCleanup(true); };
 
   try {
     const r = await fetch(_PROVISION_BASE + "/wifi-ap-pair", {

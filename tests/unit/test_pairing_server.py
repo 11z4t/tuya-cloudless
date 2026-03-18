@@ -1008,6 +1008,33 @@ class TestWifiApPair:
         error_events = [ev for ev, _ in broadcast_calls if ev == "wifi_ap_error"]
         assert len(error_events) >= 1, "Expected at least one wifi_ap_error SSE event"
 
+    async def test_wifi_ap_pairing_set_cleared_after_task_completes(
+        self, server: PairingServer
+    ) -> None:
+        """_wifi_ap_pairing_in_progress is cleared once the task finishes (success or error)."""
+        ts = TestServer(server._app)
+        cli = TestClient(ts)
+        await cli.start_server()
+        try:
+            with patch("asyncio.create_subprocess_exec", side_effect=FileNotFoundError):
+                resp = await cli.post(
+                    "/api/provision/wifi-ap-pair",
+                    json={
+                        "ap_ssid": "SmartLife_AB12",
+                        "home_ssid": "HomeNet",
+                        "home_password": "pw",
+                    },
+                )
+                assert resp.status == 200
+                # Give the background task time to run and clean up
+                await asyncio.sleep(0.1)
+
+            assert "SmartLife_AB12" not in server._wifi_ap_pairing_in_progress, (
+                "_wifi_ap_pairing_in_progress should be cleared after task completion"
+            )
+        finally:
+            await cli.close()
+
 
 # ── /api/provision/config ─────────────────────────────────────────────────────
 

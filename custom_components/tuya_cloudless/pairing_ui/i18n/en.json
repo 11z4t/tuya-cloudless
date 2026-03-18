@@ -67,5 +67,7 @@
   "btn_back": "← Back",
   "btn_pair_another": "← Pair Another Device",
   "show_password": "Show password",
-  "hide_password": "Hide password"
+  "hide_password": "Hide password",
+  "label_reveal_key": "Reveal",
+  "label_hide_key": "Hide"
 }

@@ -962,7 +962,7 @@ class PairingServer:
             _LOGGER.info("WiFi AP pair: connecting to %s", ap_ssid)
             rc, _ = await _run(
                 ["nmcli", "device", "wifi", "connect", ap_ssid],
-                timeout=30.0,
+                timeout=15.0,  # Tuya APs are open; 15s is generous
             )
             if rc != 0:
                 raise OSError(f"nmcli connect to {ap_ssid!r} failed (rc={rc})")
