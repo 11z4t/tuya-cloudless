@@ -120,9 +120,19 @@
       },
       "ble_fallback": {
         "title": "HTTPS krävs för BLE-parkoppling",
-        "description": "**Tuya Cloudless** kunde inte hitta en HTTPS-URL för din Home Assistant. Web Bluetooth kräver en säker anslutning (HTTPS).\n\nDu kan ändå lägga till en enhet som redan är ansluten till ditt nätverk med **Sök** eller genom att ange dess uppgifter manuellt.",
+        "description": "**Tuya Cloudless** kunde inte hitta en HTTPS-URL för din Home Assistant. Web Bluetooth kräver en säker anslutning (HTTPS).\n\nOm din HA är nåbar via HTTPS (t.ex. via Nabu Casa eller en omvänd proxy) väljer du **Ange URL manuellt** nedan.",
         "data": {
           "setup_mode": "Inställningsmetod"
+        }
+      },
+      "ble_ha_url": {
+        "title": "Ange din Home Assistant-URL",
+        "description": "Ange den HTTPS-adress du använder för att nå Home Assistant (t.ex. `https://homeassistant.local:8123` eller din Nabu Casa-URL). Detta behövs för att Web Bluetooth ska kunna köra i en säker miljö.",
+        "data": {
+          "ha_url": "Home Assistant-URL"
+        },
+        "data_description": {
+          "ha_url": "Måste börja med https://"
         }
       }
     },
@@ -136,6 +146,7 @@
       "no_devices_found": "Inga Tuya-enheter hittades på nätverket. Se till att enheten är påslagen och på samma Wi-Fi. Byt till **Manuell** ovan för att ange uppgifterna för hand.",
       "unknown": "Oväntat fel — kontrollera Home Assistant-loggen för detaljer",
       "invalid_ha_url": "Ange en giltig adress, till exempel http://homeassistant.local:8123",
+      "invalid_ha_url_https": "URL:en måste börja med https:// — Web Bluetooth kräver en säker anslutning",
       "invalid_local_key_chars": "Säkerhetsnyckeln innehåller ogiltiga tecken (måste vara utskrivbara ASCII-tecken)",
       "invalid_ip_address": "Ogiltigt IP-adressformat"
     },

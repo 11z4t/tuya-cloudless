@@ -198,6 +198,7 @@ def _make_config_flow() -> Any:
     # Set attributes that __init__ would set
     flow._discovered = []
     flow._device = {}
+    flow._manual_ha_url = None
     # Mock all HA base class methods
     flow.async_show_form = MagicMock(return_value={"type": "form"})
     flow.async_create_entry = MagicMock(return_value={"type": "create_entry"})
@@ -1201,6 +1202,7 @@ class TestBlePairHttpsCheck:
         flow._discovered = []
         flow._device = {}
         flow._https_unavailable = False
+        flow._manual_ha_url = None
         flow.hass = MagicMock()
         flow.flow_id = "test-flow-id"
         flow.async_abort = MagicMock(return_value={"type": "abort"})
@@ -1385,6 +1387,7 @@ class TestBleFallbackStep:
         flow._discovered = []
         flow._device = {}
         flow._https_unavailable = True
+        flow._manual_ha_url = None
         flow.hass = MagicMock()
         flow.flow_id = "fallback-flow-id"
         flow.async_abort = MagicMock(return_value={"type": "abort"})
@@ -1448,6 +1451,171 @@ class TestBleFallbackStep:
         assert flow._discovered == []
         flow.async_step_select.assert_awaited_once()
         assert result["step_id"] == "select"
+
+    @pytest.mark.asyncio
+    async def test_provide_url_choice_calls_ble_ha_url(self) -> None:
+        """Choosing 'provide_url' must advance to async_step_ble_ha_url."""
+        flow = self._make_fallback_flow()
+        flow.async_step_ble_ha_url = AsyncMock(
+            return_value={"type": "form", "step_id": "ble_ha_url"}
+        )
+
+        result = await flow.async_step_ble_fallback(user_input={"setup_mode": "provide_url"})
+
+        flow.async_step_ble_ha_url.assert_awaited_once()
+        assert result["step_id"] == "ble_ha_url"
+
+
+class TestBleHaUrlStep:
+    """Tests for async_step_ble_ha_url — PLAT-870 manual HTTPS URL entry."""
+
+    def _make_ha_url_flow(self) -> Any:
+        """Return a TuyaCloudlessConfigFlow configured for ble_ha_url testing."""
+        from custom_components.tuya_cloudless.config_flow import TuyaCloudlessConfigFlow
+
+        flow = TuyaCloudlessConfigFlow.__new__(TuyaCloudlessConfigFlow)
+        flow._discovered = []
+        flow._device = {}
+        flow._https_unavailable = True
+        flow._manual_ha_url = None
+        flow.hass = MagicMock()
+        flow.flow_id = "ha-url-flow-id"
+        flow.async_abort = MagicMock(return_value={"type": "abort"})
+        flow.async_show_form = MagicMock(return_value={"type": "form"})
+        return flow
+
+    @pytest.mark.asyncio
+    async def test_no_input_shows_ble_ha_url_form(self) -> None:
+        """First call (no input) must render the ble_ha_url form."""
+        flow = self._make_ha_url_flow()
+
+        result = await flow.async_step_ble_ha_url(user_input=None)
+
+        flow.async_show_form.assert_called_once()
+        call_kwargs = flow.async_show_form.call_args[1]
+        assert call_kwargs.get("step_id") == "ble_ha_url"
+        assert result["type"] == "form"
+
+    @pytest.mark.asyncio
+    async def test_valid_https_url_stores_url_and_calls_ble_pair(self) -> None:
+        """A valid https:// URL must be stored and advance to ble_pair."""
+        flow = self._make_ha_url_flow()
+        flow.async_step_ble_pair = AsyncMock(return_value={"type": "external"})
+
+        await flow.async_step_ble_ha_url(user_input={"ha_url": "https://my-ha.example.com"})
+
+        assert flow._manual_ha_url == "https://my-ha.example.com"
+        flow.async_step_ble_pair.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_valid_url_trailing_slash_stripped(self) -> None:
+        """Trailing slashes must be stripped from the stored URL."""
+        flow = self._make_ha_url_flow()
+        flow.async_step_ble_pair = AsyncMock(return_value={"type": "external"})
+
+        await flow.async_step_ble_ha_url(user_input={"ha_url": "https://my-ha.example.com/"})
+
+        assert flow._manual_ha_url == "https://my-ha.example.com"
+
+    @pytest.mark.asyncio
+    async def test_http_url_shows_error(self) -> None:
+        """An http:// URL must show 'invalid_ha_url_https' error and re-render the form."""
+        flow = self._make_ha_url_flow()
+        flow.async_step_ble_pair = AsyncMock()
+
+        await flow.async_step_ble_ha_url(user_input={"ha_url": "http://my-ha.example.com"})
+
+        flow.async_show_form.assert_called_once()
+        call_kwargs = flow.async_show_form.call_args[1]
+        assert call_kwargs.get("errors", {}).get("ha_url") == "invalid_ha_url_https"
+        flow.async_step_ble_pair.assert_not_called()
+        assert flow._manual_ha_url is None
+
+    @pytest.mark.asyncio
+    async def test_no_scheme_url_shows_error(self) -> None:
+        """A URL without https:// must show the HTTPS-required error."""
+        flow = self._make_ha_url_flow()
+        flow.async_step_ble_pair = AsyncMock()
+
+        await flow.async_step_ble_ha_url(user_input={"ha_url": "my-ha.example.com"})
+
+        call_kwargs = flow.async_show_form.call_args[1]
+        assert call_kwargs.get("errors", {}).get("ha_url") == "invalid_ha_url_https"
+        assert flow._manual_ha_url is None
+
+    @pytest.mark.asyncio
+    async def test_nabu_casa_url_accepted(self) -> None:
+        """A Nabu Casa https URL must be accepted."""
+        flow = self._make_ha_url_flow()
+        flow.async_step_ble_pair = AsyncMock(return_value={"type": "external"})
+
+        await flow.async_step_ble_ha_url(user_input={"ha_url": "https://abc123.ui.nabu.casa"})
+
+        assert flow._manual_ha_url == "https://abc123.ui.nabu.casa"
+        flow.async_step_ble_pair.assert_awaited_once()
+
+
+class TestBleHaUrlPairingIntegration:
+    """PLAT-870 — manual URL is used when building the pairing URL in ble_pair."""
+
+    def _make_ble_flow_with_url(self, manual_url: str) -> Any:
+        """Return a flow with _manual_ha_url pre-set."""
+        from custom_components.tuya_cloudless.config_flow import TuyaCloudlessConfigFlow
+
+        flow = TuyaCloudlessConfigFlow.__new__(TuyaCloudlessConfigFlow)
+        flow._discovered = []
+        flow._device = {}
+        flow._https_unavailable = False
+        flow._manual_ha_url = manual_url
+        flow.hass = MagicMock()
+        flow.flow_id = "test-flow-id"
+        flow.async_abort = MagicMock(return_value={"type": "abort"})
+        flow.async_external_step = MagicMock(return_value={"type": "external"})
+        flow.async_show_form = MagicMock(return_value={"type": "form"})
+        return flow
+
+    @pytest.mark.asyncio
+    async def test_manual_url_used_in_external_step(self) -> None:
+        """When _manual_ha_url is set, ble_pair must use it to build the pairing URL."""
+        flow = self._make_ble_flow_with_url("https://my-ha.example.com")
+
+        mock_server = MagicMock()
+        mock_server.ha_ui_url.return_value = "http://fallback:8099"  # should NOT be used
+
+        with patch(
+            "custom_components.tuya_cloudless.pairing_server.ensure_pairing_server",
+            new_callable=AsyncMock,
+            return_value=mock_server,
+        ):
+            await flow.async_step_ble_pair(user_input=None)
+
+        call_kwargs = flow.async_external_step.call_args[1]
+        url = call_kwargs.get("url", "")
+        assert "my-ha.example.com" in url
+        assert "/api/tuya_cloudless/pairing" in url
+
+    @pytest.mark.asyncio
+    async def test_manual_url_skips_https_check(self) -> None:
+        """When _manual_ha_url is set, the automatic HTTPS check is not performed."""
+        flow = self._make_ble_flow_with_url("https://my-ha.example.com")
+
+        mock_server = MagicMock()
+        flow.async_step_ble_fallback = AsyncMock(return_value={"type": "form"})
+
+        with (
+            patch(
+                "custom_components.tuya_cloudless.pairing_server.ensure_pairing_server",
+                new_callable=AsyncMock,
+                return_value=mock_server,
+            ),
+            patch(
+                "homeassistant.helpers.network.get_url",
+                side_effect=Exception("should not be called"),
+            ),
+        ):
+            await flow.async_step_ble_pair(user_input=None)
+
+        flow.async_step_ble_fallback.assert_not_called()
 
 
 # ── _get_profile_options ImportError fallback (lines 94-95) ───────────────────

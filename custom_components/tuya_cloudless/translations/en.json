@@ -120,9 +120,19 @@
       },
       "ble_fallback": {
         "title": "HTTPS required for BLE pairing",
-        "description": "**Tuya Cloudless** could not find an HTTPS URL for your Home Assistant. Web Bluetooth requires a secure context (HTTPS).\n\nYou can still add a device that is already connected to your network using **Search** or by entering its details manually.",
+        "description": "**Tuya Cloudless** could not find an HTTPS URL for your Home Assistant. Web Bluetooth requires a secure context (HTTPS).\n\nIf your HA is reachable over HTTPS (e.g. via Nabu Casa or a reverse proxy), choose **Enter my Home Assistant URL** below.",
         "data": {
           "setup_mode": "Setup method"
+        }
+      },
+      "ble_ha_url": {
+        "title": "Enter your Home Assistant URL",
+        "description": "Enter the HTTPS address your browser uses to reach Home Assistant (for example `https://homeassistant.local:8123` or your Nabu Casa URL). This is needed so Web Bluetooth can run in a secure context.",
+        "data": {
+          "ha_url": "Home Assistant URL"
+        },
+        "data_description": {
+          "ha_url": "Must start with https://"
         }
       }
     },
@@ -136,6 +146,7 @@
       "no_devices_found": "No Tuya devices found on your network. Make sure the device is powered on and on the same Wi-Fi. Switch to **Manual** above to enter details by hand.",
       "unknown": "Unexpected error — check the Home Assistant log for details",
       "invalid_ha_url": "Enter a valid address, for example http://homeassistant.local:8123",
+      "invalid_ha_url_https": "The URL must start with https:// — Web Bluetooth requires a secure context",
       "invalid_local_key_chars": "Local key contains invalid characters (must be printable ASCII)",
       "invalid_ip_address": "Invalid IP address format"
     },

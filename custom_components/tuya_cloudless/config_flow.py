@@ -37,6 +37,9 @@ from homeassistant.helpers.selector import (
     SelectSelector,
     SelectSelectorConfig,
     SelectSelectorMode,
+    TextSelector,
+    TextSelectorConfig,
+    TextSelectorType,
 )
 
 if TYPE_CHECKING:
@@ -163,6 +166,7 @@ class TuyaCloudlessConfigFlow(ConfigFlow, domain=DOMAIN):
         self._https_unavailable: bool = False
         self._discovered: list[dict[str, Any]] = []
         self._device: dict[str, Any] = {}
+        self._manual_ha_url: str | None = None
 
     # ── Step 0: Pairing tool deep-link ─────────────────────────────────────────
 
@@ -253,29 +257,35 @@ class TuyaCloudlessConfigFlow(ConfigFlow, domain=DOMAIN):
         # can use Web Bluetooth (which requires a secure context).
         from homeassistant.helpers.network import NoURLAvailableError, get_url
 
-        pairing_url = server.ha_ui_url()
-        _parsed_pairing = urlparse(pairing_url)
-        _hostname = _parsed_pairing.hostname or ""
-        _is_localhost = _hostname in ("localhost", "127.0.0.1")
+        # If the user provided a manual HTTPS URL, use it directly and skip
+        # automatic detection.  The pairing views are mounted under the same
+        # prefix as the auto-detected path.
+        if self._manual_ha_url is not None:
+            pairing_url = self._manual_ha_url.rstrip("/") + "/api/tuya_cloudless/pairing"
+        else:
+            pairing_url = server.ha_ui_url()
+            _parsed_pairing = urlparse(pairing_url)
+            _hostname = _parsed_pairing.hostname or ""
+            _is_localhost = _hostname in ("localhost", "127.0.0.1")
 
-        if not _is_localhost:
-            # Check both internal and external URLs (covers Nabu Casa / reverse proxy)
-            _has_https = False
-            for _kwargs in (
-                {"allow_internal": True, "allow_external": False},
-                {"allow_internal": False, "allow_external": True},
-            ):
-                try:
-                    _url = get_url(self.hass, **_kwargs)
-                    if _url.startswith("https://"):
-                        _has_https = True
-                        break
-                except NoURLAvailableError:
-                    continue
+            if not _is_localhost:
+                # Check both internal and external URLs (covers Nabu Casa / reverse proxy)
+                _has_https = False
+                for _kwargs in (
+                    {"allow_internal": True, "allow_external": False},
+                    {"allow_internal": False, "allow_external": True},
+                ):
+                    try:
+                        _url = get_url(self.hass, **_kwargs)
+                        if _url.startswith("https://"):
+                            _has_https = True
+                            break
+                    except NoURLAvailableError:
+                        continue
 
-            if not _has_https:
-                self._https_unavailable = True
-                return await self.async_step_ble_fallback()
+                if not _has_https:
+                    self._https_unavailable = True
+                    return await self.async_step_ble_fallback()
 
         server.register_flow(self.flow_id)
 
@@ -306,6 +316,8 @@ class TuyaCloudlessConfigFlow(ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             if user_input.get("setup_mode") == "manual":
                 return await self.async_step_manual()
+            if user_input.get("setup_mode") == "provide_url":
+                return await self.async_step_ble_ha_url()
             # Default: scan network — run discovery then go to select step
             try:
                 self._discovered = await asyncio.wait_for(
@@ -318,9 +330,13 @@ class TuyaCloudlessConfigFlow(ConfigFlow, domain=DOMAIN):
 
         schema = vol.Schema(
             {
-                vol.Required("setup_mode", default="scan"): SelectSelector(
+                vol.Required("setup_mode", default="provide_url"): SelectSelector(
                     SelectSelectorConfig(
                         options=[
+                            SelectOptionDict(
+                                value="provide_url",
+                                label="Enter my Home Assistant URL (for HTTPS setups)",
+                            ),
                             SelectOptionDict(value="scan", label="Search for device on network"),
                             SelectOptionDict(value="manual", label="Enter device details manually"),
                         ],
@@ -332,6 +348,40 @@ class TuyaCloudlessConfigFlow(ConfigFlow, domain=DOMAIN):
         return self.async_show_form(
             step_id="ble_fallback",
             data_schema=schema,
+        )
+
+    async def async_step_ble_ha_url(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Let the user type their HA HTTPS URL to enable BLE pairing.
+
+        Shown when automatic HTTPS detection fails so the user can override.
+        The provided URL must start with ``https://`` to guarantee a secure
+        context for Web Bluetooth.
+
+        Args:
+            user_input: Submitted form data, or ``None`` on first render.
+
+        Returns:
+            Config flow result — proceeds to BLE pairing on a valid URL.
+        """
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            raw_url = str(user_input.get("ha_url", "")).strip().rstrip("/")
+            if not raw_url.startswith("https://"):
+                errors["ha_url"] = "invalid_ha_url_https"
+            else:
+                self._manual_ha_url = raw_url
+                return await self.async_step_ble_pair()
+
+        schema = vol.Schema(
+            {vol.Required("ha_url"): TextSelector(TextSelectorConfig(type=TextSelectorType.URL))}
+        )
+        return self.async_show_form(
+            step_id="ble_ha_url",
+            data_schema=schema,
+            errors=errors,
         )
 
     async def async_step_ble_confirm(
