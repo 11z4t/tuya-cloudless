@@ -653,3 +653,72 @@ test.describe("HA flow_id mode", () => {
     await expect(page.locator("#btn-add-ha")).toBeHidden();
   });
 });
+
+// ── Tests: HTTPS warning panel ────────────────────────────────────────────────
+
+test.describe("HTTPS warning panel", () => {
+  test("warn-https visible in BLE panel when isSecureContext is false", async ({ page }) => {
+    await setupRoutes(page);
+
+    // Override isSecureContext to simulate HTTP (non-secure) context
+    await page.addInitScript(() => {
+      Object.defineProperty(window, "isSecureContext", { get: () => false });
+    });
+
+    await loadPage(page);
+
+    // Navigate to step 2 (BLE panel)
+    await page.locator("#ssid").click();
+    await page.locator("#ssid").fill("TestNet");
+    await page.locator("#btn-next").click();
+
+    await expect(page.locator("#panel-ble")).toBeVisible();
+    // warn-https must be visible inside the BLE panel
+    await expect(page.locator("#warn-https")).toBeVisible();
+  });
+
+  test("btn-pair disabled when isSecureContext is false", async ({ page }) => {
+    await setupRoutes(page);
+
+    await page.addInitScript(() => {
+      Object.defineProperty(window, "isSecureContext", { get: () => false });
+    });
+
+    await loadPage(page);
+
+    // Navigate to BLE panel
+    await page.locator("#ssid").click();
+    await page.locator("#ssid").fill("TestNet");
+    await page.locator("#btn-next").click();
+
+    await expect(page.locator("#panel-ble")).toBeVisible();
+    await expect(page.locator("#btn-pair")).toBeDisabled();
+  });
+
+  test("warn-https hidden and btn-pair enabled when isSecureContext is true", async ({ page }) => {
+    await setupRoutes(page);
+
+    // Ensure secure context (the default in Playwright, but be explicit)
+    await page.addInitScript(() => {
+      Object.defineProperty(window, "isSecureContext", { get: () => true });
+      // Stub bluetooth so we don't also get the browser warning
+      if (!navigator.bluetooth) {
+        Object.defineProperty(navigator, "bluetooth", {
+          value: { requestDevice: async () => { throw new Error("stub"); } },
+          configurable: true,
+        });
+      }
+    });
+
+    await loadPage(page);
+
+    await page.locator("#ssid").click();
+    await page.locator("#ssid").fill("TestNet");
+    await page.locator("#btn-next").click();
+
+    await expect(page.locator("#panel-ble")).toBeVisible();
+    await expect(page.locator("#warn-https")).toBeHidden();
+    // btn-pair enabled (assuming bluetooth stub present — no warn-browser either)
+    await expect(page.locator("#btn-pair")).toBeEnabled();
+  });
+});

@@ -117,6 +117,13 @@
           "ip_address": "Laitteen nykyinen IP-osoite verkossasi",
           "local_key": "16 merkin suojausavain"
         }
+      },
+      "ble_fallback": {
+        "title": "HTTPS required for BLE pairing",
+        "description": "**Tuya Cloudless** could not find an HTTPS URL for your Home Assistant. Web Bluetooth requires a secure context (HTTPS).\n\nYou can still add a device that is already connected to your network using **Search** or by entering its details manually.",
+        "data": {
+          "setup_mode": "Setup method"
+        }
       }
     },
     "error": {
@@ -136,7 +143,7 @@
       "already_configured": "Tämä laite on jo määritetty",
       "not_tuya_device": "Laite ei vastannut odotetulla tavalla",
       "pairing_server_unavailable": "BLE-paritupalvelinta ei voitu käynnistää portissa 8099 — portti saattaa olla käytössä. Yritä uudelleen tai käytä Haku / Manuaalinen asennus sen sijaan.",
-      "https_required": "BLE-paritus vaatii HTTPS:n. Katso [HTTPS-asennusopas](https://github.com/11z4t/tuya-cloudless/wiki/HTTPS-Setup) varmenteen määrittämiseksi, ja yritä sitten uudelleen.",
+      "https_required": "Tuya Cloudless requires HTTPS for BLE pairing. Your Home Assistant does not have an HTTPS URL configured. See the [HTTPS setup guide](https://github.com/11z4t/tuya-cloudless/wiki/HTTPS-Setup).",
       "reauth_successful": "Suojausavain päivitetty — laite on yhdistetty uudelleen",
       "reconfigure_successful": "Asetukset päivitetty — laite latautuu uudelleen",
       "no_device_id": "Laitetta ei voitu tunnistaa — varmista, että se on käynnistetty ja yhteydessä verkkoon"

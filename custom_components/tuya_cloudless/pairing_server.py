@@ -274,17 +274,25 @@ class PairingServer:
 
         When HA is configured for HTTPS, returns the HA-relative HTTPS path so
         the browser runs in a secure context and Web Bluetooth is available.
-        Falls back to the HTTP port-8099 URL when HA is not HTTPS.
+        Tries internal first, then external (Nabu Casa / reverse proxy).
+        Falls back to the HTTP port-8099 URL when no HTTPS URL is available.
 
         Returns:
             Absolute URL string for the pairing UI (HTTPS when possible).
         """
         try:
-            from homeassistant.helpers.network import get_url
+            from homeassistant.helpers.network import NoURLAvailableError, get_url
 
-            base = get_url(self._hass, allow_internal=True, allow_external=False)
-            if base.startswith("https://"):
-                return base.rstrip("/") + _HA_PAIRING_PREFIX
+            for kwargs in (
+                {"allow_internal": True, "allow_external": False},
+                {"allow_internal": False, "allow_external": True},
+            ):
+                try:
+                    base = get_url(self._hass, **kwargs)
+                    if base.startswith("https://"):
+                        return base.rstrip("/") + _HA_PAIRING_PREFIX
+                except NoURLAvailableError:
+                    continue
         except Exception as exc:  # broad catch intentional — URL resolution must never crash
             _LOGGER.debug("ha_ui_url HTTPS fallback: %s", exc)
         return self.ha_local_url()

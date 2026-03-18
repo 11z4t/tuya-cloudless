@@ -160,6 +160,7 @@ class TuyaCloudlessConfigFlow(ConfigFlow, domain=DOMAIN):
 
     def __init__(self) -> None:
         """Initialize the config flow."""
+        self._https_unavailable: bool = False
         self._discovered: list[dict[str, Any]] = []
         self._device: dict[str, Any] = {}
 
@@ -258,12 +259,23 @@ class TuyaCloudlessConfigFlow(ConfigFlow, domain=DOMAIN):
         _is_localhost = _hostname in ("localhost", "127.0.0.1")
 
         if not _is_localhost:
-            try:
-                internal_url = get_url(self.hass, allow_internal=True, allow_external=False)
-                if not internal_url.startswith("https://"):
-                    return self.async_abort(reason="https_required")
-            except NoURLAvailableError:
-                return self.async_abort(reason="https_required")
+            # Check both internal and external URLs (covers Nabu Casa / reverse proxy)
+            _has_https = False
+            for _kwargs in (
+                {"allow_internal": True, "allow_external": False},
+                {"allow_internal": False, "allow_external": True},
+            ):
+                try:
+                    _url = get_url(self.hass, **_kwargs)
+                    if _url.startswith("https://"):
+                        _has_https = True
+                        break
+                except NoURLAvailableError:
+                    continue
+
+            if not _has_https:
+                self._https_unavailable = True
+                return await self.async_step_ble_fallback()
 
         server.register_flow(self.flow_id)
 
@@ -275,6 +287,51 @@ class TuyaCloudlessConfigFlow(ConfigFlow, domain=DOMAIN):
         return self.async_external_step(
             step_id="ble_pair",
             url=url,
+        )
+
+    async def async_step_ble_fallback(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """HTTPS not available — offer Search or Manual setup as alternatives.
+
+        Shown instead of aborting when the HTTPS check fails so the user can
+        still add a device that is already on their network.
+
+        Args:
+            user_input: Submitted form data, or ``None`` on first render.
+
+        Returns:
+            Config flow result — advances to search or manual setup.
+        """
+        if user_input is not None:
+            if user_input.get("setup_mode") == "manual":
+                return await self.async_step_manual()
+            # Default: scan network — run discovery then go to select step
+            try:
+                self._discovered = await asyncio.wait_for(
+                    self._run_discovery(),
+                    timeout=_DISCOVERY_TIMEOUT,
+                )
+            except (TimeoutError, OSError):
+                self._discovered = []
+            return await self.async_step_select()
+
+        schema = vol.Schema(
+            {
+                vol.Required("setup_mode", default="scan"): SelectSelector(
+                    SelectSelectorConfig(
+                        options=[
+                            SelectOptionDict(value="scan", label="Search for device on network"),
+                            SelectOptionDict(value="manual", label="Enter device details manually"),
+                        ],
+                        mode=SelectSelectorMode.LIST,
+                    )
+                ),
+            }
+        )
+        return self.async_show_form(
+            step_id="ble_fallback",
+            data_schema=schema,
         )
 
     async def async_step_ble_confirm(

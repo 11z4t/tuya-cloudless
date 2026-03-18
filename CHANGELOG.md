@@ -3,6 +3,22 @@
 All notable changes to Tuya Cloudless are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [0.5.2] — 2026-03-18
+
+### Fixed
+- HTTPS detection now tries both internal and external HA URLs (covers
+  Let's Encrypt, reverse proxy with external_url set, and Nabu Casa).
+- When no HTTPS URL is found, the flow no longer aborts — a new
+  `ble_fallback` step is shown explaining that HTTPS is required for BLE
+  and offering **Search** or **Manual** setup as alternatives.
+- `https_required` abort text updated: "Tuya Cloudless requires HTTPS for
+  BLE pairing" with clearer guidance.
+
+### Testing
+- 3 new Playwright tests for the `warn-https` panel (isSecureContext false/true).
+- `TestBleFallbackStep` — 4 new unit tests for the ble_fallback step logic.
+- `test_proceeds_when_external_url_is_https` — covers Nabu Casa / Let's Encrypt.
+
 ## [0.5.1] — 2026-03-18
 
 ### Fixed

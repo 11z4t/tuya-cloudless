@@ -1593,6 +1593,34 @@ class TestHaUiUrl:
 
         assert "//" not in url.replace("https://", "")
 
+    def test_returns_https_url_when_only_external_is_https(self) -> None:
+        """When internal URL is unavailable but external is HTTPS (Nabu Casa), use external."""
+        hass = MagicMock()
+        hass.config.internal_url = None
+        server = PairingServer(hass, port=8099)
+
+        call_count = 0
+
+        def _side_effect(*args: object, **kwargs: bool) -> str:
+            nonlocal call_count
+            call_count += 1
+            if kwargs.get("allow_internal"):
+                from homeassistant.helpers.network import NoURLAvailableError
+
+                raise NoURLAvailableError
+            # External HTTPS URL (Nabu Casa)
+            return "https://abc123.ui.nabu.casa"
+
+        with patch(
+            "homeassistant.helpers.network.get_url",
+            side_effect=_side_effect,
+        ):
+            url = server.ha_ui_url()
+
+        assert url.startswith("https://abc123.ui.nabu.casa")
+        assert "/api/tuya_cloudless/pairing" in url
+        assert call_count == 2  # tried internal (raised) then external (succeeded)
+
 
 # ── HA index view (_handle_ha_index) ─────────────────────────────────────────
 

@@ -117,6 +117,13 @@
           "ip_address": "裝置在您網路上的目前IP位址",
           "local_key": "16位安全金鑰"
         }
+      },
+      "ble_fallback": {
+        "title": "HTTPS required for BLE pairing",
+        "description": "**Tuya Cloudless** could not find an HTTPS URL for your Home Assistant. Web Bluetooth requires a secure context (HTTPS).\n\nYou can still add a device that is already connected to your network using **Search** or by entering its details manually.",
+        "data": {
+          "setup_mode": "Setup method"
+        }
       }
     },
     "error": {
@@ -136,7 +143,7 @@
       "already_configured": "此裝置已設定",
       "not_tuya_device": "裝置未按預期回應",
       "pairing_server_unavailable": "無法在連接埠8099上啟動BLE配對伺服器——該連接埠可能已被佔用。請重試或使用搜尋/手動設定。",
-      "https_required": "BLE配對需要HTTPS。請參閱[HTTPS設定指南](https://github.com/11z4t/tuya-cloudless/wiki/HTTPS-Setup)設定憑證，然後重試。",
+      "https_required": "Tuya Cloudless requires HTTPS for BLE pairing. Your Home Assistant does not have an HTTPS URL configured. See the [HTTPS setup guide](https://github.com/11z4t/tuya-cloudless/wiki/HTTPS-Setup).",
       "reauth_successful": "安全金鑰已更新——裝置已重新連線",
       "reconfigure_successful": "設定已更新——裝置正在重新載入",
       "no_device_id": "無法識別裝置——請確保其已開啟並連線到網路"

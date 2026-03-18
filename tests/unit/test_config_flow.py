@@ -1191,7 +1191,7 @@ class TestSuggestProfile:
 
 
 class TestBlePairHttpsCheck:
-    """PLAT-809 — async_step_ble_pair must abort when HA URL is not HTTPS."""
+    """PLAT-809 — async_step_ble_pair falls back to ble_fallback when HA URL is not HTTPS."""
 
     def _make_ble_flow(self) -> Any:
         """Return a TuyaCloudlessConfigFlow configured for BLE pair testing."""
@@ -1200,6 +1200,7 @@ class TestBlePairHttpsCheck:
         flow = TuyaCloudlessConfigFlow.__new__(TuyaCloudlessConfigFlow)
         flow._discovered = []
         flow._device = {}
+        flow._https_unavailable = False
         flow.hass = MagicMock()
         flow.flow_id = "test-flow-id"
         flow.async_abort = MagicMock(return_value={"type": "abort"})
@@ -1209,8 +1210,8 @@ class TestBlePairHttpsCheck:
         return flow
 
     @pytest.mark.asyncio
-    async def test_aborts_when_internal_url_is_http(self) -> None:
-        """If HA's internal URL is HTTP and host is not localhost, abort with https_required."""
+    async def test_shows_fallback_when_internal_url_is_http(self) -> None:
+        """If HA's internal URL is HTTP and no external HTTPS, show ble_fallback form."""
         flow = self._make_ble_flow()
 
         mock_server = MagicMock()
@@ -1229,12 +1230,17 @@ class TestBlePairHttpsCheck:
         ):
             result = await flow.async_step_ble_pair(user_input=None)
 
-        flow.async_abort.assert_called_once_with(reason="https_required")
-        assert result["type"] == "abort"
+        # Must not abort — must show ble_fallback form instead
+        flow.async_abort.assert_not_called()
+        flow.async_show_form.assert_called_once()
+        call_kwargs = flow.async_show_form.call_args[1]
+        assert call_kwargs.get("step_id") == "ble_fallback"
+        assert result["type"] == "form"
+        assert flow._https_unavailable is True
 
     @pytest.mark.asyncio
-    async def test_aborts_when_no_url_available(self) -> None:
-        """If get_url raises NoURLAvailableError, abort with https_required."""
+    async def test_shows_fallback_when_no_url_available(self) -> None:
+        """If get_url raises NoURLAvailableError for all URL types, show ble_fallback form."""
         from homeassistant.helpers.network import NoURLAvailableError
 
         flow = self._make_ble_flow()
@@ -1255,12 +1261,17 @@ class TestBlePairHttpsCheck:
         ):
             result = await flow.async_step_ble_pair(user_input=None)
 
-        flow.async_abort.assert_called_once_with(reason="https_required")
-        assert result["type"] == "abort"
+        # Must not abort — must show ble_fallback form instead
+        flow.async_abort.assert_not_called()
+        flow.async_show_form.assert_called_once()
+        call_kwargs = flow.async_show_form.call_args[1]
+        assert call_kwargs.get("step_id") == "ble_fallback"
+        assert result["type"] == "form"
+        assert flow._https_unavailable is True
 
     @pytest.mark.asyncio
     async def test_proceeds_when_internal_url_is_https(self) -> None:
-        """If HA's internal URL is HTTPS, the flow must not abort."""
+        """If HA's internal URL is HTTPS, the flow must not abort or fallback."""
         flow = self._make_ble_flow()
 
         mock_server = MagicMock()
@@ -1283,6 +1294,47 @@ class TestBlePairHttpsCheck:
             await flow.async_step_ble_pair(user_input=None)
 
         flow.async_abort.assert_not_called()
+        flow.async_external_step.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_proceeds_when_external_url_is_https(self) -> None:
+        """If HA's external URL is HTTPS (Nabu Casa), the flow must not abort or fallback."""
+        flow = self._make_ble_flow()
+
+        mock_server = MagicMock()
+        # ha_ui_url returns the HA HTTPS path when HA is HTTPS
+        mock_server.ha_ui_url.return_value = (
+            "https://abc123.ui.nabu.casa/api/tuya_cloudless/pairing"
+        )
+
+        # Import inside try/except to handle the circular-import issue that can
+        # occur when this test is run in isolation before HA modules are loaded.
+        try:
+            from homeassistant.helpers.network import NoURLAvailableError as _NoURLErr
+        except ImportError:
+            _NoURLErr = Exception  # type: ignore[assignment, misc]
+
+        def _get_url_side_effect(*args: object, **kwargs: bool) -> str:
+            if kwargs.get("allow_internal"):
+                raise _NoURLErr
+            # External HTTPS URL (Nabu Casa)
+            return "https://abc123.ui.nabu.casa"
+
+        with (
+            patch(
+                "custom_components.tuya_cloudless.pairing_server.ensure_pairing_server",
+                new_callable=AsyncMock,
+                return_value=mock_server,
+            ),
+            patch(
+                "homeassistant.helpers.network.get_url",
+                side_effect=_get_url_side_effect,
+            ),
+        ):
+            await flow.async_step_ble_pair(user_input=None)
+
+        flow.async_abort.assert_not_called()
+        flow.async_show_form.assert_not_called()
         flow.async_external_step.assert_called_once()
 
     @pytest.mark.asyncio
@@ -1320,6 +1372,82 @@ class TestBlePairHttpsCheck:
 
         flow.async_abort.assert_not_called()
         flow.async_external_step.assert_called_once()
+
+
+class TestBleFallbackStep:
+    """Tests for async_step_ble_fallback."""
+
+    def _make_fallback_flow(self) -> Any:
+        """Return a TuyaCloudlessConfigFlow configured for ble_fallback testing."""
+        from custom_components.tuya_cloudless.config_flow import TuyaCloudlessConfigFlow
+
+        flow = TuyaCloudlessConfigFlow.__new__(TuyaCloudlessConfigFlow)
+        flow._discovered = []
+        flow._device = {}
+        flow._https_unavailable = True
+        flow.hass = MagicMock()
+        flow.flow_id = "fallback-flow-id"
+        flow.async_abort = MagicMock(return_value={"type": "abort"})
+        flow.async_show_form = MagicMock(return_value={"type": "form"})
+        return flow
+
+    @pytest.mark.asyncio
+    async def test_no_input_shows_form_with_ble_fallback_step_id(self) -> None:
+        """First call (no input) must render the ble_fallback form."""
+        flow = self._make_fallback_flow()
+
+        result = await flow.async_step_ble_fallback(user_input=None)
+
+        flow.async_show_form.assert_called_once()
+        call_kwargs = flow.async_show_form.call_args[1]
+        assert call_kwargs.get("step_id") == "ble_fallback"
+        assert result["type"] == "form"
+
+    @pytest.mark.asyncio
+    async def test_manual_choice_calls_async_step_manual(self) -> None:
+        """Choosing 'manual' must advance to async_step_manual."""
+        flow = self._make_fallback_flow()
+        flow.async_step_manual = AsyncMock(return_value={"type": "form", "step_id": "manual"})
+
+        result = await flow.async_step_ble_fallback(user_input={"setup_mode": "manual"})
+
+        flow.async_step_manual.assert_awaited_once()
+        assert result["step_id"] == "manual"
+
+    @pytest.mark.asyncio
+    async def test_scan_choice_runs_discovery_and_calls_select(self) -> None:
+        """Choosing 'scan' must run discovery and advance to async_step_select."""
+        flow = self._make_fallback_flow()
+        flow.async_step_select = AsyncMock(return_value={"type": "form", "step_id": "select"})
+
+        with patch.object(
+            flow,
+            "_run_discovery",
+            new_callable=AsyncMock,
+            return_value=[{"gw_id": "bf123", "ip_address": "10.0.0.1", "protocol_version": "3.3"}],
+        ):
+            result = await flow.async_step_ble_fallback(user_input={"setup_mode": "scan"})
+
+        flow.async_step_select.assert_awaited_once()
+        assert result["step_id"] == "select"
+
+    @pytest.mark.asyncio
+    async def test_scan_discovery_timeout_still_calls_select(self) -> None:
+        """Discovery timeout must not crash — calls async_step_select with empty list."""
+        flow = self._make_fallback_flow()
+        flow.async_step_select = AsyncMock(return_value={"type": "form", "step_id": "select"})
+
+        with patch.object(
+            flow,
+            "_run_discovery",
+            new_callable=AsyncMock,
+            side_effect=TimeoutError,
+        ):
+            result = await flow.async_step_ble_fallback(user_input={"setup_mode": "scan"})
+
+        assert flow._discovered == []
+        flow.async_step_select.assert_awaited_once()
+        assert result["step_id"] == "select"
 
 
 # ── _get_profile_options ImportError fallback (lines 94-95) ───────────────────

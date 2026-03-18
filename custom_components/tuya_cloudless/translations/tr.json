@@ -117,6 +117,13 @@
           "ip_address": "Ağınızdaki cihazın mevcut IP adresi",
           "local_key": "16 karakterli güvenlik anahtarı"
         }
+      },
+      "ble_fallback": {
+        "title": "HTTPS required for BLE pairing",
+        "description": "**Tuya Cloudless** could not find an HTTPS URL for your Home Assistant. Web Bluetooth requires a secure context (HTTPS).\n\nYou can still add a device that is already connected to your network using **Search** or by entering its details manually.",
+        "data": {
+          "setup_mode": "Setup method"
+        }
       }
     },
     "error": {
@@ -136,7 +143,7 @@
       "already_configured": "Bu cihaz zaten kurulmuş",
       "not_tuya_device": "Cihaz beklendiği gibi yanıt vermedi",
       "pairing_server_unavailable": "BLE eşleştirme sunucusu 8099 numaralı portta başlatılamadı — port kullanımda olabilir. Tekrar deneyin veya bunun yerine Arama / Manuel kurulum kullanın.",
-      "https_required": "BLE Eşleştirme HTTPS gerektirir. Bir sertifika yapılandırmak için [HTTPS kurulum kılavuzuna](https://github.com/11z4t/tuya-cloudless/wiki/HTTPS-Setup) bakın, ardından tekrar deneyin.",
+      "https_required": "Tuya Cloudless requires HTTPS for BLE pairing. Your Home Assistant does not have an HTTPS URL configured. See the [HTTPS setup guide](https://github.com/11z4t/tuya-cloudless/wiki/HTTPS-Setup).",
       "reauth_successful": "Güvenlik anahtarı güncellendi — cihaz yeniden bağlandı",
       "reconfigure_successful": "Ayarlar güncellendi — cihaz yeniden yükleniyor",
       "no_device_id": "Cihaz tanımlanamadı — açık olduğundan ve ağa bağlı olduğundan emin olun"
