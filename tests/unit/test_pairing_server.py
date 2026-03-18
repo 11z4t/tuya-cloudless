@@ -1365,6 +1365,114 @@ class TestQrEndpoint:
         assert "svg" in resp.content_type.lower()
 
 
+# ── Full activation response structure ───────────────────────────────────────
+
+
+class TestActivateResponseStructure:
+    """Verify the full activation response body matches the Tuya cloud format.
+
+    The Tuya device checks these fields to determine if activation succeeded.
+    Any missing or wrong-type field can cause the device to reject the response.
+    """
+
+    async def test_response_has_all_required_top_level_keys(self, client: TestClient) -> None:
+        """t, success, and result keys must all be present."""
+        resp = await client.post(
+            "/api/tuya/device/active",
+            json={"gw_id": "struct_gw", "product_key": "pk", "token": "tok_struct"},
+        )
+        assert resp.status == 200
+        body = await resp.json()
+        assert "t" in body
+        assert "success" in body
+        assert "result" in body
+
+    async def test_response_result_has_all_required_keys(self, client: TestClient) -> None:
+        """result object must contain gwId, active, ability, localKey, timezone, netType."""
+        resp = await client.post(
+            "/api/tuya/device/active",
+            json={"gw_id": "keys_gw", "token": "tok_keys"},
+        )
+        body = await resp.json()
+        result = body["result"]
+        for key in ("gwId", "active", "ability", "localKey", "timezone", "netType"):
+            assert key in result, f"result[{key!r}] missing from activation response"
+
+    async def test_response_result_values_match_spec(self, client: TestClient) -> None:
+        """Verify specific values the Tuya device expects."""
+        resp = await client.post(
+            "/api/tuya/device/active",
+            json={"gw_id": "spec_gw", "token": "tok_spec"},
+        )
+        body = await resp.json()
+        result = body["result"]
+
+        assert body["success"] is True
+        assert isinstance(body["t"], int)
+        assert result["gwId"] == "spec_gw"
+        assert result["active"] == 2  # 2 = activated
+        assert result["ability"] == 0
+        assert result["netType"] == 0
+        assert len(result["localKey"]) == 32  # 16 bytes → 32 hex chars
+        assert isinstance(result["timezone"], str)
+        assert len(result["timezone"]) > 0
+
+    async def test_local_key_is_hex_string(self, client: TestClient) -> None:
+        """localKey must be a valid hexadecimal string."""
+        import re
+
+        resp = await client.post(
+            "/api/tuya/device/active",
+            json={"gw_id": "hex_gw", "token": "tok_hex"},
+        )
+        body = await resp.json()
+        local_key = body["result"]["localKey"]
+        assert re.fullmatch(r"[0-9a-f]{32}", local_key), (
+            f"localKey {local_key!r} is not 32 lowercase hex chars"
+        )
+
+    async def test_same_gw_id_second_activation_uses_different_key(
+        self, client: TestClient
+    ) -> None:
+        """Two activations for the same device (same gw_id) generate different local_keys.
+
+        This covers the re-pairing scenario where a device was reset and needs
+        a new local_key.  Results are keyed by token so both are stored.
+        """
+        resp1 = await client.post(
+            "/api/tuya/device/active",
+            json={"gw_id": "shared_gw", "token": "tok_reactivate_1"},
+        )
+        resp2 = await client.post(
+            "/api/tuya/device/active",
+            json={"gw_id": "shared_gw", "token": "tok_reactivate_2"},
+        )
+        body1 = await resp1.json()
+        body2 = await resp2.json()
+
+        assert body1["result"]["gwId"] == "shared_gw"
+        assert body2["result"]["gwId"] == "shared_gw"
+        # Each activation generates an independent local_key
+        assert body1["result"]["localKey"] != body2["result"]["localKey"]
+
+        # Both tokens must be retrievable independently
+        r1 = await client.get("/api/provision/result/tok_reactivate_1")
+        r2 = await client.get("/api/provision/result/tok_reactivate_2")
+        assert (await r1.json())["status"] == "ok"
+        assert (await r2.json())["status"] == "ok"
+
+    async def test_timezone_falls_back_to_utc_when_not_string(self, client: TestClient) -> None:
+        """When hass.config.time_zone is not a string, timezone defaults to 'UTC'."""
+        # The default mock has a MagicMock as time_zone (not a string) →  UTC
+        resp = await client.post(
+            "/api/tuya/device/active",
+            json={"gw_id": "tz_gw", "token": "tok_tz"},
+        )
+        body = await resp.json()
+        # MagicMock is not a str → must fall back to "UTC"
+        assert body["result"]["timezone"] == "UTC"
+
+
 # ── _handle_activate bad JSON ─────────────────────────────────────────────────
 
 

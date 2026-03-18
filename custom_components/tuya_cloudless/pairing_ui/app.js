@@ -143,6 +143,14 @@ function applyStrings() {
     const isShowing = document.getElementById("password")?.type === "text";
     pwdToggle.setAttribute("aria-label", isShowing ? t("hide_password") : t("show_password"));
   }
+  // Re-apply btn-reveal-key text and aria-label in the current revealed/hidden state
+  const revealBtn = document.getElementById("btn-reveal-key");
+  if (revealBtn) {
+    const isRevealed = document.getElementById("key-revealed")?.style.display !== "none";
+    const revealLabel = isRevealed ? t("label_hide_key") : t("label_reveal_key");
+    revealBtn.textContent = revealLabel;
+    revealBtn.setAttribute("aria-label", revealLabel + " " + t("label_local_key"));
+  }
   // Re-apply step counter with new language
   updateStepCounter(_currentStep);
   // Re-apply debug summary count
@@ -343,6 +351,9 @@ function selectWifi(ssid) {
 // ── Device discovery ───────────────────────────────────────────────────────────
 function showDeviceCard(ssid) {
   const list = document.getElementById("device-list");
+  // Wrap in role="listitem" so screen readers announce items within the role="list"
+  const item = document.createElement("div");
+  item.setAttribute("role", "listitem");
   const card = document.createElement("button");
   card.type = "button";
   card.className = "device-card";
@@ -355,7 +366,8 @@ function showDeviceCard(ssid) {
     "</div>" +
     "<span class=\"device-card-arrow\" aria-hidden=\"true\">\u203a</span>";
   card.addEventListener("click", () => selectDeviceWifiAp(ssid));
-  list.appendChild(card);
+  item.appendChild(card);
+  list.appendChild(item);
 }
 
 async function autoDetectDevices() {
@@ -506,6 +518,7 @@ function showDone(gw_id, local_key, ip_address) {
 
   // Render as a <dl> for semantic structure (screen readers announce label/value pairs)
   const grid = document.getElementById("result-grid");
+  grid.setAttribute("aria-label", t("step3_title"));
   grid.innerHTML =
     "<dt class=\"result-label\">" + esc(t("label_device_id")) + "</dt>" +
     "<dd class=\"result-value\">" + esc(gw_id) + "</dd>" +
@@ -516,8 +529,9 @@ function showDone(gw_id, local_key, ip_address) {
     "<span id=\"key-masked\">\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022 (hidden)</span>" +
     "<span id=\"key-revealed\" style=\"display:none;word-break:break-all\">" + esc(local_key) + "</span>" +
     "<button type=\"button\" id=\"btn-reveal-key\" class=\"btn-sm\" " +
+    "aria-label=\"" + esc(t("label_reveal_key")) + " " + esc(t("label_local_key")) + "\" " +
     "style=\"padding:2px 8px;font-size:0.75rem;background:var(--surface-2);border:1px solid var(--border);border-radius:6px;cursor:pointer\">" +
-    t("label_reveal_key") + "</button>" +
+    esc(t("label_reveal_key")) + "</button>" +
     "</dd>";
 
   if (_haFlowId) {
@@ -546,7 +560,9 @@ function showDone(gw_id, local_key, ip_address) {
       const showing  = revealed && revealed.style.display !== "none";
       if (masked)   masked.style.display   = showing ? "" : "none";
       if (revealed) revealed.style.display = showing ? "none" : "";
-      this.textContent = showing ? t("label_reveal_key") : t("label_hide_key");
+      const newLabel = showing ? t("label_reveal_key") : t("label_hide_key");
+      this.textContent = newLabel;
+      this.setAttribute("aria-label", newLabel + " " + t("label_local_key"));
     }, { once: false });
   }
 }
@@ -664,9 +680,13 @@ function setPairStatus(cls, html) {
   el.innerHTML = html;
 }
 
+function makeSpinnerHtml(msg) {
+  return "<span style=\"display:flex;align-items:center;gap:8px\">" +
+         "<span class=\"spinner\" aria-hidden=\"true\"></span>" + esc(msg) + "</span>";
+}
+
 function showSpinner(msg) {
-  setPairStatus("status-info",
-    "<span style=\"display:flex;align-items:center;gap:8px\"><span class=\"spinner\"></span>" + esc(msg) + "</span>");
+  setPairStatus("status-info", makeSpinnerHtml(msg));
 }
 
 function esc(s) {
@@ -713,9 +733,7 @@ function setWifiApStatus(cls, html) {
 }
 
 function showWifiApSpinner(msg) {
-  setWifiApStatus("status-info",
-    "<span style=\"display:flex;align-items:center;gap:8px\">" +
-    "<span class=\"spinner\"></span>" + esc(msg) + "</span>");
+  setWifiApStatus("status-info", makeSpinnerHtml(msg));
 }
 
 // ── WiFi AP pairing flow ───────────────────────────────────────────────────────
