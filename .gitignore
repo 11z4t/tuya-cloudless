@@ -46,3 +46,5 @@ secrets.yaml
 *.tmp.*
 tuya_cloudless.zip
 node_modules/
+playwright-report/
+test-results/
