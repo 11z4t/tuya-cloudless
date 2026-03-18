@@ -297,7 +297,8 @@ test.describe("Step 1 — WiFi credentials form", () => {
     await expect(page.locator("#panel-wifi")).toBeHidden();
     await expect(page.locator("#panel-ble")).toBeVisible();
     const counter = page.locator("#step-counter");
-    await expect(counter).toContainText("2");
+    // Device discovery = step 1, credentials = step 2, BLE = step 3
+    await expect(counter).toContainText("3");
   });
 });
 
@@ -504,8 +505,7 @@ test.describe("Browser compatibility", () => {
     });
 
     await loadPage(page);
-    // Navigate to step 2 first
-    await page.locator("#ssid").click();
+    await navigateToCredentials(page);
     await page.locator("#ssid").fill("TestNet");
     await page.locator("#btn-next").click();
 
@@ -545,7 +545,7 @@ test.describe("Browser compatibility", () => {
     });
 
     await loadPage(page);
-    await page.locator("#ssid").click();
+    await navigateToCredentials(page);
     await page.locator("#ssid").fill("TestNet");
     await page.locator("#btn-next").click();
 
@@ -567,7 +567,7 @@ test.describe("Browser compatibility", () => {
     });
 
     await loadPage(page);
-    await page.locator("#ssid").click();
+    await navigateToCredentials(page);
     await page.locator("#ssid").fill("TestNet");
     await page.locator("#btn-next").click();
 
@@ -593,7 +593,7 @@ test.describe("Browser compatibility", () => {
     });
 
     await loadPage(page);
-    await page.locator("#ssid").click();
+    await navigateToCredentials(page);
     await page.locator("#ssid").fill("TestNet");
     await page.locator("#btn-next").click();
 
@@ -697,6 +697,27 @@ test.describe("Full pairing flow", () => {
     expect(href).toContain("gw_id=" + ACTIVATION.gw_id);
     expect(href).toContain("local_key=" + ACTIVATION.local_key);
     expect(href).toContain("ip_address=" + ACTIVATION.ip_address);
+  });
+
+  test("done screen: missing ip_address in activation shows blank, not 'undefined'", async ({
+    page,
+  }) => {
+    await setupRoutes(page);
+    // Activation payload without ip_address
+    const activationNoIp = { gw_id: "dev_noip", local_key: "abcdef1234567890" };
+    await mockBle(page, activationNoIp);
+    await loadPage(page);
+    await navigateToCredentials(page);
+
+    await page.locator("#ssid").fill("TestNet");
+    await page.locator("#btn-next").click();
+    await page.locator("#btn-pair").click();
+
+    await expect(page.locator("#panel-done")).toBeVisible({ timeout: 5000 });
+
+    // result-grid must NOT contain the literal string "undefined"
+    const gridText = await page.locator("#result-grid").textContent();
+    expect(gridText).not.toContain("undefined");
   });
 
   test("successful pairing saves SSID to localStorage", async ({ page }) => {

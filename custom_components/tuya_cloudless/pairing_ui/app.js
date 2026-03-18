@@ -289,10 +289,12 @@ async function loadServerConfig() {
 // ── WiFi scan ─────────────────────────────────────────────────────────────────
 async function scanWifi() {
   const btn = document.getElementById("btn-wifi-scan");
+  if (!btn) return;
   btn.disabled = true;
   dbg("WiFi scan started\u2026");
   // Close dropdown if already open
-  document.getElementById("wifi-dropdown").classList.add("hidden");
+  const _ddInit = document.getElementById("wifi-dropdown");
+  if (_ddInit) _ddInit.classList.add("hidden");
   try {
     const r = await fetch(_PROVISION_BASE + "/wifi-scan");
     if (!r.ok) throw new Error("scan HTTP " + r.status);
@@ -311,6 +313,7 @@ async function scanWifi() {
 
 function showWifiDropdown(ssids, currentSsid) {
   const dd = document.getElementById("wifi-dropdown");
+  if (!dd) return;
   dd.innerHTML = "";
   dd.setAttribute("role", "listbox");
   dd.setAttribute("aria-label", t("ssid_label"));
@@ -796,11 +799,11 @@ function listenForActivation(token) {
       if ((!token || d.token === token || !d.token) && d.gw_id && d.local_key) {
         clearTimeout(sseTimer);
         es.close();
-        setPairStatus("status-success", t("success_activated"));
+        setPairStatus("status-success", esc(t("success_activated")));
         dbg("Device activated: " + esc(d.gw_id) + " \u2713");
         // PLAT-811: Persist the SSID used for successful activation (with 90-day TTL)
         if (_ssid) { saveLastSsid(_ssid); }
-        showDone(d.gw_id, d.local_key, d.ip_address);
+        showDone(d.gw_id, d.local_key, d.ip_address || "");
         document.getElementById("btn-pair").disabled = false;
       } else if (d.gw_id === undefined || d.local_key === undefined) {
         dbg("SSE activated: missing gw_id or local_key");
@@ -854,9 +857,9 @@ async function pairViaWifiAp() {
       if ((!token || d.token === token || !d.token) && d.gw_id && d.local_key) {
         wifiApCleanup(true);
         if (_ssid) saveLastSsid(_ssid);  // save only on confirmed activation
-        setWifiApStatus("status-success", t("success_activated"));
+        setWifiApStatus("status-success", esc(t("success_activated")));
         dbg("Device activated: " + esc(d.gw_id) + " \u2713");
-        showDone(d.gw_id, d.local_key, d.ip_address);
+        showDone(d.gw_id, d.local_key, d.ip_address || "");
       } else if (d.gw_id === undefined || d.local_key === undefined) {
         dbg("SSE activated: missing gw_id or local_key in payload");
       }
