@@ -867,15 +867,24 @@ async function pairViaWifiAp() {
   es.onerror = () => { if (!_wifiApDone) wifiApCleanup(true); };
 
   try {
-    const r = await fetch(_PROVISION_BASE + "/wifi-ap-pair", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        ap_ssid: _selectedApSsid,
-        home_ssid: _ssid,
-        home_password: _pwd,
-      }),
-    });
+    // Use AbortController so a stalled network doesn't leave the button disabled forever
+    const fetchAbort = new AbortController();
+    const fetchTimeout = setTimeout(() => fetchAbort.abort(), 15000);
+    let r;
+    try {
+      r = await fetch(_PROVISION_BASE + "/wifi-ap-pair", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ap_ssid: _selectedApSsid,
+          home_ssid: _ssid,
+          home_password: _pwd,
+        }),
+        signal: fetchAbort.signal,
+      });
+    } finally {
+      clearTimeout(fetchTimeout);
+    }
     if (!r.ok) { wifiApCleanup(true); throw new Error("wifi-ap-pair HTTP " + r.status); }
     const data = await r.json();
     token = data.token;
@@ -912,6 +921,9 @@ async function startPairing() {
   const es = listenForActivation(token);
 
   let server;
+  // Hoist cleanup reference so catch block can access it even if the error
+  // occurs after the listener was added (const would be block-scoped to try).
+  let _cleanupNotify = null;
 
   try {
     dbg(t("spin_scanning"));
@@ -931,7 +943,7 @@ async function startPairing() {
 
     await notifyChar.startNotifications();
     notifyChar.addEventListener("characteristicvaluechanged", onNotify);
-    const _cleanupNotify = () => notifyChar.removeEventListener("characteristicvaluechanged", onNotify);
+    _cleanupNotify = () => notifyChar.removeEventListener("characteristicvaluechanged", onNotify);
 
     dbg(t("spin_handshake"));
     showSpinner(t("spin_handshake"));
