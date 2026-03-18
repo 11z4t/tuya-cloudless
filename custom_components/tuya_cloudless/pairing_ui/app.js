@@ -501,6 +501,9 @@ function goToDevices() {
   document.getElementById("panel-ble").classList.add("hidden");
   document.getElementById("panel-done").classList.add("hidden");
   document.getElementById("panel-devices").classList.remove("hidden");
+  // Clear pairing status from any previous BLE or WiFi AP attempt
+  const pairStatus = document.getElementById("pair-status");
+  if (pairStatus) pairStatus.className = "status-box hidden";
   updateStepCounter(1);
   dbg("Step 1: Device discovery");
   // Move focus to panel heading for screen reader announcement
@@ -575,7 +578,8 @@ function goToStep2() {
     return;
   }
 
-  // BLE: navigate to BLE scan panel
+  // BLE: close any stale SSE connection from a previous WiFi AP attempt, then navigate
+  if (_currentEventSource) { _currentEventSource.close(); _currentEventSource = null; }
   document.getElementById("panel-wifi").classList.add("hidden");
   document.getElementById("panel-ble").classList.remove("hidden");
   updateStepCounter(3);
@@ -810,7 +814,14 @@ function listenForActivation(token) {
       }
     } catch (err) { dbg("SSE parse error: " + err.message); }
   });
-  es.onerror = () => { clearTimeout(sseTimer); es.close(); };
+  es.onerror = () => {
+    clearTimeout(sseTimer);
+    es.close();
+    // Re-enable pairing button so user can retry after SSE connection loss
+    setPairStatus("status-error", "\u274C Connection lost — please try again.");
+    const pairBtn = document.getElementById("btn-pair");
+    if (pairBtn) pairBtn.disabled = false;
+  };
   return es;
 }
 
@@ -875,7 +886,13 @@ async function pairViaWifiAp() {
       }
     } catch (err) { dbg("SSE parse error (wifi_ap_error): " + err.message); }
   });
-  es.onerror = () => { if (!_wifiApDone) wifiApCleanup(true); };
+  es.onerror = () => {
+    if (!_wifiApDone) {
+      wifiApCleanup(true);
+      setWifiApStatus("status-error", "\u274C " + esc(t("wifi_ap_error")));
+      dbg("WiFi AP: SSE connection lost");
+    }
+  };
 
   try {
     // Use AbortController so a stalled network doesn't leave the button disabled forever

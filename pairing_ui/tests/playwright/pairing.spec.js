@@ -1005,3 +1005,251 @@ test.describe("Password visibility", () => {
     await expect(page.locator("#btn-pwd-toggle")).toHaveAttribute("aria-pressed", "false");
   });
 });
+
+// ── Tests: WiFi AP pairing flow ───────────────────────────────────────────────
+
+/**
+ * Add a mock POST /api/provision/wifi-ap-pair route + optional EventSource mock.
+ *
+ * @param {import('@playwright/test').Page} page
+ * @param {object} [opts]
+ * @param {number}  [opts.postStatus]  - HTTP status for the POST (default: 200)
+ * @param {string}  [opts.token]       - token returned in POST response
+ * @param {string|null} [opts.sseEvent] - "activated" | "wifi_ap_error" | "onerror" | null
+ * @param {object}  [opts.activation]  - payload for "activated" SSE event
+ */
+async function mockWifiApRoute(page, opts = {}) {
+  const postStatus = opts.postStatus ?? 200;
+  const token = opts.token ?? "wifi-ap-token-xyz";
+  const sseEvent = opts.sseEvent ?? "activated";
+  const activation = opts.activation ?? {
+    token,
+    gw_id: "aabbccdd1122",
+    local_key: "aabbccddeeff00112233445566778899",
+    ip_address: "192.168.1.55",
+  };
+
+  // Mock POST /api/provision/wifi-ap-pair
+  await page.route(BASE + "/api/provision/wifi-ap-pair", (route) => {
+    if (postStatus !== 200) {
+      return route.fulfill({ status: postStatus, body: "Error" });
+    }
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ token, events_url: BASE + "/api/provision/events" }),
+    });
+  });
+
+  // Mock EventSource — fires the configured event after a short delay
+  await page.addInitScript(
+    ({ sseEvent, activation }) => {
+      window._wifiApSseEvent = sseEvent;
+      window._wifiApActivation = activation;
+      window.EventSource = class MockWifiApEventSource {
+        constructor(url) {
+          this.url = url;
+          this.readyState = 1;
+          this._cbs = {};
+          this._onerrorFn = null;
+          const self = this;
+          // Fire onerror if that variant is requested
+          if (window._wifiApSseEvent === "onerror") {
+            setTimeout(() => { if (self._onerrorFn) self._onerrorFn(); }, 300);
+          }
+        }
+        addEventListener(evt, cb) {
+          if (!this._cbs[evt]) this._cbs[evt] = [];
+          this._cbs[evt].push(cb);
+          if (evt === window._wifiApSseEvent && window._wifiApActivation) {
+            setTimeout(() => {
+              cb({ data: JSON.stringify(window._wifiApActivation) });
+            }, 300);
+          }
+        }
+        set onerror(fn) { this._onerrorFn = fn; }
+        close() { this.readyState = 2; }
+      };
+    },
+    { sseEvent, activation }
+  );
+}
+
+/**
+ * Navigate through: device card click → fill SSID → fill password → click Pair button.
+ */
+async function pairViaWifiApUi(page, { ssid = "HomeWifi", password = "secret123" } = {}) {
+  // Click the device card in the device discovery panel
+  await page.locator(".device-card").first().click();
+  await page.waitForSelector("#panel-wifi:not(.hidden)");
+
+  // Fill home WiFi credentials — click first to remove iOS-autocomplete readonly guard
+  await page.locator("#ssid").click();
+  await page.locator("#ssid").fill(ssid);
+  if (password) {
+    await page.locator("#password").click();
+    await page.locator("#password").fill(password);
+  }
+
+  // Click Pair button (btn-next, labeled "Pair device →" in WiFi AP mode)
+  await page.locator("#btn-next").click();
+}
+
+test.describe("WiFi AP pairing flow", () => {
+  test("device card appears when quick-scan returns a Tuya AP", async ({ page }) => {
+    await setupRoutes(page, { tuya_aps: [{ ssid: "SmartLife_AB12" }] });
+    await loadPage(page);
+
+    await expect(page.locator(".device-card")).toHaveCount(1);
+    await expect(page.locator(".device-card").first()).toContainText("SmartLife_AB12");
+  });
+
+  test("multiple Tuya APs each get their own device card", async ({ page }) => {
+    await setupRoutes(page, {
+      tuya_aps: [{ ssid: "SmartLife_AA11" }, { ssid: "SmartLife_BB22" }],
+    });
+    await loadPage(page);
+
+    await expect(page.locator(".device-card")).toHaveCount(2);
+    await expect(page.locator(".device-card").nth(0)).toContainText("SmartLife_AA11");
+    await expect(page.locator(".device-card").nth(1)).toContainText("SmartLife_BB22");
+  });
+
+  test("no Tuya APs — no-devices message is visible", async ({ page }) => {
+    await setupRoutes(page);  // tuya_aps defaults to []
+    await loadPage(page);
+
+    await expect(page.locator("#no-devices-msg")).toBeVisible();
+    await expect(page.locator(".device-card")).toHaveCount(0);
+  });
+
+  test("clicking device card navigates to credentials panel", async ({ page }) => {
+    await setupRoutes(page, { tuya_aps: [{ ssid: "SmartLife_AB12" }] });
+    await loadPage(page);
+
+    await page.locator(".device-card").first().click();
+
+    await expect(page.locator("#panel-devices")).toBeHidden();
+    await expect(page.locator("#panel-wifi")).toBeVisible();
+  });
+
+  test("credentials panel shows 'Pair device' button label after WiFi AP selection", async ({ page }) => {
+    await setupRoutes(page, { tuya_aps: [{ ssid: "SmartLife_AB12" }] });
+    await loadPage(page);
+
+    await page.locator(".device-card").first().click();
+    await page.waitForSelector("#panel-wifi:not(.hidden)");
+
+    await expect(page.locator("#btn-next-label")).toContainText("Pair device");
+  });
+
+  test("successful WiFi AP pairing shows done screen", async ({ page }) => {
+    await setupRoutes(page, { tuya_aps: [{ ssid: "SmartLife_AB12" }] });
+    await mockWifiApRoute(page);
+    await loadPage(page);
+
+    await pairViaWifiApUi(page);
+
+    await expect(page.locator("#panel-done")).toBeVisible({ timeout: 5000 });
+    await expect(page.locator("#panel-wifi")).toBeHidden();
+  });
+
+  test("done screen shows device gw_id and local_key after WiFi AP pairing", async ({ page }) => {
+    const token = "tok-wifi-ap-1";
+    await setupRoutes(page, { tuya_aps: [{ ssid: "SmartLife_AB12" }] });
+    await mockWifiApRoute(page, {
+      token,
+      activation: {
+        token,
+        gw_id: "device99aabb",
+        local_key: "1122334455667788990011223344556677",
+        ip_address: "10.0.0.55",
+      },
+    });
+    await loadPage(page);
+
+    await pairViaWifiApUi(page);
+    await page.waitForSelector("#panel-done:not(.hidden)", { timeout: 5000 });
+
+    await expect(page.locator("#panel-done")).toContainText("device99aabb");
+    await expect(page.locator("#panel-done")).toContainText("1122334455667788990011223344556677");
+  });
+
+  test("POST 500 error shows error status and re-enables pair button", async ({ page }) => {
+    await setupRoutes(page, { tuya_aps: [{ ssid: "SmartLife_AB12" }] });
+    await mockWifiApRoute(page, { postStatus: 500, sseEvent: null });
+    await loadPage(page);
+
+    await pairViaWifiApUi(page);
+
+    await expect(page.locator("#wifi-ap-status")).toBeVisible({ timeout: 3000 });
+    await expect(page.locator("#wifi-ap-status")).toContainText("500");
+    await expect(page.locator("#btn-next")).toBeEnabled();
+  });
+
+  test("SSE wifi_ap_error event shows error message on credentials panel", async ({ page }) => {
+    const token = "tok-err";
+    await setupRoutes(page, { tuya_aps: [{ ssid: "SmartLife_AB12" }] });
+    await mockWifiApRoute(page, {
+      token,
+      sseEvent: "wifi_ap_error",
+      activation: { token, error: "connect_failed" },
+    });
+    await loadPage(page);
+
+    await pairViaWifiApUi(page);
+
+    await expect(page.locator("#wifi-ap-status")).toBeVisible({ timeout: 3000 });
+    await expect(page.locator("#panel-wifi")).toBeVisible();
+    await expect(page.locator("#panel-done")).toBeHidden();
+  });
+
+  test("SSE connection error (onerror) shows error and re-enables pair button", async ({ page }) => {
+    await setupRoutes(page, { tuya_aps: [{ ssid: "SmartLife_AB12" }] });
+    await mockWifiApRoute(page, { sseEvent: "onerror" });
+    await loadPage(page);
+
+    await pairViaWifiApUi(page);
+
+    await expect(page.locator("#wifi-ap-status")).toBeVisible({ timeout: 3000 });
+    await expect(page.locator("#btn-next")).toBeEnabled({ timeout: 3000 });
+  });
+
+  test("Back button from credentials after WiFi AP selection returns to device panel", async ({ page }) => {
+    await setupRoutes(page, { tuya_aps: [{ ssid: "SmartLife_AB12" }] });
+    await loadPage(page);
+
+    await page.locator(".device-card").first().click();
+    await page.waitForSelector("#panel-wifi:not(.hidden)");
+
+    await page.locator("#btn-back").click();
+
+    await expect(page.locator("#panel-devices")).toBeVisible();
+    await expect(page.locator("#panel-wifi")).toBeHidden();
+  });
+
+  test("goToDevices clears stale pair-status from previous BLE attempt", async ({ page }) => {
+    await setupRoutes(page, { tuya_aps: [{ ssid: "SmartLife_AB12" }] });
+    await loadPage(page);
+
+    // Navigate to credentials panel first (btn-back lives here)
+    await page.locator(".device-card").first().click();
+    await page.waitForSelector("#panel-wifi:not(.hidden)");
+
+    // Inject a stale error into #pair-status (simulates leftover from previous BLE attempt)
+    await page.evaluate(() => {
+      const el = document.getElementById("pair-status");
+      if (el) {
+        el.className = "status-box status-error";
+        el.textContent = "Stale BLE error from last attempt";
+      }
+    });
+
+    // Navigate back to device panel — calls goToDevices() which must clear the status
+    await page.locator("#btn-back").click();
+    await page.waitForSelector("#panel-devices:not(.hidden)");
+
+    // pair-status should be cleared / hidden
+    await expect(page.locator("#pair-status")).toHaveClass(/hidden/);
+  });
+});

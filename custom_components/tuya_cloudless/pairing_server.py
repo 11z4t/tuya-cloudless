@@ -904,6 +904,12 @@ class PairingServer:
         if not ap_ssid or not home_ssid:
             return web.Response(status=400, text="ap_ssid and home_ssid are required")
 
+        # Enforce WiFi spec limits: SSID ≤ 32 bytes, WPA2 password ≤ 63 bytes
+        if len(ap_ssid.encode()) > 32 or len(home_ssid.encode()) > 32:
+            return web.Response(status=400, text="SSID exceeds 32-byte WiFi limit")
+        if len(home_password.encode()) > 63:
+            return web.Response(status=400, text="Password exceeds 63-byte WPA2 limit")
+
         # Prevent duplicate concurrent pairing tasks for the same AP
         if ap_ssid in self._wifi_ap_pairing_in_progress:
             return web.Response(
