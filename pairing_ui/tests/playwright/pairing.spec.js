@@ -324,6 +324,63 @@ test.describe("WiFi scan dropdown", () => {
   });
 });
 
+// ── Tests: WiFi dropdown keyboard navigation ───────────────────────────────────
+
+test.describe("WiFi dropdown keyboard navigation", () => {
+  test("ArrowDown wraps from last item to first", async ({ page }) => {
+    await setupRoutes(page, { ssids: ["Net-A", "Net-B", "Net-C"] });
+    await loadPage(page);
+
+    await page.locator("#btn-wifi-scan").click();
+    await expect(page.locator("#wifi-dropdown")).toBeVisible();
+
+    const options = page.locator(".wifi-option[tabindex='0']");
+    await options.nth(0).focus();
+    // Move to last item
+    await page.keyboard.press("ArrowDown");
+    await page.keyboard.press("ArrowDown");
+    await expect(options.nth(2)).toBeFocused();
+    // Wrap from last to first
+    await page.keyboard.press("ArrowDown");
+    await expect(options.nth(0)).toBeFocused();
+  });
+
+  test("ArrowUp wraps from first item to last", async ({ page }) => {
+    await setupRoutes(page, { ssids: ["Net-A", "Net-B", "Net-C"] });
+    await loadPage(page);
+
+    await page.locator("#btn-wifi-scan").click();
+    const options = page.locator(".wifi-option[tabindex='0']");
+    await options.nth(0).focus();
+    // Wrap from first to last
+    await page.keyboard.press("ArrowUp");
+    await expect(options.nth(2)).toBeFocused();
+  });
+
+  test("Escape closes dropdown and returns focus to SSID input", async ({ page }) => {
+    await setupRoutes(page, { ssids: ["HomeNet"] });
+    await loadPage(page);
+
+    await page.locator("#btn-wifi-scan").click();
+    await expect(page.locator("#wifi-dropdown")).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(page.locator("#wifi-dropdown")).toBeHidden();
+    await expect(page.locator("#ssid")).toBeFocused();
+  });
+
+  test("Enter key selects focused item", async ({ page }) => {
+    await setupRoutes(page, { ssids: ["Net-A", "Net-B"] });
+    await loadPage(page);
+
+    await page.locator("#btn-wifi-scan").click();
+    const options = page.locator(".wifi-option[tabindex='0']");
+    await options.nth(1).focus();
+    await page.keyboard.press("Enter");
+    await expect(page.locator("#ssid")).toHaveValue("Net-B");
+    await expect(page.locator("#wifi-dropdown")).toBeHidden();
+  });
+});
+
 // ── Tests: SSID pre-fill ──────────────────────────────────────────────────────
 
 test.describe("SSID pre-fill", () => {

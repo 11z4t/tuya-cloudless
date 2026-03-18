@@ -41,10 +41,16 @@ function chromeIntentUrl() {
 }
 
 // ── Debug log ─────────────────────────────────────────────────────────────────
+const _DEBUG_LOG_MAX = 200;  // cap DOM entries to avoid unbounded growth
+
 function dbg(msg) {
   const ts = new Date().toLocaleTimeString();
   const el = document.getElementById("debug-log");
   if (el) {
+    // Prune oldest entry when cap is reached
+    if (el.childElementCount >= _DEBUG_LOG_MAX) {
+      el.removeChild(el.firstChild);
+    }
     const line = document.createElement("div");
     line.textContent = "[" + ts + "] " + msg;
     el.appendChild(line);
@@ -330,8 +336,16 @@ function showWifiDropdown(ssids, currentSsid) {
       item.addEventListener("click", pick);
       item.addEventListener("keydown", (e) => {
         if (e.key === "Enter" || e.key === " ") { e.preventDefault(); pick(); }
-        if (e.key === "ArrowDown") { e.preventDefault(); (item.nextElementSibling || item).focus(); }
-        if (e.key === "ArrowUp")   { e.preventDefault(); (item.previousElementSibling || item).focus(); }
+        if (e.key === "ArrowDown") {
+          e.preventDefault();
+          const next = item.nextElementSibling || dd.firstElementChild;
+          if (next) next.focus();
+        }
+        if (e.key === "ArrowUp") {
+          e.preventDefault();
+          const prev = item.previousElementSibling || dd.lastElementChild;
+          if (prev) prev.focus();
+        }
         if (e.key === "Escape")    { dd.classList.add("hidden"); document.getElementById("ssid").focus(); }
       });
       dd.appendChild(item);
@@ -650,6 +664,7 @@ function waitForResponse(timeoutMs) {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
       _recvResolve = null;
+      _recvChunks = [];  // clear stale chunks so retries start fresh
       reject(new Error("BLE response timeout"));
     }, timeoutMs);
     _recvResolve = (chunks) => { clearTimeout(timer); resolve(chunks); };
@@ -926,12 +941,18 @@ async function startPairing() {
 
 // ── Copy share URL ────────────────────────────────────────────────────────────
 function copyShareUrl() {
-  const val = document.getElementById("share-url").value;
+  const input = document.getElementById("share-url");
   const btn = document.getElementById("btn-copy");
-  (navigator.clipboard
-    ? navigator.clipboard.writeText(val)
-    : Promise.resolve(document.execCommand("copy"))
-  ).then(() => {
+  const val = input ? input.value : "";
+  let copyPromise;
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    copyPromise = navigator.clipboard.writeText(val);
+  } else {
+    // Legacy fallback: execCommand("copy") requires the field to be selected first
+    if (input) { input.select(); }
+    copyPromise = Promise.resolve(document.execCommand("copy"));
+  }
+  copyPromise.then(() => {
     btn.textContent = t("qr_copy_done");
     setTimeout(() => { btn.textContent = t("qr_copy_btn"); }, 2000);
   }).catch(() => {});
