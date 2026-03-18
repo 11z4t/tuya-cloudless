@@ -27,6 +27,7 @@
   "footer_github": "GitHub",
   "footer_no_cloud": "Bulut hesabı gerekmiyor",
   "warn_no_ssid": "⚠ Önce bir Wi-Fi ağ adı girin.",
+  "warn_invalid_ssid": "⚠ Invalid network name (max 32 characters, no control characters).",
   "spin_scanning": "Tuya cihazı aranıyor…",
   "spin_connecting": "{name} ile bağlantı kuruluyor…",
   "spin_handshake": "El sıkışma…",

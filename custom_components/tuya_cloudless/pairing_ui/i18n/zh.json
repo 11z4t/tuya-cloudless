@@ -27,6 +27,7 @@
   "footer_github": "GitHub",
   "footer_no_cloud": "无需云账户",
   "warn_no_ssid": "⚠ 请先输入 Wi-Fi 网络名称。",
+  "warn_invalid_ssid": "⚠ Invalid network name (max 32 characters, no control characters).",
   "spin_scanning": "正在搜索 Tuya 设备…",
   "spin_connecting": "正在连接到 {name}…",
   "spin_handshake": "握手中…",

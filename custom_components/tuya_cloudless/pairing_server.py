@@ -210,6 +210,8 @@ class PairingServer:
         self._ha_views_registered: bool = False
         # Strong references to background tasks so GC doesn't cancel them (RUF006)
         self._background_tasks: set[asyncio.Task[None]] = set()
+        # APs currently being paired — prevents duplicate concurrent pairing tasks
+        self._wifi_ap_pairing_in_progress: set[str] = set()
 
     # ── Lifecycle ──────────────────────────────────────────────────────────
 
@@ -625,7 +627,11 @@ class PairingServer:
                 "active": 2,
                 "ability": 0,
                 "localKey": local_key,
-                "timezone": "UTC",
+                "timezone": (
+                    tz
+                    if isinstance((tz := getattr(self._hass.config, "time_zone", None)), str) and tz
+                    else "UTC"
+                ),
                 "netType": 0,
             },
         }
@@ -671,7 +677,11 @@ class PairingServer:
         """
         # Enforce connection cap before allocating resources (SEC-002 / PLAT-825)
         if len(self._sse_queues) >= _MAX_SSE_CONNECTIONS:
-            return web.Response(status=503, text="Too many concurrent SSE connections")
+            return web.Response(
+                status=503,
+                text="Too many concurrent SSE connections",
+                headers={"Retry-After": "10"},
+            )
 
         # Bounded queue prevents unbounded memory growth (SEC-002 / PLAT-825)
         queue: asyncio.Queue[str | None] = asyncio.Queue(maxsize=32)
@@ -866,15 +876,23 @@ class PairingServer:
         if not ap_ssid or not home_ssid:
             return web.Response(status=400, text="ap_ssid and home_ssid are required")
 
+        # Prevent duplicate concurrent pairing tasks for the same AP
+        if ap_ssid in self._wifi_ap_pairing_in_progress:
+            return web.Response(
+                status=409, text="WiFi AP pairing already in progress for this device"
+            )
+
         token = secrets.token_hex(_LOCAL_KEY_BYTES)
         activator_url = self.ha_local_url()
 
+        self._wifi_ap_pairing_in_progress.add(ap_ssid)
         task = asyncio.create_task(
             self._wifi_ap_pair_task(ap_ssid, home_ssid, home_password, token, activator_url),
             name="tuya-cloudless-wifi-ap-pair",
         )
         self._background_tasks.add(task)
         task.add_done_callback(self._background_tasks.discard)
+        task.add_done_callback(lambda _: self._wifi_ap_pairing_in_progress.discard(ap_ssid))
 
         return web.json_response(
             {"token": token, "events_url": "/api/provision/events"},
@@ -979,6 +997,12 @@ class PairingServer:
             await self._broadcast_sse(
                 "wifi_ap_error",
                 json.dumps({"error": "WiFi control unavailable or connect failed", "token": token}),
+            )
+        except Exception as exc:
+            _LOGGER.exception("Unexpected error in WiFi AP pair task: %s", exc)
+            await self._broadcast_sse(
+                "wifi_ap_error",
+                json.dumps({"error": "Unexpected pairing error", "token": token}),
             )
         finally:
             # Step 4: always try to reconnect home WiFi
@@ -1234,13 +1258,24 @@ class PairingServer:
     async def _broadcast_sse(self, event: str, data: str) -> None:
         """Push a Server-Sent Event to all connected browsers.
 
+        Uses a 1-second timeout per queue so a stalled client cannot block the
+        entire pairing flow.  Queues that time out are removed as stale.
+
         Args:
             event: SSE event name (e.g. ``"activated"``).
             data:  JSON string payload.
         """
         message = f"event: {event}\ndata: {data}\n\n"
+        stale: list[asyncio.Queue[str | None]] = []
         for q in list(self._sse_queues):
-            await q.put(message)
+            try:
+                await asyncio.wait_for(q.put(message), timeout=1.0)
+            except TimeoutError:
+                _LOGGER.debug("SSE queue stalled — removing client")
+                stale.append(q)
+        for q in stale:
+            if q in self._sse_queues:
+                self._sse_queues.remove(q)
 
     def _expire_old_results(self) -> None:
         """Remove activation results older than :const:`_RESULT_TTL_SECS`."""

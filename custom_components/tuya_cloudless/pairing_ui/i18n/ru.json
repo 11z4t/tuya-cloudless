@@ -27,6 +27,7 @@
   "footer_github": "GitHub",
   "footer_no_cloud": "Облачный аккаунт не требуется",
   "warn_no_ssid": "⚠ Сначала введите имя сети Wi-Fi.",
+  "warn_invalid_ssid": "⚠ Invalid network name (max 32 characters, no control characters).",
   "spin_scanning": "Поиск устройства Tuya…",
   "spin_connecting": "Подключение к {name}…",
   "spin_handshake": "Установка соединения…",

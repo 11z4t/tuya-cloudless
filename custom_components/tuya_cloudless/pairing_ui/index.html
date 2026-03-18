@@ -187,6 +187,8 @@
       width: 100%;
       -webkit-tap-highlight-color: transparent;
     }
+    .btn:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+    .sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
     .btn:active { transform: scale(.97); }
     .btn:disabled { opacity: .4; cursor: not-allowed; transform: none; }
     .btn-primary { background: var(--accent); color: #0f172a; }
@@ -444,6 +446,9 @@
   <div id="panel-devices" class="step-panel hidden">
     <div class="step-title" id="devices-title">Find device</div>
     <p class="step-desc" id="devices-desc">Devices found nearby appear automatically. Or use Bluetooth to scan.</p>
+
+    <!-- Screen reader live region — announces device discovery results -->
+    <div id="devices-status" role="status" aria-live="polite" aria-atomic="true" class="sr-only"></div>
 
     <div id="device-list" class="device-list">
       <!-- Populated by autoDetectDevices() -->

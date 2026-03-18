@@ -871,6 +871,101 @@ class TestWifiApPair:
         finally:
             await cli.close()
 
+    async def test_duplicate_ap_pair_returns_409(self, client: TestClient) -> None:
+        """A second wifi-ap-pair request for the same AP while one is in progress returns 409."""
+        # Simulate a pairing already in progress by pre-populating the tracking set.
+        # We find the server instance via the underlying aiohttp app's _server attribute,
+        # but the cleaner approach is to access it via the fixture: client.server wraps
+        # TestServer whose app is server._app.  We need a separate server fixture here.
+        from custom_components.tuya_cloudless.pairing_server import PairingServer as PS
+
+        srv = PS(_make_hass(), port=0)
+        srv._wifi_ap_pairing_in_progress.add("SmartLife_AB12")
+
+        ts = TestServer(srv._app)
+        cli2 = TestClient(ts)
+        await cli2.start_server()
+        try:
+            resp = await cli2.post(
+                "/api/provision/wifi-ap-pair",
+                json={
+                    "ap_ssid": "SmartLife_AB12",
+                    "home_ssid": "HomeNet",
+                    "home_password": "pass",
+                },
+            )
+            assert resp.status == 409
+        finally:
+            await cli2.close()
+
+    async def test_gw_json_post_contains_token_and_activator(self, client: TestClient) -> None:
+        """The gw.json POST to the Tuya device includes token and activator URL."""
+        from custom_components.tuya_cloudless.pairing_server import PairingServer as PS
+
+        srv = PS(_make_hass(), port=0)
+        captured: dict[str, object] = {}
+
+        async def fake_exec(*args: object, **kwargs: object) -> MagicMock:
+            proc = MagicMock()
+            proc.communicate = AsyncMock(return_value=(b"yes:HomeNet", b""))
+            proc.returncode = 0
+            proc.kill = MagicMock()
+            return proc
+
+        with (
+            patch("asyncio.create_subprocess_exec", side_effect=fake_exec),
+            patch("aiohttp.ClientSession") as mock_cls,
+        ):
+            mock_session = AsyncMock()
+            mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+            mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+            mock_resp = AsyncMock()
+            mock_resp.status = 200
+
+            def capture_post(url: str, **kwargs: object) -> AsyncMock:
+                captured["url"] = url
+                captured["json"] = kwargs.get("json")
+                cm = AsyncMock()
+                cm.__aenter__ = AsyncMock(return_value=mock_resp)
+                cm.__aexit__ = AsyncMock(return_value=False)
+                return cm
+
+            mock_session.post = capture_post
+
+            await srv._wifi_ap_pair_task(
+                "SmartLife_AB12", "HomeNet", "s3cr3t", "tok_gw", "http://ha:8099"
+            )
+
+        assert captured.get("url", "").endswith("/gw.json")
+        payload = captured.get("json", {})
+        assert isinstance(payload, dict)
+        assert payload.get("t") == "tok_gw"
+        assert payload.get("activator") == "http://ha:8099"
+        assert payload.get("s") == "HomeNet"
+
+    async def test_unexpected_exception_emits_wifi_ap_error_sse(self) -> None:
+        """An unexpected exception inside _wifi_ap_pair_task still emits wifi_ap_error SSE."""
+        from custom_components.tuya_cloudless.pairing_server import PairingServer as PS
+
+        srv = PS(_make_hass(), port=0)
+        broadcast_calls: list[tuple[str, str]] = []
+
+        async def fake_broadcast(event: str, data: str) -> None:
+            broadcast_calls.append((event, data))
+
+        srv._broadcast_sse = fake_broadcast  # type: ignore[method-assign]
+
+        async def boom(*args: object, **kwargs: object) -> None:
+            raise RuntimeError("Unexpected internal failure")
+
+        with patch("asyncio.create_subprocess_exec", side_effect=boom):
+            await srv._wifi_ap_pair_task(
+                "SmartLife_AB12", "HomeNet", "pass", "tok_boom", "http://ha:8099"
+            )
+
+        error_events = [ev for ev, _ in broadcast_calls if ev == "wifi_ap_error"]
+        assert len(error_events) >= 1, "Expected at least one wifi_ap_error SSE event"
+
 
 # ── /api/provision/config ─────────────────────────────────────────────────────
 
@@ -1263,6 +1358,24 @@ class TestSseEndpoint:
             chunk = await asyncio.wait_for(resp.content.read(64), timeout=5)
             assert b": connected" in chunk
 
+    async def test_sse_503_includes_retry_after_header(self, server: PairingServer) -> None:
+        """When SSE connection cap is exceeded, response includes Retry-After header."""
+        from custom_components.tuya_cloudless.pairing_server import _MAX_SSE_CONNECTIONS
+
+        # Fill the SSE queue list to the limit with dummy queues
+        for _ in range(_MAX_SSE_CONNECTIONS):
+            server._sse_queues.append(asyncio.Queue())
+
+        ts = TestServer(server._app)
+        cli = TestClient(ts)
+        await cli.start_server()
+        try:
+            resp = await cli.get("/api/provision/events")
+            assert resp.status == 503
+            assert "Retry-After" in resp.headers
+        finally:
+            await cli.close()
+
 
 # ── _broadcast_sse ────────────────────────────────────────────────────────────
 
@@ -1286,6 +1399,22 @@ class TestBroadcastSse:
         """_broadcast_sse with no subscribers must not raise."""
         # No queues — should be a no-op
         await server._broadcast_sse("activated", "{}")
+
+    async def test_stale_queue_removed_on_timeout(self, server: PairingServer) -> None:
+        """A full queue (stalled client) is removed rather than blocking forever."""
+        # A full queue will timeout immediately in put (maxsize=1, already full)
+        stale: asyncio.Queue[str | None] = asyncio.Queue(maxsize=1)
+        await stale.put("existing-message")  # fill it so put() would block
+
+        healthy: asyncio.Queue[str | None] = asyncio.Queue()
+        server._sse_queues.extend([stale, healthy])
+
+        await server._broadcast_sse("activated", "{}")
+
+        # Stale queue should have been removed
+        assert stale not in server._sse_queues
+        # Healthy queue should have received the message
+        assert not healthy.empty()
 
 
 # ── _auto_stop_after_idle ──────────────────────────────────────────────────────

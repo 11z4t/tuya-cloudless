@@ -166,6 +166,7 @@ function detectLang() {
 // ── Pair method state ─────────────────────────────────────────────────────────
 let _pairMethod = null;       // "ble" | "wifi_ap"
 let _selectedApSsid = null;   // SSID of Tuya AP chosen by user
+let _currentEventSource = null; // Active EventSource — closed on panel switch
 
 // ── Step counter ──────────────────────────────────────────────────────────────
 let _currentStep = 1;
@@ -354,14 +355,17 @@ async function autoDetectDevices() {
     const data = await r.json();
     const aps = data.tuya_aps || [];
     if (scanEl) scanEl.style.display = "none";
+    const statusLive = document.getElementById("devices-status");
     if (aps.length === 0) {
       if (noDevEl) {
         noDevEl.textContent = t("no_devices_auto_found");
         noDevEl.className = "status-box status-info";
       }
+      if (statusLive) statusLive.textContent = t("no_devices_auto_found");
     } else {
       for (const ap of aps) showDeviceCard(ap.ssid);
       dbg("Found " + aps.length + " Tuya AP(s)");
+      if (statusLive) statusLive.textContent = aps.length + " " + t("pair_via_wifi_ap");
     }
   } catch (_) {
     if (scanEl) scanEl.style.display = "none";
@@ -411,6 +415,13 @@ let _ssid = "";
 let _pwd  = "";
 
 function goToDevices() {
+  // Close any open SSE connection when navigating back to device discovery
+  if (_currentEventSource) {
+    _currentEventSource.close();
+    _currentEventSource = null;
+  }
+  _pairMethod = null;
+  _selectedApSsid = null;
   document.getElementById("panel-wifi").classList.add("hidden");
   document.getElementById("panel-ble").classList.add("hidden");
   document.getElementById("panel-done").classList.add("hidden");
@@ -440,6 +451,15 @@ function goToStep2() {
   if (!_ssid) {
     errEl.className = "status-box status-warn";
     errEl.textContent = t("warn_no_ssid");
+    errEl.setAttribute("tabindex", "-1");
+    errEl.focus();
+    return;
+  }
+  if (_ssid.includes("\x00") || _ssid.length > 32) {
+    errEl.className = "status-box status-warn";
+    errEl.textContent = t("warn_invalid_ssid");
+    errEl.setAttribute("tabindex", "-1");
+    errEl.focus();
     return;
   }
   errEl.className = "status-box hidden";
@@ -610,7 +630,12 @@ function esc(s) {
 
 // ── SSE ───────────────────────────────────────────────────────────────────────
 function listenForActivation(token) {
+  if (_currentEventSource) {
+    _currentEventSource.close();
+    _currentEventSource = null;
+  }
   const es = new EventSource(EVENTS_URL);
+  _currentEventSource = es;
   es.addEventListener("activated", (e) => {
     try {
       const d = JSON.parse(e.data);
@@ -623,7 +648,7 @@ function listenForActivation(token) {
         showDone(d.gw_id, d.local_key, d.ip_address);
         document.getElementById("btn-pair").disabled = false;
       }
-    } catch (_) {}
+    } catch (err) { dbg("SSE parse error: " + err.message); }
   });
   es.onerror = () => es.close();
   setTimeout(() => es.close(), 120000);
