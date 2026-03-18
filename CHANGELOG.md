@@ -3,6 +3,18 @@
 All notable changes to Tuya Cloudless are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [0.5.1] — 2026-03-18
+
+### Fixed
+- Pairing UI now served over HA's HTTPS server so Web Bluetooth works when HA
+  runs with HTTPS. Previously the browser was redirected to `http://ha:8099/`
+  (HTTP), causing `isSecureContext = false` and disabling the BLE button even
+  though HA itself was HTTPS-configured.
+- `app.js` base paths configurable via injected `window._TUYA_*` globals;
+  direct port-8099 access continues to work unchanged.
+- Improved `error_https_required_body` i18n text in all 21 languages to
+  explain that HA must be configured with HTTPS.
+
 ## [0.5.0] — 2026-03-18
 
 ### Security
