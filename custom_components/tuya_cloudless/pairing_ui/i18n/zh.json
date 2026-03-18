@@ -75,5 +75,7 @@
   "hide_password": "隐藏密码",
   "label_reveal_key": "显示",
   "label_hide_key": "隐藏",
-  "wifi_ap_nmcli_missing": "WiFi控制不可用 — 此Home Assistant主机未安装nmcli。"
+  "wifi_ap_nmcli_missing": "WiFi控制不可用 — 此Home Assistant主机未安装nmcli。",
+  "warn_no_device_selected": "未选择设备。请返回并选择一个设备。",
+  "btn_cancel": "取消"
 }

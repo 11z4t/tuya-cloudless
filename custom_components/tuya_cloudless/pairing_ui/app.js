@@ -148,6 +148,7 @@ function applyStrings() {
   if (el("btn-back-label"))        el("btn-back-label").textContent        = t("btn_back");
   if (el("btn-back-ble-label"))    el("btn-back-ble-label").textContent    = t("btn_back");
   if (el("btn-pair-another-label")) el("btn-pair-another-label").textContent = t("btn_pair_another");
+  if (el("btn-cancel-wifi-ap-label")) el("btn-cancel-wifi-ap-label").textContent = t("btn_cancel") || "Cancel";
   // Re-apply btn-pwd-toggle aria-label in the current show/hide state
   const pwdToggle = document.getElementById("btn-pwd-toggle");
   if (pwdToggle) {
@@ -313,9 +314,11 @@ async function scanWifi() {
     // Filter Tuya provisioning APs out of the home-network dropdown — they are
     // not connectable home networks and selecting one would silently break pairing.
     const tuyaApSsids = new Set((data.tuya_aps || []).map(ap => ap.ssid));
-    const ssids = (data.ssids || []).filter(s => !tuyaApSsids.has(s));
+    const allSsids = (data.ssids || []).filter(s => !tuyaApSsids.has(s));
+    // Cap at 20 items — prevents DOM bloat on networks with 50+ APs visible
+    const ssids = allSsids.slice(0, 20);
     const current = data.current_ssid || null;
-    dbg("WiFi scan: " + ssids.length + " home networks (" + tuyaApSsids.size + " Tuya APs filtered)");
+    dbg("WiFi scan: " + ssids.length + "/" + allSsids.length + " home networks shown (" + tuyaApSsids.size + " Tuya APs filtered)");
     showWifiDropdown(ssids, current);
   } catch (err) {
     dbg("WiFi scan error: " + err.message);
@@ -520,6 +523,9 @@ let _ssid = "";
 let _pwd  = "";
 
 function goToDevices() {
+  // Disable "Pair Another" to prevent double-click triggering duplicate navigation
+  const pairAnotherBtn = document.getElementById("btn-pair-another");
+  if (pairAnotherBtn) pairAnotherBtn.disabled = true;
   // Close any open SSE connection when navigating back to device discovery
   if (_currentEventSource) {
     _currentEventSource.close();
@@ -574,6 +580,11 @@ function goToCredentials() {
   // Clear stale WiFi AP status from a previous pairing attempt
   const apStatus = document.getElementById("wifi-ap-status");
   if (apStatus) apStatus.className = "status-box hidden";
+  // Ensure cancel button is hidden and back button is visible on fresh credentials entry
+  const cancelBtnG = document.getElementById("btn-cancel-wifi-ap");
+  const backBtnG   = document.getElementById("btn-back");
+  if (cancelBtnG) cancelBtnG.classList.add("hidden");
+  if (backBtnG)   backBtnG.classList.remove("hidden");
   // Reset password field to hidden — ensures it's not left visible after BLE back navigation
   const pwdCredEl = document.getElementById("password");
   if (pwdCredEl && pwdCredEl.type === "text") {
@@ -915,6 +926,10 @@ function showWifiApSpinner(msg) {
 async function pairViaWifiAp() {
   const btn = document.getElementById("btn-next");
   btn.disabled = true;
+  const cancelBtn = document.getElementById("btn-cancel-wifi-ap");
+  const backBtn   = document.getElementById("btn-back");
+  if (cancelBtn) { cancelBtn.classList.remove("hidden"); cancelBtn.disabled = false; }
+  if (backBtn) backBtn.classList.add("hidden");
 
   showWifiApSpinner(t("wifi_ap_connecting"));
   dbg("WiFi AP pair: POST /wifi-ap-pair for " + _selectedApSsid);
@@ -933,6 +948,8 @@ async function pairViaWifiAp() {
     _wifiApDone = true;
     es.close();
     clearTimeout(wifiApTimer);
+    if (cancelBtn) cancelBtn.classList.add("hidden");
+    if (backBtn) backBtn.classList.remove("hidden");
     if (enableBtn) btn.disabled = false;
   };
 
@@ -1152,6 +1169,18 @@ function copyShareUrl() {
   document.getElementById("btn-next").addEventListener("click", goToStep2);
   document.getElementById("btn-back").addEventListener("click", goToDevices);
   document.getElementById("btn-back-ble").addEventListener("click", goToCredentials);
+  document.getElementById("btn-cancel-wifi-ap").addEventListener("click", () => {
+    // Close SSE + restore UI — user can retry or go back
+    if (_currentEventSource) { _currentEventSource.close(); _currentEventSource = null; }
+    const cancelBtnEl = document.getElementById("btn-cancel-wifi-ap");
+    const backBtnEl   = document.getElementById("btn-back");
+    const pairBtnEl   = document.getElementById("btn-next");
+    if (cancelBtnEl) cancelBtnEl.classList.add("hidden");
+    if (backBtnEl)   backBtnEl.classList.remove("hidden");
+    if (pairBtnEl)   pairBtnEl.disabled = false;
+    setWifiApStatus("status-warn", "\u26A0 " + esc(t("warn_scan_cancelled")));
+    dbg("WiFi AP pairing cancelled by user");
+  });
   document.getElementById("btn-pair").addEventListener("click", startPairing);
   document.getElementById("btn-copy").addEventListener("click", copyShareUrl);
   document.getElementById("btn-ble-scan").addEventListener("click", selectDeviceBle);

@@ -75,5 +75,7 @@
   "warn_invalid_password": "⚠ Password too long (max 63 bytes for WPA2).",
   "err_sse_lost": "З'єднання втрачено — спробуйте ще раз.",
   "err_pair_fail": "Пристрій відхилив конфігурацію WiFi. Перевірте дані та спробуйте знову.",
-  "wifi_ap_nmcli_missing": "Керування WiFi недоступне — nmcli не встановлено на цьому хості Home Assistant."
+  "wifi_ap_nmcli_missing": "Керування WiFi недоступне — nmcli не встановлено на цьому хості Home Assistant.",
+  "warn_no_device_selected": "Пристрій не вибрано. Поверніться назад і виберіть пристрій.",
+  "btn_cancel": "Скасувати"
 }

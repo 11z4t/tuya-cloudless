@@ -1621,4 +1621,73 @@ test.describe("WiFi AP pairing flow", () => {
     await page.waitForTimeout(500);
     await expect(page.locator("#wifi-dropdown")).toHaveClass(/hidden/);
   });
+
+  test("Cancel button appears during WiFi AP pairing and restores UI on click", async ({ page }) => {
+    await setupRoutes(page, { tuya_aps: [{ ssid: "SmartLife_AB12" }] });
+    // Slow SSE — never fires (pairing stays in-progress)
+    await mockWifiApRoute(page, { sseEvent: null });
+    await loadPage(page);
+
+    await pairViaWifiApUi(page);
+
+    // Cancel button should be visible during pairing
+    await expect(page.locator("#btn-cancel-wifi-ap")).toBeVisible({ timeout: 3000 });
+    await expect(page.locator("#btn-back")).toBeHidden();
+
+    // Click cancel
+    await page.locator("#btn-cancel-wifi-ap").click();
+
+    // Cancel button should hide, back button and pair button should reappear
+    await expect(page.locator("#btn-cancel-wifi-ap")).toBeHidden();
+    await expect(page.locator("#btn-back")).toBeVisible();
+    await expect(page.locator("#btn-next")).toBeEnabled();
+  });
+
+  test("WiFi scan dropdown capped at 20 SSIDs", async ({ page }) => {
+    await setupRoutes(page, { tuya_aps: [{ ssid: "SmartLife_AB12" }] });
+    // Override wifi-scan to return 30 SSIDs
+    const manySsids = Array.from({ length: 30 }, (_, i) => "Network" + i);
+    await page.route(BASE + "/api/provision/wifi-scan", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ ssids: manySsids, tuya_aps: [], current_ssid: null }),
+      })
+    );
+    await loadPage(page);
+    await page.locator(".device-card").first().click();
+    await page.waitForSelector("#panel-wifi:not(.hidden)");
+    await page.locator("#btn-wifi-scan").click();
+    await page.waitForSelector("#wifi-dropdown:not(.hidden)");
+
+    const items = await page.locator("#wifi-dropdown .wifi-option").count();
+    expect(items).toBeLessThanOrEqual(20);
+  });
+
+  test("empty password (open WiFi) is accepted and advances to BLE panel", async ({ page }) => {
+    await setupRoutes(page, { tuya_aps: [] });
+    await loadPage(page);
+    await navigateToCredentials(page);
+    await page.locator("#ssid").click();
+    await page.locator("#ssid").fill("OpenWifi");
+    // Leave password empty — open network
+    await page.locator("#btn-ble-scan").click();
+    await page.locator("#btn-next").click();
+    // Should advance to BLE panel without error
+    await expect(page.locator("#panel-ble")).toBeVisible();
+    await expect(page.locator("#s1-error")).toHaveClass(/hidden/);
+  });
+
+  test("single-character SSID is accepted", async ({ page }) => {
+    await setupRoutes(page, { tuya_aps: [] });
+    await loadPage(page);
+    await navigateToCredentials(page);
+    await page.locator("#ssid").click();
+    await page.locator("#ssid").fill("A");
+    await page.locator("#btn-ble-scan").click();
+    await page.locator("#btn-next").click();
+    // Should advance without showing an SSID validation error
+    await expect(page.locator("#panel-ble")).toBeVisible();
+    await expect(page.locator("#s1-error")).toHaveClass(/hidden/);
+  });
 });

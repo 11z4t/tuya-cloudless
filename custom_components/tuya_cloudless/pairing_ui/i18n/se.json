@@ -75,5 +75,7 @@
   "warn_invalid_password": "⚠ Password too long (max 63 bytes for WPA2).",
   "err_sse_lost": "Connection lost — please try again.",
   "err_pair_fail": "Device rejected WiFi config. Check credentials and retry.",
-  "wifi_ap_nmcli_missing": "WiFi-hálddašeapmi ii leat oažžumis — nmcli ii leat bidjojuvvon dán Home Assistant-báikái."
+  "wifi_ap_nmcli_missing": "WiFi-hálddašeapmi ii leat oažžumis — nmcli ii leat bidjojuvvon dán Home Assistant-báikái.",
+  "warn_no_device_selected": "Ii vehki válljejuvvon. Máhcce ja vállje vehki.",
+  "btn_cancel": "Sáhttut"
 }

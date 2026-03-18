@@ -75,5 +75,7 @@
   "warn_invalid_password": "⚠ Password too long (max 63 bytes for WPA2).",
   "err_sse_lost": "Connessione persa — riprova.",
   "err_pair_fail": "Il dispositivo ha rifiutato la configurazione WiFi. Verifica le credenziali e riprova.",
-  "wifi_ap_nmcli_missing": "Controllo WiFi non disponibile — nmcli non è installato su questo host Home Assistant."
+  "wifi_ap_nmcli_missing": "Controllo WiFi non disponibile — nmcli non è installato su questo host Home Assistant.",
+  "warn_no_device_selected": "Nessun dispositivo selezionato. Torna indietro e seleziona un dispositivo.",
+  "btn_cancel": "Annulla"
 }
