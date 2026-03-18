@@ -63,6 +63,9 @@ _RESULT_TTL_SECS: Final[float] = 300.0
 #: Path to the static web UI assets (relative to this file)
 _UI_DIR: Final[Path] = Path(__file__).parent / "pairing_ui"
 
+#: Path to the brand assets directory (icon.png etc.)
+_BRAND_DIR: Final[Path] = Path(__file__).parent / "brand"
+
 #: local_key length in bytes (Tuya standard: 16 bytes → 16 ASCII chars)
 _LOCAL_KEY_BYTES: Final[int] = 16
 
@@ -284,6 +287,8 @@ class PairingServer:
         # Also accept the Tuya cloud API path format some firmware uses
         app.router.add_post("/api.json", self._handle_activate)
         app.router.add_get("/api/provision/wifi-scan", self._handle_wifi_scan)
+        # Serve brand icon at /static/icon.png (before the catch-all static mount)
+        app.router.add_get("/static/icon.png", self._handle_icon)
         # Serve static assets from pairing_ui/
         if _UI_DIR.is_dir():
             app.router.add_static("/static", _UI_DIR, show_index=False)
@@ -329,16 +334,40 @@ class PairingServer:
 
         Returns:
             JSON: ``{"activator_url": "http://<LAN-IP>:8099",
-                     "events_url": "...", "result_url_template": "..."}``
+                     "events_url": "...", "result_url_template": "...",
+                     "default_ssid": "<active SSID or null>"}``
         """
         base = self.ha_local_url()
+        default_ssid = await self._get_default_ssid()
         return web.json_response(
             {
                 "activator_url": base,
                 "events_url": f"{base}/api/provision/events",
                 "result_url_template": f"{base}/api/provision/result/{{token}}",
+                "default_ssid": default_ssid,
             },
             headers={"Access-Control-Allow-Origin": "*"},
+        )
+
+    async def _handle_icon(self, request: web.Request) -> web.Response:
+        """Serve the brand icon PNG at ``/static/icon.png``.
+
+        Reads ``brand/icon.png`` adjacent to this file.  Returns 404 if the
+        brand directory or icon file does not exist.
+
+        Args:
+            request: Incoming HTTP request.
+
+        Returns:
+            PNG image response or 404.
+        """
+        icon_path = _BRAND_DIR / "icon.png"
+        if not icon_path.is_file():
+            return web.Response(status=404, text="Icon not found")
+        return web.Response(
+            body=icon_path.read_bytes(),
+            content_type="image/png",
+            headers={"Cache-Control": "max-age=86400"},
         )
 
     async def _handle_qr(self, request: web.Request) -> web.Response:
@@ -605,6 +634,39 @@ class PairingServer:
         )
 
     # ── Private helpers ────────────────────────────────────────────────────
+
+    async def _get_default_ssid(self) -> str | None:
+        """Return the currently active WiFi SSID on the HA host, or ``None``.
+
+        Runs ``nmcli --terse --fields ACTIVE,SSID device wifi list`` and
+        returns the SSID of the active connection (the line starting with
+        ``yes:``).  Returns ``None`` if nmcli is unavailable or no active
+        WiFi connection is found.
+
+        Returns:
+            SSID string, or ``None`` if unavailable.
+        """
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                "nmcli",
+                "--terse",
+                "--fields",
+                "ACTIVE,SSID",
+                "device",
+                "wifi",
+                "list",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.DEVNULL,
+            )
+            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=8.0)
+            for line in stdout.decode(errors="replace").splitlines():
+                if line.startswith("yes:"):
+                    ssid = line[4:].strip()
+                    if ssid and ssid != "--":
+                        return ssid
+        except (FileNotFoundError, TimeoutError, OSError) as exc:
+            _LOGGER.debug("Default SSID lookup unavailable: %s", exc)
+        return None
 
     async def _broadcast_sse(self, event: str, data: str) -> None:
         """Push a Server-Sent Event to all connected browsers.
