@@ -511,6 +511,11 @@ function goToCredentials() {
   document.getElementById("panel-wifi").classList.remove("hidden");
   updateStepCounter(2);
   dbg("Step 2: WiFi credentials");
+  // Ensure any open WiFi dropdown is closed (may be open if user scanned then navigated away)
+  const dd = document.getElementById("wifi-dropdown");
+  if (dd) { dd.classList.add("hidden"); }
+  const scanBtn = document.getElementById("btn-wifi-scan");
+  if (scanBtn) scanBtn.setAttribute("aria-expanded", "false");
   // Clear stale error state from a previous visit to this panel
   const errEl = document.getElementById("s1-error");
   if (errEl) { errEl.className = "status-box hidden"; errEl.removeAttribute("tabindex"); }

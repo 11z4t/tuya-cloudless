@@ -177,6 +177,35 @@ class TestActivateEndpoint:
         body = await resp.json()
         assert body["result"]["gwId"] == "nested_gw"
 
+    async def test_oversized_gw_id_rejected_with_400(self, client: TestClient) -> None:
+        """gw_id longer than 64 characters must be rejected (SEC-002)."""
+        resp = await client.post(
+            "/api/tuya/device/active",
+            json={"gw_id": "x" * 65, "token": "tok_long"},
+        )
+        assert resp.status == 400
+
+    async def test_oversized_token_rejected_with_400(self, client: TestClient) -> None:
+        """token longer than 128 characters must be rejected (SEC-002)."""
+        resp = await client.post(
+            "/api/tuya/device/active",
+            json={"gw_id": "normal_gw", "token": "t" * 129},
+        )
+        assert resp.status == 400
+
+    async def test_exactly_max_length_fields_accepted(self, client: TestClient) -> None:
+        """Fields exactly at the length limits must still be accepted."""
+        resp = await client.post(
+            "/api/tuya/device/active",
+            json={
+                "gw_id": "g" * 64,
+                "product_key": "p" * 64,
+                "token": "t" * 128,
+                "sw_ver": "s" * 32,
+            },
+        )
+        assert resp.status == 200
+
 
 # ── /api/provision/result/{token} ────────────────────────────────────────────
 

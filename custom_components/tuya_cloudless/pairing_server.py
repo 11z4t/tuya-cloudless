@@ -570,6 +570,19 @@ class PairingServer:
         token = str(data.get("token") or "")
         sw_ver = str(data.get("sw_ver") or data.get("swVer") or "")
 
+        # Sanitise field lengths — reject absurdly long values that could stress
+        # SSE subscribers or the frontend renderer (PLAT-825 / SEC-002).
+        if len(gw_id) > 64 or len(product_key) > 64 or len(token) > 128 or len(sw_ver) > 32:
+            _LOGGER.warning(
+                "Activation request rejected: field too long "
+                "(gw_id=%d product_key=%d token=%d sw_ver=%d)",
+                len(gw_id),
+                len(product_key),
+                len(token),
+                len(sw_ver),
+            )
+            return web.Response(status=400, text="Field too long")
+
         _LOGGER.info(
             "Tuya device activation: gw_id=%s product_key=%s token=%s sw_ver=%s ip=%s",
             gw_id or "<empty>",
