@@ -48,5 +48,8 @@
   "wifi_scan_none": "No networks found",
   "debug_title": "Debug log",
   "error_browser_unsupported_title": "Unsupported browser",
-  "error_browser_unsupported_body": "Web Bluetooth requires Chrome or Edge (desktop or Android). Please open this page in Chrome or Edge."
+  "error_browser_unsupported_body": "Web Bluetooth requires Chrome or Edge (desktop or Android). Please open this page in Chrome or Edge.",
+  "err_ios_no_webbluetooth": "Web Bluetooth is not available on iOS. Please open this page on a computer or Android device using Chrome or Edge.",
+  "open_in_chrome": "Open in Chrome",
+  "chrome_not_installed": "Chrome does not appear to be installed. Install Chrome from the Play Store and try again."
 }

@@ -48,5 +48,8 @@
   "wifi_scan_none": "Inga nätverk hittades",
   "debug_title": "Felsökningslogg",
   "error_browser_unsupported_title": "Webbläsaren stöds inte",
-  "error_browser_unsupported_body": "Web Bluetooth kräver Chrome eller Edge (dator eller Android). Öppna den här sidan i Chrome eller Edge."
+  "error_browser_unsupported_body": "Web Bluetooth kräver Chrome eller Edge (dator eller Android). Öppna den här sidan i Chrome eller Edge.",
+  "err_ios_no_webbluetooth": "Web Bluetooth är inte tillgängligt på iOS. Öppna den här sidan på en dator eller Android-enhet med Chrome eller Edge.",
+  "open_in_chrome": "Öppna i Chrome",
+  "chrome_not_installed": "Chrome verkar inte vara installerat. Installera Chrome från Play Store och försök igen."
 }

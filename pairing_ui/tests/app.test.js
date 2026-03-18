@@ -6,7 +6,11 @@
 
 // app.js is loaded once; the exported symbols are used across all tests.
 const app = require("../../custom_components/tuya_cloudless/pairing_ui/app.js");
-const { isSupportedBrowser, hasWebBluetooth, saveLastSsid, loadLastSsid, SSID_TTL_MS, SSID_STORAGE_KEY } = app;
+const {
+  isSupportedBrowser, hasWebBluetooth,
+  isIOS, isAndroid, chromeIntentUrl,
+  saveLastSsid, loadLastSsid, SSID_TTL_MS, SSID_STORAGE_KEY,
+} = app;
 
 // ── PLAT-810 — Browser compatibility helpers ──────────────────────────────────
 
@@ -97,5 +101,99 @@ describe("saveLastSsid / loadLastSsid", () => {
 
   it("TTL constant is 90 days in milliseconds", () => {
     expect(SSID_TTL_MS).toBe(90 * 24 * 60 * 60 * 1000);
+  });
+});
+
+// ── Platform detection helpers ─────────────────────────────────────────────────
+
+describe("isIOS", () => {
+  function setUA(ua, platform = "", maxTouchPoints = 0) {
+    Object.defineProperty(navigator, "userAgent", { value: ua, configurable: true });
+    Object.defineProperty(navigator, "platform", { value: platform, configurable: true });
+    Object.defineProperty(navigator, "maxTouchPoints", { value: maxTouchPoints, configurable: true });
+  }
+
+  it("returns true for iPhone UA", () => {
+    setUA("Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15");
+    expect(isIOS()).toBe(true);
+  });
+
+  it("returns true for iPad UA", () => {
+    setUA("Mozilla/5.0 (iPad; CPU OS 17_0 like Mac OS X) AppleWebKit/605.1.15");
+    expect(isIOS()).toBe(true);
+  });
+
+  it("returns true for iPad desktop mode (MacIntel + touch points)", () => {
+    setUA("Mozilla/5.0 (Macintosh; Intel Mac OS X) AppleWebKit/605.1.15", "MacIntel", 5);
+    expect(isIOS()).toBe(true);
+  });
+
+  it("returns false for real Mac (no touch points)", () => {
+    setUA("Mozilla/5.0 (Macintosh; Intel Mac OS X) AppleWebKit/537.36 Chrome/120", "MacIntel", 0);
+    expect(isIOS()).toBe(false);
+  });
+
+  it("returns false for Android UA", () => {
+    setUA("Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/120");
+    expect(isIOS()).toBe(false);
+  });
+});
+
+describe("isAndroid", () => {
+  function setUA(ua) {
+    Object.defineProperty(navigator, "userAgent", { value: ua, configurable: true });
+  }
+
+  it("returns true for Android Chrome UA", () => {
+    setUA("Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 Chrome/120");
+    expect(isAndroid()).toBe(true);
+  });
+
+  it("returns false for iOS UA", () => {
+    setUA("Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15");
+    expect(isAndroid()).toBe(false);
+  });
+
+  it("returns false for desktop Chrome UA", () => {
+    setUA("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120");
+    expect(isAndroid()).toBe(false);
+  });
+});
+
+describe("chromeIntentUrl", () => {
+  function setUA(ua) {
+    Object.defineProperty(navigator, "userAgent", { value: ua, configurable: true });
+  }
+
+  beforeEach(() => {
+    // jsdom sets a default location; override to something predictable.
+    Object.defineProperty(window, "location", {
+      value: new URL("https://ha.example.com/api/tuya_cloudless/pairing/?flow_id=abc"),
+      configurable: true,
+    });
+  });
+
+  it("returns an intent URL for Android", () => {
+    setUA("Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 Chrome/120");
+    const url = chromeIntentUrl();
+    expect(url).toContain("intent://ha.example.com");
+    expect(url).toContain("package=com.android.chrome");
+    expect(url).toContain("flow_id=abc");
+    expect(url).toContain("scheme=https");
+  });
+
+  it("returns null for non-Android platforms", () => {
+    setUA("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120");
+    expect(chromeIntentUrl()).toBeNull();
+  });
+
+  it("uses http scheme when location is http", () => {
+    setUA("Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/120");
+    Object.defineProperty(window, "location", {
+      value: new URL("http://192.168.1.100:8099/?flow_id=xyz"),
+      configurable: true,
+    });
+    const url = chromeIntentUrl();
+    expect(url).toContain("scheme=http");
   });
 });

@@ -20,6 +20,23 @@ function isSupportedBrowser() {
 function hasWebBluetooth() {
   return typeof navigator.bluetooth !== "undefined";
 }
+function isIOS() {
+  return /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+}
+function isAndroid() {
+  return /Android/.test(navigator.userAgent);
+}
+// Build an Android intent URL that opens the current page in Chrome.
+// Returns null on non-Android platforms.
+function chromeIntentUrl() {
+  if (!isAndroid()) return null;
+  const url = new URL(window.location.href);
+  const host = url.host;
+  const path = url.pathname + url.search;
+  const scheme = url.protocol === "https:" ? "https" : "http";
+  return `intent://${host}${path}#Intent;scheme=${scheme};package=com.android.chrome;end`;
+}
 
 // ── Debug log ─────────────────────────────────────────────────────────────────
 function dbg(msg) {
@@ -628,17 +645,69 @@ function copyShareUrl() {
   // 5. Web Bluetooth availability check
   if (!navigator.bluetooth) {
     dbg("WARNING: Web Bluetooth not available in this browser.");
-    document.getElementById("warn-browser").classList.remove("hidden");
     document.getElementById("btn-pair").disabled = true;
-    // Show QR/share section so user can open on a supported device
-    if (window.isSecureContext) {
-      document.getElementById("qr-section").classList.remove("hidden");
-      document.getElementById("share-url").value = window.location.href;
+
+    if (isIOS()) {
+      // iOS — Web Bluetooth not available in any iOS browser (Apple restriction).
+      // Show a tailored message instead of a useless QR code.
+      dbg("iOS detected — Web Bluetooth not supported on this platform.");
+      document.getElementById("warn-browser").classList.remove("hidden");
+      document.getElementById("err-browser-body").textContent =
+        t("err_ios_no_webbluetooth") ||
+        "Web Bluetooth is not available on iOS. Please open this page on a computer or Android device using Chrome or Edge.";
+    } else if (isAndroid()) {
+      // Android with a non-Chrome browser — offer a direct link to open in Chrome.
+      dbg("Android detected — showing Chrome deep link.");
+      document.getElementById("warn-browser").classList.remove("hidden");
+      const intentUrl = chromeIntentUrl();
+      if (intentUrl) {
+        const btn = document.createElement("a");
+        btn.href = intentUrl;
+        btn.className = "btn btn-primary";
+        btn.style.marginTop = "10px";
+        btn.style.display = "inline-flex";
+        btn.style.alignItems = "center";
+        btn.style.gap = "6px";
+        btn.id = "btn-open-chrome";
+        btn.innerHTML =
+          "<svg width='16' height='16' viewBox='0 0 24 24' fill='none' aria-hidden='true'>" +
+          "<circle cx='12' cy='12' r='10' stroke='currentColor' stroke-width='2'/>" +
+          "<circle cx='12' cy='12' r='4' fill='currentColor'/>" +
+          "</svg>" +
+          (t("open_in_chrome") || "Open in Chrome");
+        document.getElementById("warn-browser").appendChild(btn);
+        // Fallback note shown after a short delay if Chrome did not open.
+        btn.addEventListener("click", () => {
+          setTimeout(() => {
+            const note = document.getElementById("chrome-not-installed");
+            if (note) note.classList.remove("hidden");
+          }, 2500);
+        });
+        const note = document.createElement("p");
+        note.id = "chrome-not-installed";
+        note.className = "step-hint hidden";
+        note.style.marginTop = "6px";
+        note.textContent =
+          t("chrome_not_installed") ||
+          "Chrome does not appear to be installed. Install Chrome from the Play Store and try again.";
+        document.getElementById("warn-browser").appendChild(note);
+      }
+    } else {
+      // Desktop or unknown — show generic message + QR/share section.
+      document.getElementById("warn-browser").classList.remove("hidden");
+      if (window.isSecureContext) {
+        document.getElementById("qr-section").classList.remove("hidden");
+        document.getElementById("share-url").value = window.location.href;
+      }
     }
   }
 })();
 
 // Exported for unit testing only — not used in the browser.
 if (typeof module !== "undefined") {
-  module.exports = { isSupportedBrowser, hasWebBluetooth, saveLastSsid, loadLastSsid, SSID_TTL_MS, SSID_STORAGE_KEY };
+  module.exports = {
+    isSupportedBrowser, hasWebBluetooth,
+    isIOS, isAndroid, chromeIntentUrl,
+    saveLastSsid, loadLastSsid, SSID_TTL_MS, SSID_STORAGE_KEY,
+  };
 }
