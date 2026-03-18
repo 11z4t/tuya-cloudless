@@ -29,6 +29,8 @@
   "warn_no_ssid": "⚠ 请先输入 Wi-Fi 网络名称。",
   "warn_invalid_ssid": "⚠ 网络名称无效（最多 32 字节，不允许空字符）。",
   "warn_invalid_password": "⚠ 密码过长（WPA2 最多 63 字节）。",
+  "err_sse_lost": "连接中断——请重试。",
+  "err_pair_fail": "设备拒绝了WiFi配置。请检查凭据后重试。",
   "spin_scanning": "正在搜索 Tuya 设备…",
   "spin_connecting": "正在连接到 {name}…",
   "spin_handshake": "握手中…",

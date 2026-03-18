@@ -29,6 +29,8 @@
   "warn_no_ssid": "⚠ Enter a WiFi network name first.",
   "warn_invalid_ssid": "⚠ Invalid network name (max 32 bytes, no null characters).",
   "warn_invalid_password": "⚠ Password too long (max 63 bytes for WPA2).",
+  "err_sse_lost": "Connection lost — please try again.",
+  "err_pair_fail": "Device rejected WiFi config. Check credentials and retry.",
   "spin_scanning": "Scanning for Tuya device…",
   "spin_connecting": "Connecting to {name}…",
   "spin_handshake": "Handshake…",

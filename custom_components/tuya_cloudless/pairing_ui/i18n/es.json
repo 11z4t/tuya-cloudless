@@ -72,5 +72,7 @@
   "hide_password": "Hide password",
   "label_reveal_key": "Reveal",
   "label_hide_key": "Hide",
-  "warn_invalid_password": "⚠ Password too long (max 63 bytes for WPA2)."
+  "warn_invalid_password": "⚠ Password too long (max 63 bytes for WPA2).",
+  "err_sse_lost": "Conexión perdida — inténtalo de nuevo.",
+  "err_pair_fail": "El dispositivo rechazó la configuración WiFi. Verifica las credenciales e inténtalo de nuevo."
 }

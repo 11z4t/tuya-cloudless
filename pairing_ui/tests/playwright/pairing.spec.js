@@ -850,6 +850,129 @@ test.describe("Full pairing flow", () => {
     // Pair button must be re-enabled so user can retry
     await expect(page.locator("#btn-pair")).toBeEnabled({ timeout: 3000 });
   });
+
+  test("CMD_PAIR_FAIL response shows err_pair_fail message and re-enables button", async ({
+    page,
+  }) => {
+    await setupRoutes(page);
+
+    // Mock BLE device that sends CMD_PAIR_FAIL (cmd=0x05) on WiFi config
+    await page.addInitScript(() => {
+      Object.defineProperty(window, "isSecureContext", { get: () => true });
+
+      function buildFrame(cmd, seq, payload) {
+        const header = new Uint8Array(8);
+        header[0] = 0x55; header[1] = 0xAA;
+        header[2] = 0x04;
+        header[3] = cmd;
+        header[4] = (seq >> 8) & 0xff; header[5] = seq & 0xff;
+        header[6] = (payload.length >> 8) & 0xff; header[7] = payload.length & 0xff;
+        const body = new Uint8Array(header.length + payload.length);
+        body.set(header); body.set(payload, header.length);
+        const frame = new Uint8Array(body.length + 2);
+        frame.set(body);
+        return frame;
+      }
+
+      let _notifyCb = null;
+      let _writeCount = 0;
+      const fakeChar = {
+        startNotifications: async () => {},
+        addEventListener: (_evt, cb) => { _notifyCb = cb; },
+        writeValueWithoutResponse: async (chunk) => {
+          _writeCount++;
+          const chunkNo = chunk[0], total = chunk[1];
+          const isLastChunk = chunkNo + 1 === total;
+          if (!isLastChunk || !_notifyCb) return;
+
+          const data = chunk.slice(2);
+          const cmd = data.length > 3 ? data[3] : 0xff;
+
+          let respPayload, respCmd;
+          if (cmd === 0x00) {
+            respPayload = new Uint8Array(16);  // handshake nonce
+            respCmd = 0x00;
+          } else {
+            respPayload = new Uint8Array(0);
+            respCmd = 0x05;  // CMD_PAIR_FAIL — device rejects credentials
+          }
+          const frame = buildFrame(respCmd, 0, respPayload);
+          const respChunk = new Uint8Array(2 + frame.length);
+          respChunk[0] = 0; respChunk[1] = 1;
+          respChunk.set(frame, 2);
+          setTimeout(() => {
+            if (_notifyCb) _notifyCb({ target: { value: { buffer: respChunk.buffer } } });
+          }, 50);
+        },
+      };
+      const fakeService = { getCharacteristic: async () => fakeChar };
+      const fakeServer = {
+        connected: true,
+        disconnect: () => { fakeServer.connected = false; },
+        getPrimaryService: async () => fakeService,
+      };
+      const fakeDevice = {
+        id: "fake-ble-pair-fail",
+        name: "Tuya Device",
+        gatt: { connected: false, connect: async () => { fakeDevice.gatt.connected = true; return fakeServer; } },
+      };
+      Object.defineProperty(navigator, "bluetooth", {
+        value: { requestDevice: async () => fakeDevice },
+        configurable: true, writable: false,
+      });
+
+      // EventSource that never fires (connection succeeds but no activation)
+      window.EventSource = class MockESNever {
+        constructor() { this.readyState = 1; }
+        addEventListener() {}
+        set onerror(_fn) {}
+        close() { this.readyState = 2; }
+      };
+    });
+
+    await loadPage(page);
+    await navigateToCredentials(page);
+    await page.locator("#ssid").click();
+    await page.locator("#ssid").fill("MyNet");
+    await page.locator("#btn-next").click();
+    await page.locator("#btn-pair").click();
+
+    await expect(page.locator("#pair-status")).toBeVisible({ timeout: 5000 });
+    await expect(page.locator("#pair-status")).toHaveClass(/status-error/);
+    await expect(page.locator("#btn-pair")).toBeEnabled({ timeout: 3000 });
+  });
+
+  test("SSE onerror shows err_sse_lost error message and re-enables pair button", async ({
+    page,
+  }) => {
+    await setupRoutes(page);
+    await mockBle(page, null);  // BLE succeeds, no activation
+
+    // Override EventSource to immediately trigger onerror
+    await page.addInitScript(() => {
+      window.EventSource = class MockESError {
+        constructor() {
+          this.readyState = 1;
+          const self = this;
+          setTimeout(() => { if (self._onerror) self._onerror(); }, 200);
+        }
+        addEventListener() {}
+        set onerror(fn) { this._onerror = fn; }
+        close() { this.readyState = 2; }
+      };
+    });
+
+    await loadPage(page);
+    await navigateToCredentials(page);
+    await page.locator("#ssid").click();
+    await page.locator("#ssid").fill("MyNet");
+    await page.locator("#btn-next").click();
+    await page.locator("#btn-pair").click();
+
+    await expect(page.locator("#pair-status")).toBeVisible({ timeout: 5000 });
+    await expect(page.locator("#pair-status")).toHaveClass(/status-error/);
+    await expect(page.locator("#btn-pair")).toBeEnabled({ timeout: 3000 });
+  });
 });
 
 // ── Tests: HA flow_id mode ────────────────────────────────────────────────────

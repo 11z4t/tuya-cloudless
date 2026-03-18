@@ -29,6 +29,8 @@
   "warn_no_ssid": "⚠ Ange ett WiFi-nätverksnamn först.",
   "warn_invalid_ssid": "⚠ Ogiltigt nätverksnamn (max 32 byte, inga null-tecken).",
   "warn_invalid_password": "⚠ Lösenordet är för långt (max 63 byte för WPA2).",
+  "err_sse_lost": "Anslutning tappades — försök igen.",
+  "err_pair_fail": "Enheten avvisade WiFi-inställningarna. Kontrollera uppgifterna och försök igen.",
   "spin_scanning": "Söker efter Tuya-enhet…",
   "spin_connecting": "Ansluter till {name}…",
   "spin_handshake": "Handskakning…",

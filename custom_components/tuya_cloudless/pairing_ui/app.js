@@ -368,7 +368,13 @@ function showWifiDropdown(ssids, currentSsid) {
           const target = items[Math.max(idx - 5, 0)];
           if (target) target.focus();
         }
-        if (e.key === "Escape")    { dd.classList.add("hidden"); document.getElementById("btn-wifi-scan").setAttribute("aria-expanded", "false"); document.getElementById("ssid").focus(); }
+        if (e.key === "Escape") {
+          dd.classList.add("hidden");
+          const sb = document.getElementById("btn-wifi-scan");
+          if (sb) sb.setAttribute("aria-expanded", "false");
+          const si = document.getElementById("ssid");
+          if (si) si.focus();
+        }
       });
       dd.appendChild(item);
     }
@@ -850,7 +856,7 @@ function listenForActivation(token) {
     clearTimeout(sseTimer);
     es.close();
     // Re-enable pairing button so user can retry after SSE connection loss
-    setPairStatus("status-error", "\u274C Connection lost — please try again.");
+    setPairStatus("status-error", "\u274C " + esc(t("err_sse_lost")));
     const pairBtn = document.getElementById("btn-pair");
     if (pairBtn) pairBtn.disabled = false;
   };
@@ -1045,19 +1051,23 @@ async function startPairing() {
 
     const ackChunks = await waitForResponse(15000);
     const ack = parseFrame(ackChunks);
-    if (ack.cmd === CMD_PAIR_FAIL) throw new Error("Device rejected WiFi config");
+    if (ack.cmd === CMD_PAIR_FAIL) throw new Error(t("err_pair_fail"));
 
     dbg(t("spin_waiting"));
     showSpinner(t("spin_waiting"));
 
     _cleanupNotify();
-    if (server.connected) server.disconnect();
+    if (server && server.connected) {
+      try { await server.disconnect(); } catch (_) {}
+    }
 
   } catch (err) {
     if (typeof _cleanupNotify === "function") _cleanupNotify();
     // Disconnect GATT server if it was opened — Bluetooth is an exclusive resource
     // and leaving the connection open blocks other apps and the next pairing attempt.
-    if (server && server.connected) server.disconnect();
+    if (server && server.connected) {
+      try { await server.disconnect(); } catch (_) {}
+    }
     es.close();
     if (err.name === "NotFoundError" || err.name === "AbortError") {
       setPairStatus("status-warn", t("warn_scan_cancelled"));
