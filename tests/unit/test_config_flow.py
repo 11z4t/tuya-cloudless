@@ -1376,6 +1376,112 @@ class TestBlePairHttpsCheck:
         flow.async_external_step.assert_called_once()
 
 
+class TestDetectHttpsFromRequest:
+    """Tests for TuyaCloudlessConfigFlow._detect_https_from_request."""
+
+    def _mock_request(
+        self, scheme: str = "http", host: str = "ha.local:8123", headers: dict | None = None
+    ) -> Any:
+        req = MagicMock()
+        req.url.scheme = scheme
+        req.host = host
+        req.headers = headers or {}
+        return req
+
+    def test_returns_none_when_no_request_context(self) -> None:
+        """No active request → returns None."""
+        from custom_components.tuya_cloudless.config_flow import TuyaCloudlessConfigFlow
+
+        server = MagicMock()
+        with patch("homeassistant.helpers.http.current_request") as mock_cv:
+            mock_cv.get.return_value = None
+            result = TuyaCloudlessConfigFlow._detect_https_from_request(server)
+        assert result is None
+
+    def test_returns_none_for_http_request(self) -> None:
+        """Plain HTTP request → returns None."""
+        from custom_components.tuya_cloudless.config_flow import TuyaCloudlessConfigFlow
+
+        server = MagicMock()
+        req = self._mock_request(scheme="http")
+        with patch("homeassistant.helpers.http.current_request") as mock_cv:
+            mock_cv.get.return_value = req
+            result = TuyaCloudlessConfigFlow._detect_https_from_request(server)
+        assert result is None
+
+    def test_returns_pairing_url_for_https_request(self) -> None:
+        """Native HTTPS request → returns pairing URL with correct host."""
+        from custom_components.tuya_cloudless.config_flow import TuyaCloudlessConfigFlow
+
+        server = MagicMock()
+        req = self._mock_request(scheme="https", host="ha.example.com:8123")
+        with patch("homeassistant.helpers.http.current_request") as mock_cv:
+            mock_cv.get.return_value = req
+            result = TuyaCloudlessConfigFlow._detect_https_from_request(server)
+        assert result == "https://ha.example.com:8123/api/tuya_cloudless/pairing"
+
+    def test_x_forwarded_proto_https_returns_pairing_url(self) -> None:
+        """X-Forwarded-Proto: https (reverse proxy) → returns HTTPS pairing URL."""
+        from custom_components.tuya_cloudless.config_flow import TuyaCloudlessConfigFlow
+
+        server = MagicMock()
+        req = self._mock_request(
+            scheme="http",
+            host="192.168.1.100:8123",
+            headers={"X-Forwarded-Proto": "https", "X-Forwarded-Host": "ha.example.com"},
+        )
+        with patch("homeassistant.helpers.http.current_request") as mock_cv:
+            mock_cv.get.return_value = req
+            result = TuyaCloudlessConfigFlow._detect_https_from_request(server)
+        assert result == "https://ha.example.com/api/tuya_cloudless/pairing"
+
+    def test_returns_none_on_import_error(self) -> None:
+        """Import error → returns None without crashing."""
+        from custom_components.tuya_cloudless.config_flow import TuyaCloudlessConfigFlow
+
+        server = MagicMock()
+        with patch.dict("sys.modules", {"homeassistant.helpers.http": None}):
+            result = TuyaCloudlessConfigFlow._detect_https_from_request(server)
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_ble_pair_uses_request_https_url(self) -> None:
+        """async_step_ble_pair uses the request-detected HTTPS URL directly."""
+        from custom_components.tuya_cloudless.config_flow import TuyaCloudlessConfigFlow
+
+        flow = TuyaCloudlessConfigFlow.__new__(TuyaCloudlessConfigFlow)
+        flow._discovered = []
+        flow._device = {}
+        flow._https_unavailable = False
+        flow._manual_ha_url = None
+        flow.hass = MagicMock()
+        flow.flow_id = "test-flow-id"
+        flow.async_abort = MagicMock(return_value={"type": "abort"})
+        flow.async_external_step = MagicMock(return_value={"type": "external"})
+        flow.async_show_form = MagicMock(return_value={"type": "form"})
+
+        mock_server = MagicMock()
+        mock_server.ha_ui_url.return_value = "http://fallback:8099"  # must not be used
+
+        with (
+            patch(
+                "custom_components.tuya_cloudless.pairing_server.ensure_pairing_server",
+                new_callable=AsyncMock,
+                return_value=mock_server,
+            ),
+            patch.object(
+                TuyaCloudlessConfigFlow,
+                "_detect_https_from_request",
+                return_value="https://detected.example.com/api/tuya_cloudless/pairing",
+            ),
+        ):
+            await flow.async_step_ble_pair(user_input=None)
+
+        call_kwargs = flow.async_external_step.call_args[1]
+        assert "detected.example.com" in call_kwargs.get("url", "")
+        flow.async_show_form.assert_not_called()  # no fallback triggered
+
+
 class TestBleFallbackStep:
     """Tests for async_step_ble_fallback."""
 

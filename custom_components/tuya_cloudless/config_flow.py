@@ -168,6 +168,39 @@ class TuyaCloudlessConfigFlow(ConfigFlow, domain=DOMAIN):
         self._device: dict[str, Any] = {}
         self._manual_ha_url: str | None = None
 
+    # ── Helpers ────────────────────────────────────────────────────────────────
+
+    @staticmethod
+    def _detect_https_from_request(server: Any) -> str | None:
+        """Try to read the HTTPS base URL from the active browser request.
+
+        The config flow API call is made by the HA frontend, so the aiohttp
+        request that triggered it originates from the same browser session.
+        If the request carries ``X-Forwarded-Proto: https`` (reverse proxy) or
+        its own scheme is ``https``, we can build the pairing URL from the
+        ``Host`` header — no manual input required.
+
+        Args:
+            server: Running :class:`PairingServer` instance (used for fallback).
+
+        Returns:
+            Absolute pairing URL string starting with ``https://``, or
+            ``None`` when no HTTPS request context is available.
+        """
+        try:
+            from homeassistant.helpers.http import current_request
+
+            request = current_request.get()
+            if request is None:
+                return None
+            proto = request.headers.get("X-Forwarded-Proto", request.url.scheme)
+            if proto != "https":
+                return None
+            host = request.headers.get("X-Forwarded-Host", request.host)
+            return f"https://{host}/api/tuya_cloudless/pairing"
+        except Exception:  # broad catch — must never crash the flow
+            return None
+
     # ── Step 0: Pairing tool deep-link ─────────────────────────────────────────
 
     async def async_step_pair(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
@@ -263,13 +296,16 @@ class TuyaCloudlessConfigFlow(ConfigFlow, domain=DOMAIN):
         if self._manual_ha_url is not None:
             pairing_url = self._manual_ha_url.rstrip("/") + "/api/tuya_cloudless/pairing"
         else:
-            pairing_url = server.ha_ui_url()
+            # PLAT-870: Try to detect HTTPS from the browser's own request first.
+            # The config flow API call comes from the same browser session, so the
+            # request URL/headers reflect what scheme the user is actually using.
+            pairing_url = self._detect_https_from_request(server) or server.ha_ui_url()
             _parsed_pairing = urlparse(pairing_url)
             _hostname = _parsed_pairing.hostname or ""
             _is_localhost = _hostname in ("localhost", "127.0.0.1")
 
-            if not _is_localhost:
-                # Check both internal and external URLs (covers Nabu Casa / reverse proxy)
+            if not _is_localhost and not pairing_url.startswith("https://"):
+                # Fall back to HA network helpers as a secondary check.
                 _has_https = False
                 for _kwargs in (
                     {"allow_internal": True, "allow_external": False},
@@ -279,6 +315,7 @@ class TuyaCloudlessConfigFlow(ConfigFlow, domain=DOMAIN):
                         _url = get_url(self.hass, **_kwargs)
                         if _url.startswith("https://"):
                             _has_https = True
+                            pairing_url = _url.rstrip("/") + "/api/tuya_cloudless/pairing"
                             break
                     except NoURLAvailableError:
                         continue
