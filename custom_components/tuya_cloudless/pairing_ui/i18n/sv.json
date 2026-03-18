@@ -52,5 +52,13 @@
   "error_browser_unsupported_body": "Web Bluetooth kräver Chrome eller Edge (dator eller Android). Öppna den här sidan i Chrome eller Edge.",
   "err_ios_no_webbluetooth": "Web Bluetooth är inte tillgängligt på iOS. Öppna den här sidan på en dator eller Android-enhet med Chrome eller Edge.",
   "open_in_chrome": "Öppna i Chrome",
-  "chrome_not_installed": "Chrome verkar inte vara installerat. Installera Chrome från Play Store och försök igen."
+  "chrome_not_installed": "Chrome verkar inte vara installerat. Installera Chrome från Play Store och försök igen.",
+  "device_panel_title": "Hitta enhet",
+  "device_panel_desc": "Enheter i närheten visas automatiskt. Eller använd Bluetooth för att söka.",
+  "looking_for_devices": "Söker efter enheter…",
+  "no_devices_auto_found": "Inga Tuya-enheter hittades. Använd Bluetooth nedan, eller sätt enheten i parkopplingsläge och försök igen.",
+  "pair_via_wifi_ap": "WiFi AP",
+  "pair_via_ble": "Sök via Bluetooth",
+  "wifi_ap_connecting": "Ansluter till enhetens AP…",
+  "wifi_ap_error": "WiFi AP-parkoppling misslyckades. Kontrollera att enheten är i parkopplingsläge och försök igen."
 }

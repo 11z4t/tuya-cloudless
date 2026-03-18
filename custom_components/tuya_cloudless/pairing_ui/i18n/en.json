@@ -52,5 +52,13 @@
   "error_browser_unsupported_body": "Web Bluetooth requires Chrome or Edge (desktop or Android). Please open this page in Chrome or Edge.",
   "err_ios_no_webbluetooth": "Web Bluetooth is not available on iOS. Please open this page on a computer or Android device using Chrome or Edge.",
   "open_in_chrome": "Open in Chrome",
-  "chrome_not_installed": "Chrome does not appear to be installed. Install Chrome from the Play Store and try again."
+  "chrome_not_installed": "Chrome does not appear to be installed. Install Chrome from the Play Store and try again.",
+  "device_panel_title": "Find device",
+  "device_panel_desc": "Devices found nearby appear automatically. Or use Bluetooth to scan.",
+  "looking_for_devices": "Looking for devices…",
+  "no_devices_auto_found": "No Tuya devices found nearby. Use Bluetooth below, or put the device in pairing mode and try again.",
+  "pair_via_wifi_ap": "WiFi AP",
+  "pair_via_ble": "Scan via Bluetooth",
+  "wifi_ap_connecting": "Connecting to device AP…",
+  "wifi_ap_error": "WiFi AP pairing failed. Check that the device is in pairing mode and try again."
 }

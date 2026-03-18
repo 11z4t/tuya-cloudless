@@ -133,6 +133,10 @@ function applyStrings() {
   el("help-text-2").textContent    = t("help_text");
   el("help-link-2").textContent    = t("help_link_label");
   el("lang-select").setAttribute("aria-label", t("lang_picker_label"));
+  if (el("devices-title"))         el("devices-title").textContent         = t("device_panel_title");
+  if (el("devices-desc"))          el("devices-desc").textContent          = t("device_panel_desc");
+  if (el("devices-scanning-label")) el("devices-scanning-label").textContent = t("looking_for_devices");
+  if (el("btn-ble-scan-label"))    el("btn-ble-scan-label").textContent    = t("pair_via_ble");
   // Re-apply step counter with new language
   updateStepCounter(_currentStep);
   // Re-apply debug summary count
@@ -159,9 +163,13 @@ function detectLang() {
   return SUPPORTED_LANGS.includes(nav) ? nav : "en";
 }
 
+// ── Pair method state ─────────────────────────────────────────────────────────
+let _pairMethod = null;       // "ble" | "wifi_ap"
+let _selectedApSsid = null;   // SSID of Tuya AP chosen by user
+
 // ── Step counter ──────────────────────────────────────────────────────────────
 let _currentStep = 1;
-const _TOTAL_STEPS = 2;
+const _TOTAL_STEPS = 3;
 
 function updateStepCounter(step) {
   _currentStep = step;
@@ -298,6 +306,63 @@ function selectWifi(ssid) {
   document.getElementById("wifi-dropdown").classList.add("hidden");
 }
 
+// ── Device discovery ───────────────────────────────────────────────────────────
+function showDeviceCard(ssid) {
+  const list = document.getElementById("device-list");
+  const card = document.createElement("div");
+  card.className = "device-card";
+  card.dataset.ssid = ssid;
+  card.innerHTML =
+    "<div class=\"device-card-left\">" +
+    "<div class=\"device-card-name\">" + esc(ssid) + "</div>" +
+    "<span class=\"device-ap-badge\">" + esc(t("pair_via_wifi_ap")) + "</span>" +
+    "</div>" +
+    "<span class=\"device-card-arrow\">›</span>";
+  card.addEventListener("click", () => selectDeviceWifiAp(ssid));
+  list.appendChild(card);
+}
+
+async function autoDetectDevices() {
+  const scanEl = document.getElementById("devices-scanning");
+  const noDevEl = document.getElementById("no-devices-msg");
+  try {
+    const r = await fetch(_PROVISION_BASE + "/quick-scan");
+    if (!r.ok) throw new Error("scan HTTP " + r.status);
+    const data = await r.json();
+    const aps = data.tuya_aps || [];
+    if (scanEl) scanEl.style.display = "none";
+    if (aps.length === 0) {
+      if (noDevEl) {
+        noDevEl.textContent = t("no_devices_auto_found");
+        noDevEl.className = "status-box status-info";
+      }
+    } else {
+      for (const ap of aps) showDeviceCard(ap.ssid);
+      dbg("Found " + aps.length + " Tuya AP(s)");
+    }
+  } catch (_) {
+    if (scanEl) scanEl.style.display = "none";
+    if (noDevEl) {
+      noDevEl.textContent = t("no_devices_auto_found");
+      noDevEl.className = "status-box status-info";
+    }
+  }
+}
+
+function selectDeviceWifiAp(ssid) {
+  _pairMethod = "wifi_ap";
+  _selectedApSsid = ssid;
+  dbg("Selected WiFi AP device: " + ssid);
+  goToCredentials();
+}
+
+function selectDeviceBle() {
+  _pairMethod = "ble";
+  _selectedApSsid = null;
+  dbg("Selected BLE pairing");
+  goToCredentials();
+}
+
 // Close dropdown when clicking outside
 document.addEventListener("click", (e) => {
   const dd = document.getElementById("wifi-dropdown");
@@ -312,6 +377,24 @@ document.addEventListener("click", (e) => {
 let _ssid = "";
 let _pwd  = "";
 
+function goToDevices() {
+  document.getElementById("panel-wifi").classList.add("hidden");
+  document.getElementById("panel-ble").classList.add("hidden");
+  document.getElementById("panel-done").classList.add("hidden");
+  document.getElementById("panel-devices").classList.remove("hidden");
+  updateStepCounter(1);
+  dbg("Step 1: Device discovery");
+}
+
+function goToCredentials() {
+  document.getElementById("panel-devices").classList.add("hidden");
+  document.getElementById("panel-ble").classList.add("hidden");
+  document.getElementById("panel-wifi").classList.remove("hidden");
+  updateStepCounter(2);
+  dbg("Step 2: WiFi credentials");
+}
+
+// Legacy alias used by btn-next listener
 function goToStep2() {
   _ssid = document.getElementById("ssid").value.trim();
   const errEl = document.getElementById("s1-error");
@@ -325,14 +408,16 @@ function goToStep2() {
 
   document.getElementById("panel-wifi").classList.add("hidden");
   document.getElementById("panel-ble").classList.remove("hidden");
-  updateStepCounter(2);
-  dbg("Step 2: BLE pairing");
+  updateStepCounter(3);
+  dbg("Step 3: pairing (" + (_pairMethod || "ble") + ")");
 }
 
 function showDone(gw_id, local_key, ip_address) {
   document.getElementById("panel-ble").classList.add("hidden");
+  document.getElementById("panel-wifi").classList.add("hidden");
+  document.getElementById("panel-devices").classList.add("hidden");
   document.getElementById("panel-done").classList.remove("hidden");
-  updateStepCounter(3);  // hides counter
+  updateStepCounter(_TOTAL_STEPS + 1);  // hides counter
 
   const grid = document.getElementById("result-grid");
   grid.innerHTML =
@@ -498,8 +583,62 @@ function listenForActivation(token) {
   return es;
 }
 
+// ── WiFi AP pairing flow ───────────────────────────────────────────────────────
+async function pairViaWifiAp() {
+  const btn = document.getElementById("btn-pair");
+  btn.disabled = true;
+
+  _ssid = document.getElementById("ssid").value.trim();
+  _pwd  = document.getElementById("password").value;
+
+  try {
+    showSpinner(t("wifi_ap_connecting"));
+    dbg("WiFi AP pair: POST /wifi-ap-pair for " + _selectedApSsid);
+    const r = await fetch(_PROVISION_BASE + "/wifi-ap-pair", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ap_ssid: _selectedApSsid,
+        home_ssid: _ssid,
+        home_password: _pwd,
+      }),
+    });
+    if (!r.ok) throw new Error("wifi-ap-pair HTTP " + r.status);
+    const data = await r.json();
+    const token = data.token;
+
+    // Wire up SSE listener — server will fire "activated" when device joins home WiFi
+    const es = listenForActivation(token);
+    // Also listen for errors from the background task
+    es.addEventListener("wifi_ap_error", (e) => {
+      try {
+        const d = JSON.parse(e.data);
+        if (!token || d.token === token) {
+          es.close();
+          setPairStatus("status-error", "\u274C " + esc(t("wifi_ap_error")));
+          dbg("WiFi AP error: " + (d.error || "unknown"));
+          btn.disabled = false;
+        }
+      } catch (_) {}
+    });
+
+    showSpinner(t("spin_waiting"));
+    dbg("WiFi AP pair: waiting for activation SSE\u2026");
+    if (_ssid) saveLastSsid(_ssid);
+  } catch (err) {
+    setPairStatus("status-error", "\u274C " + esc(err.message));
+    dbg("WiFi AP pair error: " + err.message);
+    btn.disabled = false;
+  }
+}
+
 // ── Main pairing flow ─────────────────────────────────────────────────────────
 async function startPairing() {
+  if (_pairMethod === "wifi_ap") {
+    await pairViaWifiAp();
+    return;
+  }
+
   const btn = document.getElementById("btn-pair");
   btn.disabled = true;
 
@@ -600,6 +739,7 @@ function copyShareUrl() {
   document.getElementById("btn-next").addEventListener("click", goToStep2);
   document.getElementById("btn-pair").addEventListener("click", startPairing);
   document.getElementById("btn-copy").addEventListener("click", copyShareUrl);
+  document.getElementById("btn-ble-scan").addEventListener("click", selectDeviceBle);
 
   // QR image fallback: hide img and show unavail text on error
   const qrImg = document.getElementById("qr-img");
@@ -634,13 +774,17 @@ function copyShareUrl() {
   if (!hasWebBluetooth() && !isSupportedBrowser()) {
     dbg("ERROR: Browser does not support Web Bluetooth and is not a supported browser.");
     document.getElementById("err-browser-unsupported").classList.remove("hidden");
-    document.getElementById("panel-wifi").classList.add("hidden");
+    document.getElementById("panel-devices").classList.add("hidden");
     // No point loading server config or continuing init for an unsupported browser
     return;
   }
 
   // 3. Load server config (activator URL + default SSID)
   await loadServerConfig();
+
+  // 3b. Auto-detect Tuya devices in AP mode (fast, no rescan, no user gesture needed)
+  document.getElementById("panel-devices").classList.remove("hidden");
+  autoDetectDevices();
 
   // 4. Secure context check — show warning in BLE panel but keep WiFi form working
   if (!window.isSecureContext) {
@@ -716,5 +860,6 @@ if (typeof module !== "undefined") {
     isSupportedBrowser, hasWebBluetooth,
     isIOS, isAndroid, chromeIntentUrl,
     saveLastSsid, loadLastSsid, SSID_TTL_MS, SSID_STORAGE_KEY,
+    autoDetectDevices, showDeviceCard, selectDeviceWifiAp, selectDeviceBle,
   };
 }

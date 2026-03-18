@@ -48,5 +48,13 @@
   "wifi_scan_none": "Aucun réseau trouvé",
   "debug_title": "Journal de débogage",
   "error_browser_unsupported_title": "Navigateur non pris en charge",
-  "error_browser_unsupported_body": "Web Bluetooth nécessite Chrome ou Edge (bureau ou Android). Ouvrez cette page dans Chrome ou Edge."
+  "error_browser_unsupported_body": "Web Bluetooth nécessite Chrome ou Edge (bureau ou Android). Ouvrez cette page dans Chrome ou Edge.",
+  "device_panel_title": "Find device",
+  "device_panel_desc": "Devices found nearby appear automatically. Or use Bluetooth to scan.",
+  "looking_for_devices": "Looking for devices…",
+  "no_devices_auto_found": "No Tuya devices found nearby. Use Bluetooth below, or put the device in pairing mode and try again.",
+  "pair_via_wifi_ap": "WiFi AP",
+  "pair_via_ble": "Scan via Bluetooth",
+  "wifi_ap_connecting": "Connecting to device AP…",
+  "wifi_ap_error": "WiFi AP pairing failed. Check that the device is in pairing mode and try again."
 }

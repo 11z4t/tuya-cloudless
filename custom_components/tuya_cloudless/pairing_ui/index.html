@@ -273,6 +273,45 @@
       margin-left: 4px;
     }
 
+    .device-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .device-card {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      cursor: pointer;
+      transition: border-color .15s, background .15s;
+    }
+    .device-card:hover { border-color: var(--accent); background: rgba(249,115,22,0.06); }
+    .device-card-name {
+      font-size: 0.92rem;
+      font-weight: 600;
+      word-break: break-all;
+    }
+    .device-card-left { display: flex; flex-direction: column; gap: 4px; }
+    .device-ap-badge {
+      font-size: 0.70rem;
+      background: rgba(249,115,22,0.18);
+      color: var(--accent);
+      border-radius: 4px;
+      padding: 2px 7px;
+      display: inline-block;
+      width: fit-content;
+    }
+    .device-card-arrow {
+      color: var(--muted);
+      font-size: 1.1rem;
+      flex-shrink: 0;
+    }
+
     .step-hint {
       font-size: 0.83rem;
       color: var(--muted);
@@ -390,8 +429,33 @@
     <span id="err-browser-unsupported-body">Web Bluetooth requires Chrome or Edge (desktop or Android). Please open this page in Chrome or Edge.</span>
   </div>
 
+  <!-- Step 0 — Device discovery -->
+  <div id="panel-devices" class="step-panel hidden">
+    <div class="step-title" id="devices-title">Find device</div>
+    <p class="step-desc" id="devices-desc">Devices found nearby appear automatically. Or use Bluetooth to scan.</p>
+
+    <div id="device-list" class="device-list">
+      <!-- Populated by autoDetectDevices() -->
+      <div id="devices-scanning" style="display:flex;align-items:center;gap:8px;color:var(--muted);font-size:0.85rem">
+        <span class="spinner" style="border-top-color:var(--muted)"></span>
+        <span id="devices-scanning-label">Looking for devices…</span>
+      </div>
+    </div>
+
+    <div id="no-devices-msg" class="status-box status-info hidden" id="no-devices-msg"></div>
+
+    <button class="btn btn-primary" id="btn-ble-scan" type="button">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <path d="M5 8.5A6.5 6.5 0 0 1 18.5 12M19 15.5A6.5 6.5 0 0 1 5.5 12"
+              stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        <circle cx="12" cy="12" r="2" fill="currentColor"/>
+      </svg>
+      <span id="btn-ble-scan-label">Scan via Bluetooth</span>
+    </button>
+  </div>
+
   <!-- Step 1 — WiFi credentials -->
-  <div id="panel-wifi" class="step-panel">
+  <div id="panel-wifi" class="step-panel hidden">
     <div class="step-title" id="step1-title">WiFi credentials</div>
     <p class="step-desc" id="step1-desc">Your device will connect to this network after pairing.</p>
 

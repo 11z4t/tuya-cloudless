@@ -85,6 +85,33 @@ _RATE_LIMIT_WINDOW: Final[float] = 60.0
 #: Maximum concurrent SSE connections (SEC-002 / PLAT-825)
 _MAX_SSE_CONNECTIONS: Final[int] = 10
 
+# ── WiFi AP discovery constants ────────────────────────────────────────────────
+
+#: SSID prefixes used by Tuya devices in AP/provisioning mode.
+#: Matching is case-insensitive.
+_TUYA_AP_PREFIXES: Final[tuple[str, ...]] = (
+    "smartlife_",
+    "sl_",
+    "az_",
+    "tuya_",
+    "wifi_",
+)
+
+
+def _is_tuya_ap(ssid: str) -> bool:
+    """Return True if *ssid* looks like a Tuya AP provisioning network.
+
+    Args:
+        ssid: WiFi SSID string to check.
+
+    Returns:
+        ``True`` when the SSID matches any :const:`_TUYA_AP_PREFIXES` entry
+        (case-insensitive), ``False`` otherwise.
+    """
+    lower = ssid.strip().lower()
+    return any(lower.startswith(p) for p in _TUYA_AP_PREFIXES)
+
+
 # ── Security constants ─────────────────────────────────────────────────────
 
 #: Security headers added to every response from the pairing UI (PLAT-725).
@@ -338,6 +365,8 @@ class PairingServer:
         # Also accept the Tuya cloud API path format some firmware uses
         app.router.add_post("/api.json", self._handle_activate)
         app.router.add_get("/api/provision/wifi-scan", self._handle_wifi_scan)
+        app.router.add_get("/api/provision/quick-scan", self._handle_quick_scan)
+        app.router.add_post("/api/provision/wifi-ap-pair", self._handle_wifi_ap_pair)
         # Serve brand icon at /static/icon.png (before the catch-all static mount)
         app.router.add_get("/static/icon.png", self._handle_icon)
         # Serve static assets from pairing_ui/
@@ -742,10 +771,211 @@ class PairingServer:
             ssids.remove(current_ssid)
             ssids.insert(0, current_ssid)
 
+        tuya_aps = [{"ssid": s} for s in ssids if _is_tuya_ap(s)]
+
         return web.json_response(
-            {"ssids": ssids, "current_ssid": current_ssid},
+            {"ssids": ssids, "current_ssid": current_ssid, "tuya_aps": tuya_aps},
             headers={"Access-Control-Allow-Origin": "*"},
         )
+
+    async def _handle_quick_scan(self, request: web.Request) -> web.Response:
+        """Fast cached nmcli read — no OTA scan triggered.
+
+        Reads the OS WiFi cache without ``--rescan yes``, so it completes in
+        well under one second.  Filters results to Tuya AP prefixes only.
+
+        This endpoint is called automatically on page load (no user gesture
+        required) to populate the device discovery panel.
+
+        Args:
+            request: Incoming HTTP request.
+
+        Returns:
+            JSON: ``{"tuya_aps": [{"ssid": "SmartLife_AB12"}, ...]}``
+        """
+        tuya_aps: list[dict[str, str]] = []
+
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                "nmcli",
+                "--terse",
+                "--fields",
+                "SSID",
+                "device",
+                "wifi",
+                "list",
+                "--rescan",
+                "no",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.DEVNULL,
+            )
+            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=5.0)
+            seen: set[str] = set()
+            for line in stdout.decode(errors="replace").splitlines():
+                ssid = line.strip()
+                if ssid and ssid != "--" and ssid not in seen and _is_tuya_ap(ssid):
+                    seen.add(ssid)
+                    tuya_aps.append({"ssid": ssid})
+        except (FileNotFoundError, TimeoutError, OSError) as exc:
+            _LOGGER.debug("Quick WiFi scan unavailable: %s", exc)
+
+        return web.json_response(
+            {"tuya_aps": tuya_aps},
+            headers={"Access-Control-Allow-Origin": "*"},
+        )
+
+    async def _handle_wifi_ap_pair(self, request: web.Request) -> web.Response:
+        """Initiate WiFi-AP provisioning for a Tuya device in AP mode.
+
+        Connects the HA host to the Tuya device's AP, sends credentials, then
+        reconnects to the home WiFi.  The device joins home WiFi and POSTs to
+        the fake-cloud endpoint, triggering the standard SSE activation flow.
+
+        Body JSON:
+            ``{"ap_ssid": "SmartLife_AB12", "home_ssid": "HomeNet", "home_password": "…"}``
+
+        Args:
+            request: Incoming HTTP request from the browser.
+
+        Returns:
+            JSON: ``{"token": "...", "events_url": "/api/provision/events"}``
+            Returns immediately; pairing happens in the background.
+        """
+        try:
+            body: dict[str, object] = await request.json()
+        except (json.JSONDecodeError, ValueError, UnicodeDecodeError):
+            return web.Response(status=400, text="Invalid JSON body")
+
+        ap_ssid = str(body.get("ap_ssid") or "").strip()
+        home_ssid = str(body.get("home_ssid") or "").strip()
+        home_password = str(body.get("home_password") or "")
+
+        if not ap_ssid or not home_ssid:
+            return web.Response(status=400, text="ap_ssid and home_ssid are required")
+
+        token = secrets.token_hex(_LOCAL_KEY_BYTES)
+        activator_url = self.ha_local_url()
+
+        asyncio.get_event_loop().create_task(
+            self._wifi_ap_pair_task(ap_ssid, home_ssid, home_password, token, activator_url),
+            # Task name helps with debugging
+        )
+
+        return web.json_response(
+            {"token": token, "events_url": "/api/provision/events"},
+            headers={"Access-Control-Allow-Origin": "*"},
+        )
+
+    async def _wifi_ap_pair_task(
+        self,
+        ap_ssid: str,
+        home_ssid: str,
+        home_pwd: str,
+        token: str,
+        activator_url: str,
+    ) -> None:
+        """Background task: connect to Tuya AP, push credentials, reconnect home WiFi.
+
+        Steps:
+            1. Record the current connection ID (for restore).
+            2. Connect to ``ap_ssid`` (open network — Tuya APs have no password).
+            3. POST credentials + token + activator URL to ``http://192.168.4.1/gw.json``.
+               The POST may appear to fail because the device switches WiFi — that is OK.
+            4. Reconnect to the previous home connection.
+            5. Device joins home WiFi → POSTs to fake-cloud → SSE "activated" fires.
+
+        On failure the error is broadcast via SSE as a ``wifi_ap_error`` event.
+
+        Args:
+            ap_ssid:       SSID of the Tuya AP (e.g. ``SmartLife_AB12``).
+            home_ssid:     SSID of the home WiFi network.
+            home_pwd:      Password for the home WiFi network.
+            token:         Provisioning token (stored in :attr:`_results` on activation).
+            activator_url: HTTP URL of the fake-cloud endpoint on the HA host.
+        """
+        prev_connection: str | None = None
+
+        async def _run(cmd: list[str], timeout: float = 20.0) -> tuple[int, str]:
+            """Run a shell command and return (returncode, stdout)."""
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            try:
+                stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+            except TimeoutError:
+                proc.kill()
+                return -1, ""
+            return proc.returncode or 0, stdout.decode(errors="replace").strip()
+
+        try:
+            # Step 1: find current active connection name (for restore later)
+            rc, out = await _run(
+                ["nmcli", "--terse", "--fields", "ACTIVE,NAME", "connection", "show"]
+            )
+            if rc == 0:
+                for line in out.splitlines():
+                    if line.startswith("yes:"):
+                        prev_connection = line[4:].strip() or None
+                        break
+
+            # Step 2: connect to the Tuya AP (open network)
+            _LOGGER.info("WiFi AP pair: connecting to %s", ap_ssid)
+            rc, _ = await _run(
+                ["nmcli", "device", "wifi", "connect", ap_ssid],
+                timeout=30.0,
+            )
+            if rc != 0:
+                raise OSError(f"nmcli connect to {ap_ssid!r} failed (rc={rc})")
+
+            # Short wait for IP assignment on the Tuya AP (192.168.4.x)
+            await asyncio.sleep(2)
+
+            # Step 3: POST credentials to the Tuya device
+            # Import here to avoid requiring aiohttp at module level (it's always available
+            # in HA, but tests can mock it).
+            import aiohttp as _aiohttp
+
+            payload = {
+                "s": home_ssid,
+                "p": home_pwd,
+                "t": token,
+                "r": "az",
+                "activator": activator_url,
+            }
+            _LOGGER.info("WiFi AP pair: sending credentials to device gateway")
+            try:
+                async with (
+                    _aiohttp.ClientSession() as session,
+                    session.post(
+                        "http://192.168.4.1/gw.json",
+                        json=payload,
+                        timeout=_aiohttp.ClientTimeout(total=8),
+                    ) as resp,
+                ):
+                    _LOGGER.debug("gw.json response: %s", resp.status)
+            except Exception as exc:
+                # Expected — device switches WiFi mid-request; log and continue
+                _LOGGER.debug("gw.json POST ended early (device switching WiFi): %s", exc)
+
+        except (FileNotFoundError, OSError) as exc:
+            _LOGGER.warning("WiFi AP pair task failed: %s", exc)
+            await self._broadcast_sse(
+                "wifi_ap_error",
+                json.dumps({"error": "WiFi control unavailable or connect failed", "token": token}),
+            )
+        finally:
+            # Step 4: always try to reconnect home WiFi
+            if prev_connection:
+                _LOGGER.info("WiFi AP pair: reconnecting to %s", prev_connection)
+                try:
+                    await _run(
+                        ["nmcli", "connection", "up", prev_connection],
+                        timeout=20.0,
+                    )
+                except Exception as exc:
+                    _LOGGER.warning("WiFi AP pair: reconnect failed: %s", exc)
 
     # ── HA HTTPS views ─────────────────────────────────────────────────────
 
@@ -891,6 +1121,26 @@ class PairingServer:
             ) -> web.Response:
                 return await server._handle_wifi_scan(request)
 
+        class _PairingQuickScanView(HomeAssistantView):
+            requires_auth = False
+            url = _HA_PAIRING_PREFIX + "/provision/quick-scan"
+            name = "api:tuya_cloudless:pairing:quick_scan"
+
+            async def get(  # type: ignore[override]
+                self, request: web.Request
+            ) -> web.Response:
+                return await server._handle_quick_scan(request)
+
+        class _PairingWifiApPairView(HomeAssistantView):
+            requires_auth = False
+            url = _HA_PAIRING_PREFIX + "/provision/wifi-ap-pair"
+            name = "api:tuya_cloudless:pairing:wifi_ap_pair"
+
+            async def post(  # type: ignore[override]
+                self, request: web.Request
+            ) -> web.Response:
+                return await server._handle_wifi_ap_pair(request)
+
         class _PairingStaticView(HomeAssistantView):
             requires_auth = False
             url = _HA_PAIRING_PREFIX + "/static/{path:.+}"
@@ -927,6 +1177,8 @@ class PairingServer:
         self._hass.http.register_view(_PairingEventsView())
         self._hass.http.register_view(_PairingResultView())
         self._hass.http.register_view(_PairingWifiScanView())
+        self._hass.http.register_view(_PairingQuickScanView())
+        self._hass.http.register_view(_PairingWifiApPairView())
         self._hass.http.register_view(_PairingStaticView())
 
     # ── Private helpers ────────────────────────────────────────────────────

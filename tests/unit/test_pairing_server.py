@@ -427,6 +427,279 @@ class TestWifiScan:
         assert data["current_ssid"] == "HomeNet"
         assert data["ssids"][0] == "HomeNet"
 
+    async def test_wifi_scan_includes_tuya_aps(self, client: TestClient) -> None:
+        """Full wifi-scan response includes tuya_aps list filtered by prefix."""
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        mock_proc = MagicMock()
+        mock_proc.communicate = AsyncMock(
+            return_value=(b"SmartLife_AB12\nHomeNet\nOfficeWifi\n", b"")
+        )
+
+        with (
+            patch("asyncio.create_subprocess_exec", return_value=mock_proc),
+            patch("asyncio.sleep"),
+        ):
+            resp = await client.get("/api/provision/wifi-scan")
+
+        assert resp.status == 200
+        data = await resp.json()
+        assert "tuya_aps" in data
+        ssids_in_aps = [ap["ssid"] for ap in data["tuya_aps"]]
+        assert "SmartLife_AB12" in ssids_in_aps
+        # non-Tuya SSIDs must not appear in tuya_aps
+        assert "HomeNet" not in ssids_in_aps
+        assert "OfficeWifi" not in ssids_in_aps
+
+
+# ── /api/provision/quick-scan ─────────────────────────────────────────────────
+
+
+class TestQuickScan:
+    """Tests for GET /api/provision/quick-scan."""
+
+    async def test_returns_tuya_aps_key(self, client: TestClient) -> None:
+        """Response always contains tuya_aps list."""
+        resp = await client.get("/api/provision/quick-scan")
+        assert resp.status == 200
+        data = await resp.json()
+        assert "tuya_aps" in data
+        assert isinstance(data["tuya_aps"], list)
+
+    async def test_smartlife_detected(self, client: TestClient) -> None:
+        """SmartLife_ prefixed SSIDs appear in tuya_aps."""
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        mock_proc = MagicMock()
+        mock_proc.communicate = AsyncMock(return_value=(b"SmartLife_AB12\nHomeNet\n", b""))
+
+        with patch("asyncio.create_subprocess_exec", return_value=mock_proc):
+            resp = await client.get("/api/provision/quick-scan")
+
+        data = await resp.json()
+        ssids = [ap["ssid"] for ap in data["tuya_aps"]]
+        assert "SmartLife_AB12" in ssids
+        assert "HomeNet" not in ssids
+
+    async def test_normal_ssids_filtered(self, client: TestClient) -> None:
+        """Non-Tuya SSIDs are not included in tuya_aps."""
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        mock_proc = MagicMock()
+        mock_proc.communicate = AsyncMock(return_value=(b"CorporateWiFi\nGuest\n--\n", b""))
+
+        with patch("asyncio.create_subprocess_exec", return_value=mock_proc):
+            resp = await client.get("/api/provision/quick-scan")
+
+        data = await resp.json()
+        assert data["tuya_aps"] == []
+
+    async def test_no_rescan_flag_used(self, client: TestClient) -> None:
+        """quick-scan must pass --rescan no (never --rescan yes)."""
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        mock_proc = MagicMock()
+        mock_proc.communicate = AsyncMock(return_value=(b"", b""))
+        captured_calls: list[tuple[object, ...]] = []
+
+        async def fake_exec(*args: object, **kwargs: object) -> MagicMock:
+            captured_calls.append(args)
+            return mock_proc
+
+        with patch("asyncio.create_subprocess_exec", side_effect=fake_exec):
+            resp = await client.get("/api/provision/quick-scan")
+
+        assert resp.status == 200
+        scan_calls = [a for a in captured_calls if "--rescan" in a]
+        assert len(scan_calls) == 1
+        rescan_idx = list(scan_calls[0]).index("--rescan")
+        assert scan_calls[0][rescan_idx + 1] == "no"
+
+    async def test_graceful_when_nmcli_missing(self, client: TestClient) -> None:
+        """Returns empty tuya_aps when nmcli is unavailable."""
+        from unittest.mock import patch
+
+        with patch("asyncio.create_subprocess_exec", side_effect=FileNotFoundError):
+            resp = await client.get("/api/provision/quick-scan")
+
+        assert resp.status == 200
+        data = await resp.json()
+        assert data["tuya_aps"] == []
+
+    async def test_deduplicates_ssids(self, client: TestClient) -> None:
+        """Duplicate Tuya SSIDs appear only once in tuya_aps."""
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        mock_proc = MagicMock()
+        mock_proc.communicate = AsyncMock(return_value=(b"SmartLife_AB12\nSmartLife_AB12\n", b""))
+
+        with patch("asyncio.create_subprocess_exec", return_value=mock_proc):
+            resp = await client.get("/api/provision/quick-scan")
+
+        data = await resp.json()
+        ssids = [ap["ssid"] for ap in data["tuya_aps"]]
+        assert ssids.count("SmartLife_AB12") == 1
+
+    async def test_all_tuya_prefixes_matched(self, client: TestClient) -> None:
+        """All five Tuya AP prefixes are matched (case-insensitive)."""
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        mock_proc = MagicMock()
+        mock_proc.communicate = AsyncMock(
+            return_value=(
+                b"SmartLife_AA\nSL_BB\nAZ_CC\nTuya_DD\nWiFi_EE\nHomeNet\n",
+                b"",
+            )
+        )
+
+        with patch("asyncio.create_subprocess_exec", return_value=mock_proc):
+            resp = await client.get("/api/provision/quick-scan")
+
+        data = await resp.json()
+        ssids = [ap["ssid"] for ap in data["tuya_aps"]]
+        assert "SmartLife_AA" in ssids
+        assert "SL_BB" in ssids
+        assert "AZ_CC" in ssids
+        assert "Tuya_DD" in ssids
+        assert "WiFi_EE" in ssids
+        assert "HomeNet" not in ssids
+
+
+# ── /api/provision/wifi-ap-pair ───────────────────────────────────────────────
+
+
+class TestWifiApPair:
+    """Tests for POST /api/provision/wifi-ap-pair."""
+
+    async def test_returns_token_and_events_url(self, client: TestClient) -> None:
+        """Response contains token and events_url."""
+        from unittest.mock import patch
+
+        with patch(
+            "custom_components.tuya_cloudless.pairing_server.PairingServer._wifi_ap_pair_task"
+        ):
+            resp = await client.post(
+                "/api/provision/wifi-ap-pair",
+                json={"ap_ssid": "SmartLife_AB12", "home_ssid": "HomeNet", "home_password": "pass"},
+            )
+
+        assert resp.status == 200
+        data = await resp.json()
+        assert "token" in data
+        assert isinstance(data["token"], str)
+        assert len(data["token"]) == 32  # 16 bytes hex = 32 chars
+        assert "events_url" in data
+
+    async def test_missing_ap_ssid_returns_400(self, client: TestClient) -> None:
+        """Missing ap_ssid → 400."""
+        resp = await client.post(
+            "/api/provision/wifi-ap-pair",
+            json={"home_ssid": "HomeNet", "home_password": "pass"},
+        )
+        assert resp.status == 400
+
+    async def test_missing_home_ssid_returns_400(self, client: TestClient) -> None:
+        """Missing home_ssid → 400."""
+        resp = await client.post(
+            "/api/provision/wifi-ap-pair",
+            json={"ap_ssid": "SmartLife_AB12", "home_password": "pass"},
+        )
+        assert resp.status == 400
+
+    async def test_invalid_json_returns_400(self, client: TestClient) -> None:
+        """Malformed JSON body → 400."""
+        resp = await client.post(
+            "/api/provision/wifi-ap-pair",
+            data=b"not json",
+            headers={"Content-Type": "application/json"},
+        )
+        assert resp.status == 400
+
+    async def test_background_task_spawned(self, client: TestClient) -> None:
+        """A background task is created when the request is valid."""
+        import asyncio
+        from unittest.mock import patch
+
+        task_calls: list[tuple[object, ...]] = []
+
+        async def fake_task(*args: object, **kwargs: object) -> None:
+            task_calls.append(args)
+
+        with patch(
+            "custom_components.tuya_cloudless.pairing_server.PairingServer._wifi_ap_pair_task",
+            side_effect=fake_task,
+        ):
+            resp = await client.post(
+                "/api/provision/wifi-ap-pair",
+                json={
+                    "ap_ssid": "SmartLife_AB12",
+                    "home_ssid": "HomeNet",
+                    "home_password": "secret",
+                },
+            )
+
+        assert resp.status == 200
+        # Give the event loop a tick to schedule the background task
+        await asyncio.sleep(0)
+        # Background task was invoked with the correct AP ssid
+        assert any("SmartLife_AB12" in str(a) for a in task_calls)
+
+    async def test_nmcli_connect_called_with_ap_ssid(self, client: TestClient) -> None:
+        """_wifi_ap_pair_task connects to the Tuya AP via nmcli."""
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        nmcli_calls: list[list[str]] = []
+
+        async def fake_exec(*args: object, **kwargs: object) -> MagicMock:
+            nmcli_calls.append(list(args))
+            proc = MagicMock()
+            proc.communicate = AsyncMock(return_value=(b"", b""))
+            proc.returncode = 0
+            proc.kill = MagicMock()
+            return proc
+
+        hass = MagicMock()
+        server = PairingServer(hass, port=9099)
+
+        with (
+            patch("asyncio.create_subprocess_exec", side_effect=fake_exec),
+            patch("aiohttp.ClientSession") as mock_session_cls,
+        ):
+            mock_session = AsyncMock()
+            mock_session_cls.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+            mock_session_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+            mock_resp = AsyncMock()
+            mock_resp.status = 200
+            mock_session.post.return_value.__aenter__ = AsyncMock(return_value=mock_resp)
+            mock_session.post.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            await server._wifi_ap_pair_task(
+                "SmartLife_AB12", "HomeNet", "pass", "abc123", "http://ha:8099"
+            )
+
+        connect_calls = [c for c in nmcli_calls if "connect" in c]
+        assert any("SmartLife_AB12" in str(c) for c in connect_calls)
+
+    async def test_sse_error_on_nmcli_missing(self, client: TestClient) -> None:
+        """wifi_ap_error SSE event sent when nmcli is unavailable."""
+        from unittest.mock import patch
+
+        hass = MagicMock()
+        server = PairingServer(hass, port=9099)
+        broadcast_calls: list[tuple[str, str]] = []
+
+        async def fake_broadcast(event: str, data: str) -> None:
+            broadcast_calls.append((event, data))
+
+        server._broadcast_sse = fake_broadcast  # type: ignore[method-assign]
+
+        with patch("asyncio.create_subprocess_exec", side_effect=FileNotFoundError):
+            await server._wifi_ap_pair_task(
+                "SmartLife_AB12", "HomeNet", "pass", "tok123", "http://ha:8099"
+            )
+
+        assert any(ev == "wifi_ap_error" for ev, _ in broadcast_calls)
+
 
 # ── /api/provision/config ─────────────────────────────────────────────────────
 
@@ -1863,12 +2136,16 @@ class TestRegisterHaViews:
         await server._register_ha_views()
         assert server._ha_views_registered is True
 
-    async def test_registers_six_views(self) -> None:
-        """Exactly 6 views are registered (index, config, events, result, wifi-scan, static)."""
+    async def test_registers_eight_views(self) -> None:
+        """Exactly 8 views are registered.
+
+        Views: index, config, events, result, wifi-scan, quick-scan,
+        wifi-ap-pair, static.
+        """
         hass = MagicMock()
         server = PairingServer(hass, port=8099)
         await server._register_ha_views()
-        assert hass.http.register_view.call_count == 6
+        assert hass.http.register_view.call_count == 8
 
 
 # ── Static file view (path traversal guard) ───────────────────────────────────

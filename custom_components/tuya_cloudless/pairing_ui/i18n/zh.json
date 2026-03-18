@@ -48,5 +48,13 @@
   "wifi_scan_none": "未找到网络",
   "debug_title": "调试日志",
   "error_browser_unsupported_title": "不支持的浏览器",
-  "error_browser_unsupported_body": "Web Bluetooth 需要 Chrome 或 Edge（桌面或 Android）。请在 Chrome 或 Edge 中打开此页面。"
+  "error_browser_unsupported_body": "Web Bluetooth 需要 Chrome 或 Edge（桌面或 Android）。请在 Chrome 或 Edge 中打开此页面。",
+  "device_panel_title": "Find device",
+  "device_panel_desc": "Devices found nearby appear automatically. Or use Bluetooth to scan.",
+  "looking_for_devices": "Looking for devices…",
+  "no_devices_auto_found": "No Tuya devices found nearby. Use Bluetooth below, or put the device in pairing mode and try again.",
+  "pair_via_wifi_ap": "WiFi AP",
+  "pair_via_ble": "Scan via Bluetooth",
+  "wifi_ap_connecting": "Connecting to device AP…",
+  "wifi_ap_error": "WiFi AP pairing failed. Check that the device is in pairing mode and try again."
 }
