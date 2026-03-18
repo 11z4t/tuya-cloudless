@@ -13,7 +13,7 @@
       },
       "ble_pair": {
         "title": "BLE Pairing",
-        "description": "The pairing tool is opening in your browser. Follow the steps to connect your device over Bluetooth.\n\n**Requires Chrome or Edge** (desktop or Android) and **HTTPS** — see the [HTTPS setup guide]({wiki_url}) if needed."
+        "description": "The pairing tool should open automatically in a new browser tab. Follow the steps there to connect your device over Bluetooth and get your local key.\n\nIf the tab did not open, click the button below.\n\n**Requires Chrome or Edge** (desktop or Android) and **HTTPS** — see the [HTTPS setup guide]({wiki_url}) if needed."
       },
       "ble_confirm": {
         "title": "Device paired ✓",
