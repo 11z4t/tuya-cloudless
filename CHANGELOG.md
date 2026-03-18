@@ -3,6 +3,44 @@
 All notable changes to Tuya Cloudless are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [0.5.0] — 2026-03-18
+
+### Security
+- Rate limiting on pairing activation endpoint (max 10 requests/60 s per IP)
+- Bounded SSE queues (`maxsize=32`) and connection cap (max 10 simultaneous SSE clients)
+- Strict CORS on result/SSE endpoints (wildcard `Access-Control-Allow-Origin` removed)
+- `local_key` ASCII + printable character validation in all config flow steps
+- IP address format validated with `ipaddress.ip_address()` in all config flow steps
+- Documented CBC zero-IV limitation for protocol v3.1–3.3 in `SECURITY.md`
+
+### Robustness
+- Guard against duplicate `_connection_loop` tasks on coordinator restart
+- `SESSION_KEY_NEG_TIMEOUT` extracted as a named constant (5.0 s)
+- `send_raw_dps` service validated with a voluptuous schema
+- Binary sensor now prefers `dp_value.id` over `dp_power.id` as primary DP
+- `asyncio.create_task` used instead of `ensure_future` (named task for debugging)
+
+### Quality
+- `quality_scale`: `bronze` → `silver`
+- Minimum Home Assistant version: `2024.4.0` → `2025.1.0`
+- All 19 translation files complete (131/131 keys each)
+- `DeviceInfo.serial_number` set to `gw_id`
+- `ConfigFlow.MINOR_VERSION = 1` added for config entry versioning
+
+### Home Assistant integration
+- Diagnostics: DPS values sanitised before exposure (bytes and long strings redacted)
+- Repair flow: connectivity repair now redirects to reconfigure flow on confirm
+- Update entity: `device_class = None`, `translation_key = "protocol_version"`
+
+### Testing
+- **100% test coverage** — 2621 statements, 0 missed across all modules
+- 1557 unit tests (up from 1493)
+- Playwright E2E suite: 22 tests covering the full BLE pairing UI flow
+
+### Developer experience
+- `scripts/run-checks-python.sh` — Python-only check script (skips UI tests)
+- `RUN_UI_TESTS=0` environment variable support in `run-checks.sh`
+
 ## [0.2.4] — 2026-03-15
 
 ### Fixed
