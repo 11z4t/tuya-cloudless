@@ -1053,6 +1053,89 @@ class TestWifiApPair:
         finally:
             await cli.close()
 
+    async def test_no_prev_connection_reconnects_to_home_wifi(self) -> None:
+        """When no saved connection exists, the task falls back to connecting to home_ssid."""
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        nmcli_calls: list[list[str]] = []
+
+        async def fake_exec(*args: object, **kwargs: object) -> MagicMock:
+            nmcli_calls.append(list(args))
+            proc = MagicMock()
+            # First call (list active connections) returns nothing → prev_connection stays None
+            # Subsequent calls succeed normally
+            proc.communicate = AsyncMock(return_value=(b"", b""))
+            proc.returncode = 0
+            proc.kill = MagicMock()
+            return proc
+
+        hass = MagicMock()
+        server = PairingServer(hass, port=9099)
+
+        with (
+            patch("asyncio.create_subprocess_exec", side_effect=fake_exec),
+            patch("aiohttp.ClientSession") as mock_session_cls,
+        ):
+            mock_session = AsyncMock()
+            mock_session_cls.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+            mock_session_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+            mock_resp = AsyncMock()
+            mock_resp.status = 200
+            mock_session.post.return_value.__aenter__ = AsyncMock(return_value=mock_resp)
+            mock_session.post.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            await server._wifi_ap_pair_task(
+                "SmartLife_AB12", "HomeNet", "pass123", "tok_noprev", "http://ha:8099"
+            )
+
+        # The finally-else branch must issue:  nmcli device wifi connect HomeNet password pass123
+        fallback_calls = [c for c in nmcli_calls if "HomeNet" in c]
+        assert fallback_calls, "Expected a fallback nmcli connect to home_ssid"
+        joined = " ".join(str(x) for x in fallback_calls[0])
+        assert "device" in joined and "wifi" in joined and "connect" in joined
+        assert "HomeNet" in joined
+        assert "pass123" in joined
+
+    async def test_no_prev_connection_open_network_omits_password(self) -> None:
+        """Fallback reconnect to open home WiFi (no password) omits the 'password' arg."""
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        nmcli_calls: list[list[str]] = []
+
+        async def fake_exec(*args: object, **kwargs: object) -> MagicMock:
+            nmcli_calls.append(list(args))
+            proc = MagicMock()
+            proc.communicate = AsyncMock(return_value=(b"", b""))
+            proc.returncode = 0
+            proc.kill = MagicMock()
+            return proc
+
+        hass = MagicMock()
+        server = PairingServer(hass, port=9099)
+
+        with (
+            patch("asyncio.create_subprocess_exec", side_effect=fake_exec),
+            patch("aiohttp.ClientSession") as mock_session_cls,
+        ):
+            mock_session = AsyncMock()
+            mock_session_cls.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+            mock_session_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+            mock_resp = AsyncMock()
+            mock_resp.status = 200
+            mock_session.post.return_value.__aenter__ = AsyncMock(return_value=mock_resp)
+            mock_session.post.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            # Empty password → open network
+            await server._wifi_ap_pair_task(
+                "SmartLife_AB12", "OpenNet", "", "tok_open", "http://ha:8099"
+            )
+
+        fallback_calls = [c for c in nmcli_calls if "OpenNet" in c]
+        assert fallback_calls, "Expected fallback nmcli connect to OpenNet"
+        assert "password" not in fallback_calls[0], (
+            "'password' arg must not appear for open networks"
+        )
+
 
 # ── /api/provision/config ─────────────────────────────────────────────────────
 

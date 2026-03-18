@@ -361,12 +361,13 @@ function showWifiDropdown(ssids, currentSsid) {
           const target = items[Math.max(idx - 5, 0)];
           if (target) target.focus();
         }
-        if (e.key === "Escape")    { dd.classList.add("hidden"); document.getElementById("ssid").focus(); }
+        if (e.key === "Escape")    { dd.classList.add("hidden"); document.getElementById("btn-wifi-scan").setAttribute("aria-expanded", "false"); document.getElementById("ssid").focus(); }
       });
       dd.appendChild(item);
     }
   }
   dd.classList.remove("hidden");
+  document.getElementById("btn-wifi-scan").setAttribute("aria-expanded", "true");
   // Move focus into the first item for keyboard users
   const first = dd.querySelector("[tabindex='0']");
   if (first) first.focus();
@@ -375,6 +376,7 @@ function showWifiDropdown(ssids, currentSsid) {
 function selectWifi(ssid) {
   document.getElementById("ssid").value = ssid;
   document.getElementById("wifi-dropdown").classList.add("hidden");
+  document.getElementById("btn-wifi-scan").setAttribute("aria-expanded", "false");
 }
 
 // ── Device discovery ───────────────────────────────────────────────────────────
@@ -460,6 +462,7 @@ document.addEventListener("click", (e) => {
   const scanBtn = document.getElementById("btn-wifi-scan");
   if (!dd.contains(e.target) && e.target !== ssidInput && e.target !== scanBtn) {
     dd.classList.add("hidden");
+    scanBtn.setAttribute("aria-expanded", "false");
   }
 });
 

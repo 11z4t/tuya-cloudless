@@ -1020,7 +1020,7 @@ class PairingServer:
                 json.dumps({"error": "Unexpected pairing error", "token": token}),
             )
         finally:
-            # Step 4: always try to reconnect home WiFi
+            # Step 4: always try to restore connectivity
             if prev_connection:
                 _LOGGER.info("WiFi AP pair: reconnecting to %s", prev_connection)
                 try:
@@ -1030,6 +1030,26 @@ class PairingServer:
                     )
                 except Exception as exc:
                     _LOGGER.warning("WiFi AP pair: reconnect failed: %s", exc)
+            else:
+                # No saved connection — reconnect to home WiFi directly so we
+                # don't remain stuck on the Tuya AP after provisioning.
+                _LOGGER.info(
+                    "WiFi AP pair: no saved connection; reconnecting to home WiFi (%s)",
+                    home_ssid,
+                )
+                try:
+                    cmd: list[str] = [
+                        "nmcli",
+                        "device",
+                        "wifi",
+                        "connect",
+                        home_ssid,
+                    ]
+                    if home_pwd:
+                        cmd += ["password", home_pwd]
+                    await _run(cmd, timeout=_TUYA_AP_RECONNECT_TIMEOUT)
+                except Exception as exc:
+                    _LOGGER.warning("WiFi AP pair: home WiFi reconnect failed: %s", exc)
 
     # ── HA HTTPS views ─────────────────────────────────────────────────────
 
