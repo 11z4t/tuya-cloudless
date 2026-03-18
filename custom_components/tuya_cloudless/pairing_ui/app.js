@@ -459,7 +459,16 @@ async function autoDetectDevices() {
   if (scanEl) scanEl.style.display = "";  // show scanning indicator
 
   try {
-    const r = await fetch(_PROVISION_BASE + "/quick-scan");
+    // Abort after 5 s — quick-scan reads OS WiFi cache, must be fast.
+    // A hung server should not leave the page stuck on "Looking for devices…".
+    const scanAbort = new AbortController();
+    const scanAbortTimer = setTimeout(() => scanAbort.abort(), 5000);
+    let r;
+    try {
+      r = await fetch(_PROVISION_BASE + "/quick-scan", { signal: scanAbort.signal });
+    } finally {
+      clearTimeout(scanAbortTimer);
+    }
     if (!r.ok) throw new Error("scan HTTP " + r.status);
     const data = await r.json();
     const aps = data.tuya_aps || [];
@@ -1191,6 +1200,15 @@ function copyShareUrl() {
   document.getElementById("btn-ble-scan").addEventListener("click", selectDeviceBle);
   document.getElementById("btn-pair-another").addEventListener("click", goToDevices);
   document.getElementById("btn-refresh-scan").addEventListener("click", autoDetectDevices);
+
+  // Escape key: cancel WiFi AP pairing when cancel button is visible
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape") return;
+    const cancelBtn = document.getElementById("btn-cancel-wifi-ap");
+    if (cancelBtn && !cancelBtn.classList.contains("hidden") && !cancelBtn.disabled) {
+      cancelBtn.click();
+    }
+  });
 
   // Password show/hide toggle
   document.getElementById("btn-pwd-toggle").addEventListener("click", function() {

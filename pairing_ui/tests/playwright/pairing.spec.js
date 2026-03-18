@@ -155,20 +155,21 @@ async function mockBle(page, activation = null) {
       }
 
       let _notifyCb = null;
-      let _writeCount = 0;
+      let _firstChunkData = null;  // cmd is at byte 3 of the FIRST chunk's frame data
 
       const fakeChar = {
         startNotifications: async () => {},
         addEventListener: (_evt, cb) => { _notifyCb = cb; },
+        removeEventListener: () => {},  // required: _cleanupNotify() calls this
         writeValueWithoutResponse: async (chunk) => {
-          _writeCount++;
           const chunkNo = chunk[0], total = chunk[1];
+          // Save first chunk — cmd byte (frame header offset 3) is always here
+          if (chunkNo === 0) _firstChunkData = chunk.slice(2);
           const isLastChunk = chunkNo + 1 === total;
           if (!isLastChunk || !_notifyCb) return;
 
-          // Read cmd from first chunk payload (offset 2+3 = header byte 3)
-          const data = chunk.slice(2);
-          const cmd = data.length > 3 ? data[3] : 0xff;
+          // Read cmd from the first chunk's frame data (reliable for any payload size)
+          const cmd = (_firstChunkData && _firstChunkData.length > 3) ? _firstChunkData[3] : 0xff;
 
           // Build a response: handshake → nonce reply, wifi → ACK (cmd=0x02)
           let respPayload;
@@ -192,7 +193,7 @@ async function mockBle(page, activation = null) {
             if (_notifyCb) {
               _notifyCb({ target: { value: { buffer: respChunk.buffer } } });
             }
-          }, 50);
+          }, 1);  // 1ms — must fire well before the SSE_TIMEOUT_MS speedup (50ms)
         },
       };
 
@@ -791,8 +792,7 @@ test.describe("Full pairing flow", () => {
     await page.locator("#btn-pwd-toggle").click();
     await expect(page.locator("#password")).toHaveAttribute("type", "text");
 
-    // Navigate to BLE panel
-    await page.locator("#btn-ble-scan").click();
+    // Navigate to BLE panel — BLE method already selected by navigateToCredentials
     await page.locator("#btn-next").click();
     await expect(page.locator("#panel-ble")).toBeVisible();
 
@@ -916,18 +916,19 @@ test.describe("Full pairing flow", () => {
       }
 
       let _notifyCb = null;
-      let _writeCount = 0;
+      let _firstChunkData = null;  // cmd is always in the FIRST chunk at offset 3 of the frame
       const fakeChar = {
         startNotifications: async () => {},
         addEventListener: (_evt, cb) => { _notifyCb = cb; },
+        removeEventListener: () => {},  // required: _cleanupNotify() calls this
         writeValueWithoutResponse: async (chunk) => {
-          _writeCount++;
           const chunkNo = chunk[0], total = chunk[1];
+          // Save first chunk so we can read the frame cmd byte (offset 3 of frame = data[3])
+          if (chunkNo === 0) _firstChunkData = chunk.slice(2);
           const isLastChunk = chunkNo + 1 === total;
           if (!isLastChunk || !_notifyCb) return;
 
-          const data = chunk.slice(2);
-          const cmd = data.length > 3 ? data[3] : 0xff;
+          const cmd = (_firstChunkData && _firstChunkData.length > 3) ? _firstChunkData[3] : 0xff;
 
           let respPayload, respCmd;
           if (cmd === 0x00) {
@@ -943,7 +944,7 @@ test.describe("Full pairing flow", () => {
           respChunk.set(frame, 2);
           setTimeout(() => {
             if (_notifyCb) _notifyCb({ target: { value: { buffer: respChunk.buffer } } });
-          }, 50);
+          }, 1);  // 1ms — must fire well before the SSE_TIMEOUT_MS speedup (50ms)
         },
       };
       const fakeService = { getCharacteristic: async () => fakeChar };
@@ -1178,10 +1179,9 @@ test.describe("Device discovery panel", () => {
     await loadPage(page);
     await navigateToCredentials(page);
 
-    // Enter credentials and advance to BLE panel
+    // Enter credentials and advance to BLE panel — BLE already selected by navigateToCredentials
     await page.locator("#ssid").click();
     await page.locator("#ssid").fill("HomeNet");
-    await page.locator("#btn-ble-scan").click();
     await page.locator("#btn-next").click();
     await expect(page.locator("#panel-ble")).toBeVisible();
 
@@ -1197,7 +1197,7 @@ test.describe("Device discovery panel", () => {
     await navigateToCredentials(page);
     await page.locator("#ssid").click();
     await page.locator("#ssid").fill("HomeNet");
-    await page.locator("#btn-ble-scan").click();
+    // BLE already selected by navigateToCredentials — go straight to BLE panel
     await page.locator("#btn-next").click();
     await expect(page.locator("#panel-ble")).toBeVisible();
 
@@ -1670,8 +1670,7 @@ test.describe("WiFi AP pairing flow", () => {
     await navigateToCredentials(page);
     await page.locator("#ssid").click();
     await page.locator("#ssid").fill("OpenWifi");
-    // Leave password empty — open network
-    await page.locator("#btn-ble-scan").click();
+    // Leave password empty — open network. BLE already selected by navigateToCredentials.
     await page.locator("#btn-next").click();
     // Should advance to BLE panel without error
     await expect(page.locator("#panel-ble")).toBeVisible();
@@ -1684,10 +1683,46 @@ test.describe("WiFi AP pairing flow", () => {
     await navigateToCredentials(page);
     await page.locator("#ssid").click();
     await page.locator("#ssid").fill("A");
-    await page.locator("#btn-ble-scan").click();
+    // BLE already selected by navigateToCredentials
     await page.locator("#btn-next").click();
     // Should advance without showing an SSID validation error
     await expect(page.locator("#panel-ble")).toBeVisible();
     await expect(page.locator("#s1-error")).toHaveClass(/hidden/);
+  });
+
+  test("Escape key cancels active WiFi AP pairing and restores UI", async ({ page }) => {
+    await setupRoutes(page, { tuya_aps: [{ ssid: "SmartLife_AB12" }] });
+    // SSE never fires — pairing stays in-progress so cancel button is visible
+    await mockWifiApRoute(page, { sseEvent: null });
+    await loadPage(page);
+
+    await pairViaWifiApUi(page);
+
+    // Cancel button should be visible during pairing
+    await expect(page.locator("#btn-cancel-wifi-ap")).toBeVisible({ timeout: 3000 });
+
+    // Press Escape — should cancel the pairing
+    await page.keyboard.press("Escape");
+
+    // Cancel button hidden, back button and pair button restored
+    await expect(page.locator("#btn-cancel-wifi-ap")).toBeHidden();
+    await expect(page.locator("#btn-back")).toBeVisible();
+    await expect(page.locator("#btn-next")).toBeEnabled();
+  });
+
+  test("quick-scan server error falls back to no-devices message without blocking UI", async ({ page }) => {
+    await setupRoutes(page);
+    // Override quick-scan to return a server error
+    await page.route(BASE + "/api/provision/quick-scan", (route) =>
+      route.fulfill({ status: 500, body: "Internal Server Error" })
+    );
+    await loadPage(page);
+
+    // Scanning indicator should clear and no-devices message should appear
+    await expect(page.locator("#no-devices-msg")).toBeVisible({ timeout: 3000 });
+    // Refresh button should be re-enabled so user can retry
+    await expect(page.locator("#btn-refresh-scan")).toBeEnabled();
+    // BLE scan button should still be usable
+    await expect(page.locator("#btn-ble-scan")).toBeVisible();
   });
 });
