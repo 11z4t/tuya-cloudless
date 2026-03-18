@@ -916,6 +916,31 @@ class TestReconfigureFlow:
         await flow.async_step_reconfigure(user_input=None)
         flow.async_show_form.assert_called_once()
 
+    @pytest.mark.asyncio
+    async def test_reconfigure_non_ascii_key_rejected(self) -> None:
+        """async_step_reconfigure must reject a local_key with non-ASCII chars (line 887)."""
+        from custom_components.tuya_cloudless.const import CONF_IP_ADDRESS, CONF_LOCAL_KEY
+
+        flow = _make_config_flow()
+        _restore_method(flow, "async_step_reconfigure")
+
+        mock_entry = MagicMock()
+        mock_entry.data = {CONF_IP_ADDRESS: "10.0.0.1"}
+        mock_entry.title = "Test Device"
+        flow._get_reconfigure_entry = MagicMock(return_value=mock_entry)
+
+        # 16 chars, correct length, but contains non-ASCII byte
+        bad_key = "0123456789abcd\xe9f"
+        await flow.async_step_reconfigure(
+            user_input={
+                CONF_LOCAL_KEY: bad_key,
+                CONF_IP_ADDRESS: "10.0.0.1",
+            }
+        )
+        flow.async_show_form.assert_called_once()
+        call_kwargs = flow.async_show_form.call_args[1]
+        assert call_kwargs.get("errors", {}).get(CONF_LOCAL_KEY) == "invalid_local_key_chars"
+
 
 # ── async_step_discovery ───────────────────────────────────────────────────────
 
@@ -2711,3 +2736,254 @@ class TestMinorVersion:
         from custom_components.tuya_cloudless.config_flow import TuyaCloudlessOptionsFlow
 
         assert TuyaCloudlessOptionsFlow.MINOR_VERSION == 1
+
+
+# ── SEC-005: char validation in discovery + reauth_confirm steps ───────────────
+
+
+class TestLocalKeyCharValidationDiscovery:
+    """SEC-005 char validation in async_step_discovery (line 658)."""
+
+    @pytest.mark.asyncio
+    async def test_discovery_non_ascii_key_rejected(self) -> None:
+        """async_step_discovery must reject a local_key with non-ASCII chars (line 658)."""
+        from custom_components.tuya_cloudless.const import CONF_IP_ADDRESS, CONF_LOCAL_KEY
+
+        flow = _make_config_flow()
+        _restore_method(flow, "async_step_discovery")
+        flow._device = {CONF_IP_ADDRESS: "10.0.0.1"}
+
+        # 15 printable ASCII + one non-ASCII byte = 16 chars, right length
+        bad_key = "0123456789abcd\xe9f"
+        await flow.async_step_discovery({CONF_LOCAL_KEY: bad_key})
+
+        flow.async_show_form.assert_called_once()
+        call_kwargs = flow.async_show_form.call_args[1]
+        assert call_kwargs.get("errors", {}).get(CONF_LOCAL_KEY) == "invalid_local_key_chars"
+
+    @pytest.mark.asyncio
+    async def test_discovery_null_byte_key_rejected(self) -> None:
+        """async_step_discovery must reject a local_key with a null byte (line 658)."""
+        from custom_components.tuya_cloudless.const import CONF_IP_ADDRESS, CONF_LOCAL_KEY
+
+        flow = _make_config_flow()
+        _restore_method(flow, "async_step_discovery")
+        flow._device = {CONF_IP_ADDRESS: "10.0.0.1"}
+
+        bad_key = "0123456789abcde\x00"
+        await flow.async_step_discovery({CONF_LOCAL_KEY: bad_key})
+
+        flow.async_show_form.assert_called_once()
+        call_kwargs = flow.async_show_form.call_args[1]
+        assert call_kwargs.get("errors", {}).get(CONF_LOCAL_KEY) == "invalid_local_key_chars"
+
+
+class TestLocalKeyCharValidationReauthConfirm:
+    """SEC-005 char validation in async_step_reauth_confirm (line 818)."""
+
+    @pytest.mark.asyncio
+    async def test_reauth_confirm_non_ascii_key_rejected(self) -> None:
+        """async_step_reauth_confirm must reject a local_key with non-ASCII chars (line 818)."""
+        from custom_components.tuya_cloudless.const import CONF_IP_ADDRESS, CONF_LOCAL_KEY
+
+        flow = _make_config_flow()
+        _restore_method(flow, "async_step_reauth_confirm")
+        mock_entry = MagicMock()
+        mock_entry.data = {CONF_IP_ADDRESS: "10.0.0.1"}
+        mock_entry.title = "Test Device"
+        flow._get_reauth_entry = MagicMock(return_value=mock_entry)
+
+        bad_key = "0123456789abcd\xe9f"
+        await flow.async_step_reauth_confirm({CONF_LOCAL_KEY: bad_key})
+
+        flow.async_show_form.assert_called_once()
+        call_kwargs = flow.async_show_form.call_args[1]
+        assert call_kwargs.get("errors", {}).get(CONF_LOCAL_KEY) == "invalid_local_key_chars"
+
+    @pytest.mark.asyncio
+    async def test_reauth_confirm_null_byte_key_rejected(self) -> None:
+        """async_step_reauth_confirm must reject a local_key with a null byte (line 818)."""
+        from custom_components.tuya_cloudless.const import CONF_IP_ADDRESS, CONF_LOCAL_KEY
+
+        flow = _make_config_flow()
+        _restore_method(flow, "async_step_reauth_confirm")
+        mock_entry = MagicMock()
+        mock_entry.data = {CONF_IP_ADDRESS: "10.0.0.1"}
+        mock_entry.title = "Test Device"
+        flow._get_reauth_entry = MagicMock(return_value=mock_entry)
+
+        bad_key = "0123456789abcde\x00"
+        await flow.async_step_reauth_confirm({CONF_LOCAL_KEY: bad_key})
+
+        flow.async_show_form.assert_called_once()
+        call_kwargs = flow.async_show_form.call_args[1]
+        assert call_kwargs.get("errors", {}).get(CONF_LOCAL_KEY) == "invalid_local_key_chars"
+
+
+# ── auto_detect_profile: else-branch + except + empty profiles (1074-1076, 1084-1085)
+
+
+class TestAutoDetectProfileEdgeCases:
+    """Coverage for lines 1074-1076 (else dp_ids=set, except) and 1084-1085 (empty profiles)."""
+
+    def _make_connected_flow(self) -> Any:
+        from custom_components.tuya_cloudless.config_flow import TuyaCloudlessConfigFlow
+
+        flow = TuyaCloudlessConfigFlow.__new__(TuyaCloudlessConfigFlow)
+        flow._discovered = []
+        flow._device = {}
+        return flow
+
+    @pytest.mark.asyncio
+    async def test_non_dict_dps_payload_returns_generic(self) -> None:
+        """When frame.dps is not a dict, dp_ids = set() and returns 'Generic Switch' (line 1074)."""
+        flow = self._make_connected_flow()
+        mock_reader = AsyncMock()
+        mock_writer = MagicMock()
+        mock_writer.close = MagicMock()
+        mock_writer.wait_closed = AsyncMock()
+        mock_writer.drain = AsyncMock()
+        mock_writer.write = MagicMock()
+
+        mock_frame = MagicMock()
+        mock_frame.dps = "not_a_dict"  # not a dict → else branch: dp_ids = set()
+
+        call_count = 0
+
+        async def fake_wait_for(coro: object, timeout: float = 0) -> object:
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                return (mock_reader, mock_writer)
+            return b"\x00\x01\x02"
+
+        with (
+            patch(
+                "custom_components.tuya_cloudless.config_flow.asyncio.wait_for",
+                side_effect=fake_wait_for,
+            ),
+            patch(
+                "tuya_cloudless.protocol.split_frames",
+                return_value=([b"frame"], b""),
+            ),
+            patch(
+                "tuya_cloudless.protocol.decode_frame",
+                return_value=mock_frame,
+            ),
+        ):
+            result = await flow._auto_detect_profile(
+                "10.0.0.1", local_key="0123456789abcdef", version="3.3"
+            )
+
+        assert result == "Generic Switch"
+
+    @pytest.mark.asyncio
+    async def test_frame_dps_access_raises_returns_generic(self) -> None:
+        """When accessing frame.dps raises an exception, returns 'Generic Switch'."""
+        flow = self._make_connected_flow()
+        mock_reader = AsyncMock()
+        mock_writer = MagicMock()
+        mock_writer.close = MagicMock()
+        mock_writer.wait_closed = AsyncMock()
+        mock_writer.drain = AsyncMock()
+        mock_writer.write = MagicMock()
+
+        mock_frame = MagicMock()
+        # Make accessing .dps raise an arbitrary exception
+        type(mock_frame).dps = property(lambda self: (_ for _ in ()).throw(RuntimeError("boom")))
+
+        call_count = 0
+
+        async def fake_wait_for(coro: object, timeout: float = 0) -> object:
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                return (mock_reader, mock_writer)
+            return b"\x00\x01\x02"
+
+        with (
+            patch(
+                "custom_components.tuya_cloudless.config_flow.asyncio.wait_for",
+                side_effect=fake_wait_for,
+            ),
+            patch(
+                "tuya_cloudless.protocol.split_frames",
+                return_value=([b"frame"], b""),
+            ),
+            patch(
+                "tuya_cloudless.protocol.decode_frame",
+                return_value=mock_frame,
+            ),
+        ):
+            result = await flow._auto_detect_profile(
+                "10.0.0.1", local_key="0123456789abcdef", version="3.3"
+            )
+
+        assert result == "Generic Switch"
+
+    @pytest.mark.asyncio
+    async def test_empty_profiles_triggers_init(self) -> None:
+        """When list_profiles() returns [] first, init_profiles is called (lines 1083-1085)."""
+        flow = self._make_connected_flow()
+        mock_reader = AsyncMock()
+        mock_writer = MagicMock()
+        mock_writer.close = MagicMock()
+        mock_writer.wait_closed = AsyncMock()
+        mock_writer.drain = AsyncMock()
+        mock_writer.write = MagicMock()
+
+        mock_frame = MagicMock()
+        mock_frame.dps = {"dps": {"1": True}}
+
+        mock_match = MagicMock()
+        mock_match.name = "Smart Plug"
+
+        call_count = 0
+
+        async def fake_wait_for(coro: object, timeout: float = 0) -> object:
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                return (mock_reader, mock_writer)
+            return b"\x00\x01\x02"
+
+        # list_profiles returns [] on first call (empty), then returns profiles after init
+        list_profiles_calls = 0
+
+        def fake_list_profiles() -> list:  # type: ignore[type-arg]
+            nonlocal list_profiles_calls
+            list_profiles_calls += 1
+            if list_profiles_calls == 1:
+                return []  # first call: empty → triggers init_profiles
+            return [mock_match]  # second call: populated
+
+        with (
+            patch(
+                "custom_components.tuya_cloudless.config_flow.asyncio.wait_for",
+                side_effect=fake_wait_for,
+            ),
+            patch(
+                "tuya_cloudless.protocol.split_frames",
+                return_value=([b"frame"], b""),
+            ),
+            patch(
+                "tuya_cloudless.protocol.decode_frame",
+                return_value=mock_frame,
+            ),
+            patch(
+                "tuya_cloudless.profiles.list_profiles",
+                side_effect=fake_list_profiles,
+            ),
+            patch("tuya_cloudless.profiles.init_profiles") as mock_init,
+            patch(
+                "tuya_cloudless.profiles.detect_profile_from_dps",
+                return_value=mock_match,
+            ),
+        ):
+            result = await flow._auto_detect_profile(
+                "10.0.0.1", local_key="0123456789abcdef", version="3.3"
+            )
+
+        # init_profiles must have been called when profiles were empty
+        mock_init.assert_called_once()
+        assert result == "Smart Plug"

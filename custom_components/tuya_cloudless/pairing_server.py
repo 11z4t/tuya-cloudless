@@ -182,7 +182,7 @@ class PairingServer:
         """
         self._runner = web.AppRunner(self._app)
         await self._runner.setup()
-        self._site = web.TCPSite(self._runner, "0.0.0.0", self._port)
+        self._site = web.TCPSite(self._runner, "0.0.0.0", self._port)  # nosec B104 — pairing server must bind on all interfaces to be reachable from LAN
         await self._site.start()
         _LOGGER.info("Tuya Cloudless pairing server listening on port %d", self._port)
         await register_redirect_view(self._hass, self._port)

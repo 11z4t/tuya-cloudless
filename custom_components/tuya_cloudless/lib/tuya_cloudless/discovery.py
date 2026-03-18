@@ -186,7 +186,7 @@ class DiscoveryListener:
 
         for port in (UDP_PORT, UDP_ENC_PORT):
             try:
-                bind_addr = self._interface or "0.0.0.0"
+                bind_addr = self._interface or "0.0.0.0"  # nosec B104 — UDP discovery must bind on all interfaces when no specific interface is set
                 transport, _ = await loop.create_datagram_endpoint(
                     lambda p=port: _DiscoveryProtocol(self._queue, f"udp:{p}"),  # type: ignore[misc]
                     local_addr=(bind_addr, port),

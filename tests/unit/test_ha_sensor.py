@@ -139,6 +139,11 @@ class TestTuyaCloudlessSensor:
         entity._spec = spec
         assert entity._spec.state_class == "nonexistent_class"
 
+    def test_native_value_string_dp(self) -> None:
+        """When the raw DP value is a string, native_value returns it as-is (line 122)."""
+        e = _make_sensor({"19": "some_mode"})
+        assert e.native_value == "some_mode"
+
 
 # ── TuyaLastSeenSensor ────────────────────────────────────────────────────────
 

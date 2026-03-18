@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from homeassistant.components.light import (
@@ -13,6 +13,7 @@ from homeassistant.components.light import (
     ColorMode,
     LightEntityFeature,
 )
+from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from tuya_cloudless.profiles import DPSpec, EntitySpec
 
 from custom_components.tuya_cloudless.coordinator import DeviceState
@@ -394,3 +395,159 @@ class TestLightSetupEntry:
         added: list = []
         await async_setup_entry(MagicMock(), entry, lambda entities: added.extend(entities))
         assert len(added) == 0
+
+
+# ── Helper: run the real async_added_to_hass with a mocked last state ──────────
+
+
+async def _run_restore(entity: TuyaCloudlessLight, state_str: str | None) -> None:
+    mock_state = MagicMock() if state_str is not None else None
+    if mock_state is not None:
+        mock_state.state = state_str
+        mock_state.attributes = {}
+    entity.async_get_last_state = AsyncMock(return_value=mock_state)
+    with patch.object(CoordinatorEntity, "async_added_to_hass", AsyncMock()):
+        await entity.async_added_to_hass()
+
+
+# ── Restore state (lines 190-192) ──────────────────────────────────────────────
+
+
+class TestLightRestoreState:
+    """Tests for async_added_to_hass restore logic (lines 189-192)."""
+
+    @pytest.mark.asyncio
+    async def test_restore_state_on_sets_optimistic_true(self) -> None:
+        """STATE_ON → _optimistic_state=True."""
+        from homeassistant.const import STATE_ON
+
+        e = _make_light({})
+        e._restored_state = None
+        await _run_restore(e, STATE_ON)
+        assert e._optimistic_state is True
+
+    @pytest.mark.asyncio
+    async def test_restore_state_off_sets_optimistic_false(self) -> None:
+        """STATE_OFF → _optimistic_state=False."""
+        from homeassistant.const import STATE_OFF
+
+        e = _make_light({})
+        e._restored_state = None
+        await _run_restore(e, STATE_OFF)
+        assert e._optimistic_state is False
+
+    @pytest.mark.asyncio
+    async def test_restore_state_unavailable_does_not_set_optimistic(self) -> None:
+        """'unavailable' must not set _optimistic_state."""
+        e = _make_light({})
+        e._optimistic_state = None
+        e._restored_state = None
+        await _run_restore(e, "unavailable")
+        assert e._optimistic_state is None
+
+    @pytest.mark.asyncio
+    async def test_restore_no_prior_state_keeps_optimistic_none(self) -> None:
+        """No prior state → _optimistic_state stays None."""
+        e = _make_light({})
+        e._optimistic_state = None
+        e._restored_state = None
+        await _run_restore(e, None)
+        assert e._optimistic_state is None
+
+
+# ── _handle_coordinator_update (lines 197-198) ─────────────────────────────────
+
+
+class TestLightHandleCoordinatorUpdate:
+    """Tests for _handle_coordinator_update (lines 194-198)."""
+
+    def test_coordinator_update_clears_optimistic_state(self) -> None:
+        """_handle_coordinator_update must clear _optimistic_state and call super."""
+        e = _make_light({"1": True})
+        e._optimistic_state = True
+
+        with patch.object(CoordinatorEntity, "_handle_coordinator_update") as mock_super:
+            e._handle_coordinator_update()
+
+        assert e._optimistic_state is None
+        mock_super.assert_called_once()
+
+
+# ── color_mode fallback paths (lines 229-231) ──────────────────────────────────
+
+
+class TestColorModeFallbacks:
+    """Tests for color_mode property fallback paths (lines 224-231)."""
+
+    def test_color_mode_color_temp_only_no_hs(self) -> None:
+        """When only COLOR_TEMP is supported (no HS), color_mode returns COLOR_TEMP."""
+        # Create a light with dp_color_temp but NO hs support and NO dp_color_mode
+        spec = _make_light_spec(
+            dp_color_temp_id="3",
+            dp_brightness_id=None,
+            dp_hs_hue_id=None,
+            dp_hs_sat_id=None,
+            dp_color_mode_id=None,
+        )
+        e = _make_light({}, spec=spec)
+        # Supported modes will only contain COLOR_TEMP (because no HS)
+        assert ColorMode.COLOR_TEMP in e._attr_supported_color_modes
+        assert ColorMode.HS not in e._attr_supported_color_modes
+        # len(modes) > 1 only if we force it; single mode returns via the len==1 branch
+        # Force multiple modes to hit the ColorMode.COLOR_TEMP branch
+        e._attr_supported_color_modes = frozenset({ColorMode.COLOR_TEMP, ColorMode.BRIGHTNESS})
+        assert e.color_mode == ColorMode.COLOR_TEMP
+
+    def test_color_mode_onoff_when_no_hs_no_ct(self) -> None:
+        """When neither HS nor COLOR_TEMP is in supported modes, returns ONOFF (line 231)."""
+        spec = _make_light_spec(dp_brightness_id=None, dp_color_temp_id=None)
+        e = _make_light({}, spec=spec)
+        # Force supported_color_modes to multiple modes that include neither HS nor COLOR_TEMP
+        e._attr_supported_color_modes = frozenset({ColorMode.ONOFF, ColorMode.BRIGHTNESS})
+        assert e.color_mode == ColorMode.ONOFF
+
+
+# ── async_turn_on with brightness in HS colour mode + dp_color_mode (line 391) ─
+
+
+class TestTurnOnBrightnessWithColorMode:
+    """Tests for async_turn_on standalone brightness in colour mode (line 390-391)."""
+
+    @pytest.mark.asyncio
+    async def test_turn_on_brightness_in_hs_mode_sets_color_mode_dp(self) -> None:
+        """Brightness in colour mode with dp_colour_data+dp_color_mode sets colour mode DP."""
+        spec = EntitySpec(
+            platform="light",
+            name="main_light",
+            dp_power=DPSpec(id="1", type="bool"),
+            dp_brightness=DPSpec(id="2", type="int", min_raw=10, max_raw=1000),
+            dp_colour_data=DPSpec(id="5", type="str"),
+            dp_color_mode=DPSpec(id="6", type="enum"),
+        )
+        # Put HS data in DPs so hs_color is non-None and color_mode returns HS
+        # colour_data format: "HHHHSSSSVVVV" (hex strings)
+        # 120 degrees hue = 0x0078, 50% sat = 0x01F4 (max 1000 = 0x03E8 → 500 for 50%),
+        # brightness 128 HA → tuya ~(128/255)*(990)+10 ≈ 507 → 0x01FB
+        colour_data_val = "007801f401fb"
+        dps: dict[str, Any] = {"1": True, "5": colour_data_val, "6": "colour"}
+        coord = _make_coordinator(dps)
+        entity = TuyaCloudlessLight.__new__(TuyaCloudlessLight)
+        entity.coordinator = coord
+        entity._dp_id = "1"
+        entity._spec = spec
+        entity._attr_unique_id = "gw001_light_main_light"
+        entity._attr_translation_key = "main_light"
+        entity._attr_min_color_temp_kelvin = 2700
+        entity._attr_max_color_temp_kelvin = 6500
+        entity._attr_supported_color_modes = frozenset({ColorMode.HS})
+        entity._attr_effect_list = None
+        entity._attr_supported_features = LightEntityFeature(0)
+        entity._optimistic_state = None
+        entity.async_write_ha_state = MagicMock()
+
+        await entity.async_turn_on(**{ATTR_BRIGHTNESS: 128})
+
+        dps_sent = entity.coordinator.async_send_dps.call_args[0][0]
+        # dp_color_mode should be set to "colour"
+        assert "6" in dps_sent
+        assert dps_sent["6"] == "colour"

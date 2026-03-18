@@ -52,8 +52,27 @@ def _make_switch(
     entity._attr_unique_id = f"{gw_id}_{spec.platform}_{spec.name}"
     entity._attr_translation_key = spec.name
     entity._optimistic_state = None  # set by __init__ normally
+    entity._restored_state = None  # set by RestoreStateMixin normally
     entity.async_write_ha_state = MagicMock()  # stub out HA framework call
     return entity
+
+
+# Helper: run the real async_added_to_hass with a mocked last state.
+async def _run_restore(
+    entity: TuyaCloudlessSwitch,
+    state_str: str | None,
+) -> None:
+    from unittest.mock import AsyncMock, patch
+
+    from homeassistant.helpers.update_coordinator import CoordinatorEntity
+
+    mock_state = MagicMock() if state_str is not None else None
+    if mock_state is not None:
+        mock_state.state = state_str
+        mock_state.attributes = {}
+    entity.async_get_last_state = AsyncMock(return_value=mock_state)
+    with patch.object(CoordinatorEntity, "async_added_to_hass", AsyncMock()):
+        await entity.async_added_to_hass()
 
 
 # ── Tests ──────────────────────────────────────────────────────────────────────
@@ -161,3 +180,85 @@ class TestSwitchSetupEntry:
         entity._attr_unique_id = f"gw001_{spec.platform}_{spec.name}"
         entity._optimistic_state = None
         assert entity.is_on is True
+
+
+class TestSwitchRestoreState:
+    """Tests for async_added_to_hass restore logic (lines 83-85)."""
+
+    @pytest.mark.asyncio
+    async def test_restore_on_sets_optimistic_true(self) -> None:
+        """Real async_added_to_hass: 'on' → _optimistic_state=True."""
+        from homeassistant.const import STATE_ON
+
+        e = _make_switch({})
+        await _run_restore(e, STATE_ON)
+        assert e._optimistic_state is True
+        assert e.is_on is True
+
+    @pytest.mark.asyncio
+    async def test_restore_off_sets_optimistic_false(self) -> None:
+        """Real async_added_to_hass: 'off' → _optimistic_state=False."""
+        from homeassistant.const import STATE_OFF
+
+        e = _make_switch({})
+        await _run_restore(e, STATE_OFF)
+        assert e._optimistic_state is False
+        assert e.is_on is False
+
+    @pytest.mark.asyncio
+    async def test_restore_other_state_not_applied(self) -> None:
+        """Real async_added_to_hass: 'unavailable' must not set optimistic."""
+        e = _make_switch({})
+        await _run_restore(e, "unavailable")
+        assert e._optimistic_state is None
+
+    @pytest.mark.asyncio
+    async def test_restore_none_state_not_applied(self) -> None:
+        """Real async_added_to_hass: no recorded state → optimistic untouched."""
+        e = _make_switch({})
+        await _run_restore(e, None)
+        assert e._optimistic_state is None
+
+
+class TestSwitchCoordinatorUpdate:
+    """Tests for _handle_coordinator_update clearing optimistic (lines 90-91)."""
+
+    def test_coordinator_update_clears_optimistic(self) -> None:
+        """_handle_coordinator_update clears _optimistic_state."""
+        e = _make_switch({"1": True})
+        e._optimistic_state = True
+        e.coordinator.data = e.coordinator.state
+        e._handle_coordinator_update()
+        assert e._optimistic_state is None
+
+    def test_is_on_returns_optimistic_when_set(self) -> None:
+        """is_on returns _optimistic_state when it is not None."""
+        e = _make_switch({"1": False})
+        e._optimistic_state = True
+        assert e.is_on is True
+
+
+class TestSwitchErrorPaths:
+    """Tests for async_turn_on/off error revert paths (lines 119-122, 136-139)."""
+
+    @pytest.mark.asyncio
+    async def test_turn_on_reverts_on_error(self) -> None:
+        """async_turn_on reverts optimistic state on HomeAssistantError."""
+        from homeassistant.exceptions import HomeAssistantError
+
+        e = _make_switch({"1": False})
+        e.coordinator.async_send_dps.side_effect = HomeAssistantError("send failed")
+        with pytest.raises(HomeAssistantError):
+            await e.async_turn_on()
+        assert e._optimistic_state is None
+
+    @pytest.mark.asyncio
+    async def test_turn_off_reverts_on_error(self) -> None:
+        """async_turn_off reverts optimistic state on HomeAssistantError."""
+        from homeassistant.exceptions import HomeAssistantError
+
+        e = _make_switch({"1": True})
+        e.coordinator.async_send_dps.side_effect = HomeAssistantError("send failed")
+        with pytest.raises(HomeAssistantError):
+            await e.async_turn_off()
+        assert e._optimistic_state is None

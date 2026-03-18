@@ -486,3 +486,248 @@ class TestCoordinatorInit:
     def test_session_key_initially_none(self) -> None:
         coord = self._make_coord_direct()
         assert coord._session_key is None  # type: ignore[union-attr]
+
+
+class TestCoordinatorProperties:
+    """Tests for public property accessors (lines 848-865)."""
+
+    def test_tcp_connected_false_when_writer_none(self) -> None:
+        """tcp_connected returns False when _writer is None (line 850)."""
+        coord = _make_coord()
+        coord._writer = None  # type: ignore[union-attr]
+        assert coord.tcp_connected is False  # type: ignore[union-attr]
+
+    def test_tcp_connected_true_when_writer_set(self) -> None:
+        """tcp_connected returns True when _writer is not None (line 850)."""
+        coord = _make_coord()
+        coord._writer = MagicMock()  # type: ignore[union-attr]
+        assert coord.tcp_connected is True  # type: ignore[union-attr]
+
+    def test_sequence_counter_returns_current_value(self) -> None:
+        """sequence_counter returns _sequence (line 855)."""
+        coord = _make_coord()
+        coord._sequence = 42  # type: ignore[union-attr]
+        assert coord.sequence_counter == 42  # type: ignore[union-attr]
+
+    def test_session_key_active_false_when_none(self) -> None:
+        """session_key_active returns False when _session_key is None (line 860)."""
+        coord = _make_coord()
+        coord._session_key = None  # type: ignore[union-attr]
+        assert coord.session_key_active is False  # type: ignore[union-attr]
+
+    def test_session_key_active_true_when_set(self) -> None:
+        """session_key_active returns True when _session_key is not None (line 860)."""
+        coord = _make_coord()
+        coord._session_key = b"some_key"  # type: ignore[union-attr]
+        assert coord.session_key_active is True  # type: ignore[union-attr]
+
+    def test_consecutive_decode_errors_returns_count(self) -> None:
+        """consecutive_decode_errors returns _consecutive_decode_errors (line 865)."""
+        coord = _make_coord()
+        coord._consecutive_decode_errors = 7  # type: ignore[union-attr]
+        assert coord.consecutive_decode_errors == 7  # type: ignore[union-attr]
+
+
+class TestReceiveLoopBufErrors:
+    """Tests for buffer-level decode error accumulation (lines 524-542)."""
+
+    @pytest.mark.asyncio
+    async def test_buf_errors_below_max_accumulate(self) -> None:
+        """buf_errors > 0 but below _MAX_CONSECUTIVE_ERRORS: counter increments, loop continues."""
+        coord = _make_coord()
+        coord._writer = MagicMock()  # type: ignore[union-attr]
+        coord._writer.close = MagicMock()
+
+        call_count = 0
+
+        class FakeMsgBuf:
+            def __init__(self, **kwargs: object) -> None:
+                pass
+
+            def feed(self, chunk: bytes) -> None:
+                pass
+
+            @property
+            def pending_bytes(self) -> int:
+                return 0
+
+            def messages(self) -> list:  # type: ignore[type-arg]
+                return []
+
+            def pop_error_count(self) -> int:
+                return 1  # one buffer error per iteration
+
+        reader = asyncio.StreamReader()
+
+        async def fake_read(_n: int) -> bytes:
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                return b"\x01"  # first call returns data → triggers buf_errors path
+            return b""  # second call returns empty → breaks loop
+
+        reader.read = fake_read  # type: ignore[method-assign]
+
+        with patch("tuya_cloudless.message.MessageBuffer", FakeMsgBuf):
+            await coord._receive_loop(reader)  # type: ignore[union-attr]
+
+        # After one iteration with 1 buf_error, counter should be 1
+        assert coord._consecutive_decode_errors == 1  # type: ignore[union-attr]
+        # writer was NOT closed (errors below max)
+        coord._writer.close.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_buf_errors_at_max_triggers_reconnect(self) -> None:
+        """buf_errors that push counter to _MAX_CONSECUTIVE_ERRORS closes writer and returns."""
+        coord = _make_coord()
+        coord._consecutive_decode_errors = 4  # type: ignore[union-attr]  # one away from max (5)
+        writer = MagicMock()
+        writer.close = MagicMock()
+        coord._writer = writer  # type: ignore[union-attr]
+
+        call_count = 0
+
+        class FakeMsgBufMax:
+            def __init__(self, **kwargs: object) -> None:
+                pass
+
+            def feed(self, chunk: bytes) -> None:
+                pass
+
+            @property
+            def pending_bytes(self) -> int:
+                return 0
+
+            def messages(self) -> list:  # type: ignore[type-arg]
+                return []
+
+            def pop_error_count(self) -> int:
+                return 1  # pushes total from 4 → 5 = _MAX_CONSECUTIVE_ERRORS
+
+        reader = asyncio.StreamReader()
+
+        async def fake_read_once(_n: int) -> bytes:
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                return b"\x01"
+            return b""
+
+        reader.read = fake_read_once  # type: ignore[method-assign]
+
+        with (
+            patch("tuya_cloudless.message.MessageBuffer", FakeMsgBufMax),
+            patch("homeassistant.helpers.issue_registry.async_create_issue"),
+        ):
+            await coord._receive_loop(reader)  # type: ignore[union-attr]
+
+        # writer.close() must have been called to trigger reconnect
+        writer.close.assert_called_once()
+
+
+class TestNegotiateSessionKeyOnce:
+    """Tests for _negotiate_session_key_once (lines 686-753)."""
+
+    @pytest.mark.asyncio
+    async def test_raises_on_oversized_payload(self) -> None:
+        """Frame payload length > MAX_PAYLOAD_SIZE must raise TuyaCloudlessError (line 699)."""
+        import struct as _struct
+
+        from tuya_cloudless.const import FRAME_HEADER_SIZE, MAX_PAYLOAD_SIZE
+        from tuya_cloudless.exceptions import TuyaCloudlessError
+
+        coord = _make_coord()
+
+        # Build a fake header where bytes 12-16 encode a huge payload length
+        oversized_len = MAX_PAYLOAD_SIZE + 1
+        header = (
+            b"\x00" * 12 + _struct.pack(">I", oversized_len) + b"\x00" * (FRAME_HEADER_SIZE - 16)
+        )
+
+        reader = MagicMock()
+        reader.readexactly = AsyncMock(return_value=header)
+
+        writer = MagicMock()
+        writer.write = MagicMock()
+        writer.drain = AsyncMock()
+
+        # generate_ecdh_keypair is imported locally inside the method from tuya_cloudless.crypto
+        mock_keypair = MagicMock()
+        mock_keypair.public_key_bytes = b"\x00" * 32
+
+        with (
+            patch(
+                "tuya_cloudless.crypto.generate_ecdh_keypair",
+                return_value=mock_keypair,
+            ),
+            patch(
+                "tuya_cloudless.protocol.encode_session_key_start",
+                return_value=b"\x00" * 20,
+            ),
+            pytest.raises(TuyaCloudlessError, match="too large"),
+        ):
+            await coord._negotiate_session_key_once(reader, writer)  # type: ignore[union-attr]
+
+    @pytest.mark.asyncio
+    async def test_full_negotiation_success(self) -> None:
+        """Successful negotiation returns a session key bytes object (lines 736-753)."""
+        import struct as _struct
+
+        from tuya_cloudless.const import FRAME_HEADER_SIZE
+
+        coord = _make_coord()
+        coord._version = "3.4"  # type: ignore[union-attr]
+
+        # Build a valid-looking header with a small payload length
+        payload_len = 64
+        header = b"\x00" * 12 + _struct.pack(">I", payload_len) + b"\x00" * (FRAME_HEADER_SIZE - 16)
+        payload_bytes = b"\x00" * payload_len
+
+        call_count = 0
+
+        async def fake_readexactly(n: int) -> bytes:
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                return header
+            return payload_bytes
+
+        reader = MagicMock()
+        reader.readexactly = AsyncMock(side_effect=fake_readexactly)
+
+        writer = MagicMock()
+        writer.write = MagicMock()
+        writer.drain = AsyncMock()
+
+        from tuya_cloudless.protocol import TuyaFrame
+
+        mock_frame = TuyaFrame(sequence=1, command=0x03, version="3.3", payload=b"\xab" * 32)
+        fake_session_key = b"\xff" * 16
+
+        mock_keypair = MagicMock()
+        mock_keypair.public_key_bytes = b"\x00" * 32
+        mock_keypair.private_key = b"\x01" * 32
+
+        with (
+            patch(
+                "tuya_cloudless.crypto.generate_ecdh_keypair",
+                return_value=mock_keypair,
+            ),
+            patch(
+                "tuya_cloudless.protocol.encode_session_key_start",
+                return_value=b"\x00" * 20,
+            ),
+            patch("tuya_cloudless.protocol.split_frames", return_value=([b"rawframe"], b"")),
+            patch("tuya_cloudless.protocol.decode_frame", return_value=mock_frame),
+            patch(
+                "tuya_cloudless.crypto.derive_session_key",
+                return_value=fake_session_key,
+            ),
+            patch(
+                "tuya_cloudless.protocol.encode_session_key_finish",
+                return_value=b"\x00" * 20,
+            ),
+        ):
+            result = await coord._negotiate_session_key_once(reader, writer)  # type: ignore[union-attr]
+
+        assert result == fake_session_key

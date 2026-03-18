@@ -474,3 +474,75 @@ class TestSendRawDpsSchema:
         import custom_components.tuya_cloudless as init_mod
 
         assert hasattr(init_mod, "_SEND_RAW_DPS_SCHEMA")
+
+
+# ── _handle_send_raw_dps HomeAssistantError re-raise (line 270) ───────────────
+
+
+class TestSendRawDpsHandlerHomeAssistantError:
+    """Verify that HomeAssistantError from coordinator propagates as-is (line 268-270)."""
+
+    @pytest.mark.asyncio
+    async def test_coordinator_homeassistant_error_propagates(self) -> None:
+        """If coordinator.async_send_dps raises HomeAssistantError, it must propagate.
+
+        _handle_send_raw_dps is a closure created by _register_services, so we
+        trigger it by calling async_setup_entry (which calls _register_services)
+        and then invoking the registered service handler directly.
+        """
+        from homeassistant.exceptions import HomeAssistantError
+
+        from custom_components.tuya_cloudless import TuyaCloudlessRuntimeData, async_setup_entry
+
+        hass = _make_hass()
+        entry = _make_entry()
+
+        mock_coord = MagicMock()
+        mock_coord.async_start = AsyncMock()
+        mock_coord.async_send_dps = AsyncMock(
+            side_effect=HomeAssistantError("device rejected command")
+        )
+
+        mock_profile = MagicMock()
+        mock_profile.name = "Generic Switch"
+        mock_profile.entities = []
+
+        # Capture the registered service handler
+        registered_handlers: dict[str, object] = {}
+
+        def _capture_register(domain: str, service: str, handler: object, **kw: object) -> None:
+            registered_handlers[service] = handler
+
+        hass.services.has_service = MagicMock(return_value=False)
+        hass.services.async_register = MagicMock(side_effect=_capture_register)
+
+        with (
+            patch(
+                "custom_components.tuya_cloudless.TuyaCloudlessCoordinator.from_config_entry",
+                return_value=mock_coord,
+            ),
+            patch(
+                "custom_components.tuya_cloudless._resolve_profile",
+                return_value=mock_profile,
+            ),
+        ):
+            await async_setup_entry(hass, entry)
+
+        handler = registered_handlers.get("send_raw_dps")
+        assert handler is not None
+
+        # Set up a runtime_data so the handler can find the coordinator
+        entry.runtime_data = TuyaCloudlessRuntimeData(
+            coordinator=mock_coord,
+            entity_specs=(),
+            profile_name="Generic Switch",
+        )
+
+        # hass.config_entries.async_get_entry must return our entry
+        hass.config_entries.async_get_entry = MagicMock(return_value=entry)
+
+        call = MagicMock()
+        call.data = {"entry_id": entry.entry_id, "dps": {"1": True}}
+
+        with pytest.raises(HomeAssistantError):
+            await handler(call)  # type: ignore[operator]

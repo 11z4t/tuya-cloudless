@@ -135,6 +135,38 @@ class TestTuyaCloudlessButton:
         assert e._attr_translation_key == "start_cycle"
 
 
+class TestButtonDeviceClass:
+    """Tests for device_class handling in __init__ (lines 77-82)."""
+
+    def test_valid_device_class_sets_attr(self) -> None:
+        """Valid device_class string sets _attr_device_class via ButtonDeviceClass."""
+        from homeassistant.components.button import ButtonDeviceClass
+
+        coord = _make_coordinator()
+        spec = EntitySpec(
+            platform="button",
+            name="identify",
+            dp_power=DPSpec(id="1", type="bool"),
+            device_class="identify",
+        )
+        entity = TuyaCloudlessButton(coord, spec)
+        assert entity._attr_device_class == ButtonDeviceClass.IDENTIFY
+
+    def test_invalid_device_class_logs_warning_and_is_ignored(self) -> None:
+        """Invalid device_class logs warning and does not crash or set attr."""
+        coord = _make_coordinator()
+        spec = EntitySpec(
+            platform="button",
+            name="mystery",
+            dp_power=DPSpec(id="1", type="bool"),
+            device_class="invalid_device_class",
+        )
+        # Must not raise — ValueError is caught and a warning is logged
+        entity = TuyaCloudlessButton(coord, spec)
+        # _attr_device_class must not be set to the invalid string
+        assert getattr(entity, "_attr_device_class", None) != "invalid_device_class"
+
+
 class TestButtonSetupEntry:
     @pytest.mark.asyncio
     async def test_setup_creates_entities(self) -> None:

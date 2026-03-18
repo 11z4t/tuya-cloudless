@@ -219,7 +219,7 @@ class TestFanSetupEntry:
         from custom_components.tuya_cloudless import TuyaCloudlessRuntimeData
         from custom_components.tuya_cloudless.fan import async_setup_entry
 
-        coord = _make_coordinator({"1": True})
+        coord = _make_coordinator()
         spec = _make_full_fan_spec()
         runtime = TuyaCloudlessRuntimeData(
             coordinator=coord,
@@ -682,3 +682,210 @@ class TestFanRestoreExtraData:
         assert e._optimistic_preset_mode is None
         assert e._optimistic_oscillating is None
         assert e._optimistic_direction is None
+
+
+# ── Missing line coverage tests ────────────────────────────────────────────────
+
+
+class TestFanIsOnDpPowerNone:
+    """Line 153: is_on returns None when dp_power is None."""
+
+    def test_is_on_none_when_dp_power_is_none(self) -> None:
+        """is_on returns None when the spec has no dp_power (line 153)."""
+        spec = EntitySpec(platform="fan", name="no_power_fan")
+        e = _make_fan({"1": True}, spec=spec)
+        e._spec = spec
+        assert e.is_on is None
+
+
+class TestFanRawToPercentageEdgeCases:
+    """Lines 163, 168: _raw_to_percentage edge cases."""
+
+    def test_raw_to_percentage_dp_none_returns_zero(self) -> None:
+        """_raw_to_percentage returns 0 when dp_value is None (line 163)."""
+        spec = EntitySpec(platform="fan", name="no_dp_fan")
+        e = _make_fan({}, spec=spec)
+        e._spec = spec
+        assert e._raw_to_percentage(50) == 0
+
+    def test_raw_to_percentage_span_zero_returns_100(self) -> None:
+        """_raw_to_percentage returns 100 when min_raw==max_raw (span==0, line 168)."""
+        spec = EntitySpec(
+            platform="fan",
+            name="span_zero_fan",
+            dp_power=DPSpec(id="1", type="bool"),
+            dp_value=DPSpec(id="3", type="int", min_raw=5, max_raw=5),
+        )
+        e = _make_fan({}, spec=spec)
+        assert e._raw_to_percentage(5) == 100
+
+
+class TestFanPercentageToRawDpNone:
+    """Line 175: _percentage_to_raw returns percentage as-is when dp_value is None."""
+
+    def test_percentage_to_raw_dp_none_returns_percentage(self) -> None:
+        """_percentage_to_raw returns the percentage unchanged when dp is None (line 175)."""
+        spec = EntitySpec(platform="fan", name="no_dp_fan")
+        e = _make_fan({}, spec=spec)
+        e._spec = spec
+        assert e._percentage_to_raw(60) == 60
+
+
+class TestFanPresetModeDpNoneAndOptimistic:
+    """Lines 204, 206: preset_mode guard and optimistic path."""
+
+    def test_preset_mode_none_when_dp_mode_is_none(self) -> None:
+        """preset_mode returns None when spec has no dp_mode (line 204)."""
+        e = _make_fan({}, spec=_make_power_only_fan_spec())
+        assert e.preset_mode is None
+
+    def test_preset_mode_returns_optimistic_when_set(self) -> None:
+        """preset_mode returns _optimistic_preset_mode when it is not None (line 206)."""
+        e = _make_fan({"2": "sleep"})
+        e._optimistic_preset_mode = "natural"
+        assert e.preset_mode == "natural"
+
+
+class TestFanOscillatingDpNoneAndOptimistic:
+    """Lines 219, 221, 224: oscillating guard, optimistic, and live None."""
+
+    def test_oscillating_none_when_dp_oscillate_is_none(self) -> None:
+        """oscillating returns None when spec has no dp_oscillate (line 219)."""
+        e = _make_fan({}, spec=_make_power_only_fan_spec())
+        assert e.oscillating is None
+
+    def test_oscillating_returns_optimistic_when_set(self) -> None:
+        """oscillating returns _optimistic_oscillating when it is not None (line 221)."""
+        e = _make_fan({"8": False})
+        e._optimistic_oscillating = True
+        assert e.oscillating is True
+
+    def test_oscillating_none_when_live_dp_returns_none(self) -> None:
+        """oscillating returns None when live DP value is not present (line 224)."""
+        e = _make_fan({})  # full spec, but no DP 8 value
+        assert e.oscillating is None
+
+
+class TestFanCurrentDirectionDpNoneAndOptimistic:
+    """Lines 234, 236, 239: current_direction guard, optimistic, and live None."""
+
+    def test_current_direction_none_when_dp_direction_is_none(self) -> None:
+        """current_direction returns None when spec has no dp_direction (line 234)."""
+        e = _make_fan({}, spec=_make_power_only_fan_spec())
+        assert e.current_direction is None
+
+    def test_current_direction_returns_optimistic_when_set(self) -> None:
+        """current_direction returns _optimistic_direction when not None (line 236)."""
+        e = _make_fan({"4": "forward"})
+        e._optimistic_direction = "reverse"
+        assert e.current_direction == "reverse"
+
+    def test_current_direction_none_when_live_dp_returns_none(self) -> None:
+        """current_direction returns None when live DP value is absent (line 239)."""
+        e = _make_fan({})  # full spec, but no DP 4 value
+        assert e.current_direction is None
+
+
+class TestFanTurnOnDpPowerNone:
+    """Line 256: async_turn_on returns early when dp_power is None."""
+
+    @pytest.mark.asyncio
+    async def test_turn_on_noop_when_dp_power_is_none(self) -> None:
+        """async_turn_on returns immediately when spec has no dp_power (line 256)."""
+        spec = EntitySpec(platform="fan", name="no_power_fan")
+        e = _make_fan({}, spec=spec)
+        e._spec = spec
+        await e.async_turn_on()
+        e.coordinator.async_send_dps.assert_not_awaited()
+
+
+class TestFanTurnOnWithPresetMode:
+    """Lines 261, 267: async_turn_on with preset_mode argument."""
+
+    @pytest.mark.asyncio
+    async def test_turn_on_with_preset_mode_sets_optimistic(self) -> None:
+        """async_turn_on(preset_mode=…) sets _optimistic_preset_mode (line 261)."""
+        e = _make_fan({"1": False})
+        await e.async_turn_on(preset_mode="sleep")
+        assert e._optimistic_preset_mode == "sleep"
+
+    @pytest.mark.asyncio
+    async def test_turn_on_with_preset_mode_includes_dp_mode_in_dps(self) -> None:
+        """async_turn_on(preset_mode=…) adds dp_mode to dps dict (line 267)."""
+        e = _make_fan({"1": False})
+        await e.async_turn_on(preset_mode="natural")
+        call_args = e.coordinator.async_send_dps.call_args[0][0]
+        assert call_args["2"] == "natural"
+        assert call_args["1"] is True
+
+
+class TestFanTurnOffDpPowerNone:
+    """Line 280: async_turn_off returns early when dp_power is None."""
+
+    @pytest.mark.asyncio
+    async def test_turn_off_noop_when_dp_power_is_none(self) -> None:
+        """async_turn_off returns immediately when spec has no dp_power (line 280)."""
+        spec = EntitySpec(platform="fan", name="no_power_fan")
+        e = _make_fan({}, spec=spec)
+        e._spec = spec
+        await e.async_turn_off()
+        e.coordinator.async_send_dps.assert_not_awaited()
+
+
+class TestFanTurnOffErrorPath:
+    """Lines 285-288: async_turn_off error revert path."""
+
+    @pytest.mark.asyncio
+    async def test_turn_off_reverts_on_error(self) -> None:
+        """async_turn_off reverts _optimistic_is_on on HomeAssistantError (lines 285-288)."""
+        from homeassistant.exceptions import HomeAssistantError
+
+        e = _make_fan({"1": True})
+        e.coordinator.async_send_dps.side_effect = HomeAssistantError("send failed")
+        with pytest.raises(HomeAssistantError):
+            await e.async_turn_off()
+        assert e._optimistic_is_on is None
+
+
+class TestFanSetPercentageDpValueNone:
+    """Line 297: async_set_percentage returns early when dp_value is None."""
+
+    @pytest.mark.asyncio
+    async def test_set_percentage_noop_when_dp_value_is_none(self) -> None:
+        """async_set_percentage returns immediately when spec has no dp_value (line 297)."""
+        e = _make_fan({}, spec=_make_power_only_fan_spec())
+        await e.async_set_percentage(60)
+        e.coordinator.async_send_dps.assert_not_awaited()
+
+
+class TestFanSetPresetModeDpModeNone:
+    """Line 315: async_set_preset_mode returns early when dp_mode is None."""
+
+    @pytest.mark.asyncio
+    async def test_set_preset_mode_noop_when_dp_mode_is_none(self) -> None:
+        """async_set_preset_mode returns immediately when spec has no dp_mode (line 315)."""
+        e = _make_fan({}, spec=_make_power_only_fan_spec())
+        await e.async_set_preset_mode("sleep")
+        e.coordinator.async_send_dps.assert_not_awaited()
+
+
+class TestFanOscillateDpOscillateNone:
+    """Line 332: async_oscillate returns early when dp_oscillate is None."""
+
+    @pytest.mark.asyncio
+    async def test_oscillate_noop_when_dp_oscillate_is_none(self) -> None:
+        """async_oscillate returns immediately when spec has no dp_oscillate (line 332)."""
+        e = _make_fan({}, spec=_make_power_only_fan_spec())
+        await e.async_oscillate(True)
+        e.coordinator.async_send_dps.assert_not_awaited()
+
+
+class TestFanSetDirectionDpDirectionNone:
+    """Line 349: async_set_direction returns early when dp_direction is None."""
+
+    @pytest.mark.asyncio
+    async def test_set_direction_noop_when_dp_direction_is_none(self) -> None:
+        """async_set_direction returns immediately when spec has no dp_direction (line 349)."""
+        e = _make_fan({}, spec=_make_power_only_fan_spec())
+        await e.async_set_direction("reverse")
+        e.coordinator.async_send_dps.assert_not_awaited()

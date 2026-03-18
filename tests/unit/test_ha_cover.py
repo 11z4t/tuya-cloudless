@@ -267,6 +267,22 @@ class TestCoverSetupEntry:
         assert len(added) == 0
 
 
+class TestCoverCoordinatorUpdate:
+    """Tests for _handle_coordinator_update clearing optimistic (lines 144-147)."""
+
+    def test_coordinator_update_clears_all_optimistic(self) -> None:
+        """_handle_coordinator_update clears _optimistic_open, _position, _tilt."""
+        e = _make_cover({"1": True, "2": 50})
+        e._optimistic_open = True
+        e._optimistic_position = 80
+        e._optimistic_tilt = 45
+        e.coordinator.data = e.coordinator.state
+        e._handle_coordinator_update()
+        assert e._optimistic_open is None
+        assert e._optimistic_position is None
+        assert e._optimistic_tilt is None
+
+
 class TestCoverStop:
     """PLAT-774: Cover STOP support — tests for async_stop_cover and STOP feature flag."""
 
@@ -509,6 +525,75 @@ class TestCoverRestoreState:
 
 
 # ── Restore extra-data tests (PLAT-718: exact position + tilt) ─────────────────
+
+
+class TestCoverDeviceClass:
+    """Test device_class handling via the real constructor (line 96, 99-101)."""
+
+    def test_valid_device_class_sets_attr(self) -> None:
+        """Valid device_class string sets _attr_device_class via CoverDeviceClass."""
+        from homeassistant.components.cover import CoverDeviceClass
+
+        spec = _make_cover_spec(device_class="blind")
+        coord = _make_coordinator()
+        entity = TuyaCloudlessCover(coord, spec)
+        assert entity._attr_device_class == CoverDeviceClass.BLIND
+
+    def test_invalid_device_class_is_suppressed(self) -> None:
+        """Invalid device_class does not crash — ValueError is suppressed."""
+        spec = _make_cover_spec(device_class="not_a_real_class")
+        coord = _make_coordinator()
+        entity = TuyaCloudlessCover(coord, spec)
+        assert getattr(entity, "_attr_device_class", None) != "not_a_real_class"
+
+    def test_dp_tilt_adds_set_tilt_position_feature(self) -> None:
+        """spec.dp_tilt sets SET_TILT_POSITION feature via real constructor (line 96)."""
+        spec = _make_cover_spec(dp_tilt_id="3")
+        coord = _make_coordinator()
+        entity = TuyaCloudlessCover(coord, spec)
+        assert CoverEntityFeature.SET_TILT_POSITION in entity._attr_supported_features
+
+
+class TestCoverIsClosedNoSpec:
+    """Line 175: is_closed returns None when neither dp_position nor dp_open are in spec."""
+
+    def test_is_closed_none_when_no_dp_open_no_dp_position(self) -> None:
+        """is_closed returns None when spec has neither dp_open nor dp_position (line 175)."""
+        spec = EntitySpec(platform="cover", name="bare_cover")
+        e = _make_cover(spec=spec)
+        assert e.is_closed is None
+
+
+class TestCoverCloseErrorPath:
+    """Tests for async_close_cover error revert path (lines 240-244)."""
+
+    @pytest.mark.asyncio
+    async def test_close_cover_reverts_on_error(self) -> None:
+        """async_close_cover reverts optimistic state on HomeAssistantError."""
+        from homeassistant.exceptions import HomeAssistantError
+
+        e = _make_cover({"1": True, "2": 100})
+        e.coordinator.async_send_dps.side_effect = HomeAssistantError("send failed")
+        with pytest.raises(HomeAssistantError):
+            await e.async_close_cover()
+        assert e._optimistic_open is None
+        assert e._optimistic_position is None
+
+
+class TestCoverTiltErrorPath:
+    """Tests for async_set_cover_tilt_position error revert path (lines 288-291)."""
+
+    @pytest.mark.asyncio
+    async def test_set_tilt_reverts_on_error(self) -> None:
+        """async_set_cover_tilt_position reverts optimistic tilt on HomeAssistantError."""
+        from homeassistant.exceptions import HomeAssistantError
+
+        spec = _make_cover_spec(dp_tilt_id="3")
+        e = _make_cover({"3": 0}, spec=spec)
+        e.coordinator.async_send_dps.side_effect = HomeAssistantError("send failed")
+        with pytest.raises(HomeAssistantError):
+            await e.async_set_cover_tilt_position(**{ATTR_TILT_POSITION: 45})
+        assert e._optimistic_tilt is None
 
 
 class TestCoverRestoreExtraData:

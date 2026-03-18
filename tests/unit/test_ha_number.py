@@ -147,6 +147,53 @@ class TestTuyaCloudlessNumber:
         coord.async_send_dps.assert_not_awaited()
 
 
+class TestNumberDeviceClassAndUnit:
+    """Tests for unit (line 83) and device_class (lines 86-91) in __init__."""
+
+    def test_unit_sets_native_unit_of_measurement(self) -> None:
+        """spec.unit sets _attr_native_unit_of_measurement (line 83)."""
+        coord = _make_coordinator()
+        spec = _make_number_spec(unit="°C")
+        entity = TuyaCloudlessNumber(coord, spec)
+        assert entity._attr_native_unit_of_measurement == "°C"
+
+    def test_no_unit_does_not_set_attr(self) -> None:
+        """When spec.unit is None, _attr_native_unit_of_measurement is not set."""
+        coord = _make_coordinator()
+        spec = _make_number_spec()  # unit=None by default
+        entity = TuyaCloudlessNumber(coord, spec)
+        assert (
+            not hasattr(entity, "_attr_native_unit_of_measurement")
+            or entity._attr_native_unit_of_measurement is None
+        )
+
+    def test_valid_device_class_sets_attr(self) -> None:
+        """Valid device_class string sets _attr_device_class (lines 86-91)."""
+        from homeassistant.components.number import NumberDeviceClass
+
+        coord = _make_coordinator()
+        spec = EntitySpec(
+            platform="number",
+            name="temperature",
+            dp_value=DPSpec(id="6", type="int", min_raw=0, max_raw=100),
+            device_class="temperature",
+        )
+        entity = TuyaCloudlessNumber(coord, spec)
+        assert entity._attr_device_class == NumberDeviceClass.TEMPERATURE
+
+    def test_invalid_device_class_logs_warning_and_is_ignored(self) -> None:
+        """Invalid device_class logs warning and does not crash or set attr."""
+        coord = _make_coordinator()
+        spec = EntitySpec(
+            platform="number",
+            name="mystery",
+            dp_value=DPSpec(id="6", type="int", min_raw=0, max_raw=100),
+            device_class="invalid_device_class",
+        )
+        entity = TuyaCloudlessNumber(coord, spec)
+        assert getattr(entity, "_attr_device_class", None) != "invalid_device_class"
+
+
 class TestNumberSetupEntry:
     @pytest.mark.asyncio
     async def test_setup_creates_entities(self) -> None:
