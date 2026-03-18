@@ -15,16 +15,6 @@
         "title": "BLE Pairing",
         "description": "The pairing tool is opening in your browser. Follow the steps to connect your device over Bluetooth.\n\n**Requires Chrome or Edge** (desktop or Android) and **HTTPS** — see the [HTTPS setup guide](https://github.com/11z4t/tuya-cloudless/wiki/HTTPS-Setup) if needed."
       },
-      "ha_url": {
-        "title": "Enter your Home Assistant address",
-        "description": "The address could not be detected automatically. Enter the URL you use to open Home Assistant in your browser.",
-        "data": {
-          "ha_url": "Home Assistant address"
-        },
-        "data_description": {
-          "ha_url": "For example: http://homeassistant.local:8123 or http://192.168.1.100:8123"
-        }
-      },
       "ble_confirm": {
         "title": "Device paired ✓",
         "description": "Your device at **{ip_address}** (ID: `{gw_id}`) was paired successfully. Give it a name and select the device type.",

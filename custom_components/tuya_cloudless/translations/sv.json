@@ -15,16 +15,6 @@
         "title": "BLE-parkoppling",
         "description": "Ihopkopplingsverktyget öppnas i din webbläsare. Följ stegen för att ansluta din enhet via Bluetooth.\n\n**Kräver Chrome eller Edge** (dator eller Android) och **HTTPS** — se [HTTPS-installationsguiden](https://github.com/11z4t/tuya-cloudless/wiki/HTTPS-Setup) vid behov."
       },
-      "ha_url": {
-        "title": "Ange din Home Assistant-adress",
-        "description": "Adressen kunde inte identifieras automatiskt. Ange den URL du använder för att öppna Home Assistant i din webbläsare.",
-        "data": {
-          "ha_url": "Home Assistant-adress"
-        },
-        "data_description": {
-          "ha_url": "Till exempel: http://homeassistant.local:8123 eller http://192.168.1.100:8123"
-        }
-      },
       "ble_confirm": {
         "title": "Enhet parkopplad ✓",
         "description": "Din enhet på **{ip_address}** (ID: `{gw_id}`) parkopplades. Ge den ett namn och välj enhetstyp.",

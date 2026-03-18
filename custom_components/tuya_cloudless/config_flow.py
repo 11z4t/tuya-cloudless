@@ -151,7 +151,6 @@ class TuyaCloudlessConfigFlow(ConfigFlow, domain=DOMAIN):
         """Initialize the config flow."""
         self._discovered: list[dict[str, Any]] = []
         self._device: dict[str, Any] = {}
-        self._ha_base_url: str = ""  # set by async_step_ha_url if auto-detection fails
 
     # ── Step 0: Pairing tool deep-link ─────────────────────────────────────────
 
@@ -234,22 +233,11 @@ class TuyaCloudlessConfigFlow(ConfigFlow, domain=DOMAIN):
 
         server.register_flow(self.flow_id)
 
-        # Resolve HA base URL.  If already provided by async_step_ha_url, use it.
-        # Otherwise try HA's network helper.  If that also fails, ask the user.
-        ha_base = self._ha_base_url
-        if not ha_base:
-            try:
-                from homeassistant.helpers.network import get_url
-
-                ha_base = get_url(self.hass, allow_internal=True, allow_external=False)
-            except Exception as exc:  # broad catch — URL resolution must never crash config flow
-                _LOGGER.debug("HA network helper unavailable in config flow: %s", exc)
-
-        if not ha_base:
-            # Can't determine HA address automatically — ask the user.
-            return await self.async_step_ha_url()
-
-        url = f"{ha_base.rstrip('/')}/api/tuya_cloudless/pair/{self.flow_id}"
+        # Point the external step directly at the pairing server.
+        # ha_local_url() resolves the best available hostname with three
+        # fallbacks and always returns a non-empty string, so no additional
+        # URL-resolution step is needed.
+        url = f"{server.ha_local_url()}/?flow_id={self.flow_id}"
         return self.async_external_step(
             step_id="ble_pair",
             url=url,
@@ -341,41 +329,6 @@ class TuyaCloudlessConfigFlow(ConfigFlow, domain=DOMAIN):
             Config flow result — external step pointing to the pairing UI.
         """
         return await self.async_step_ble_pair()
-
-    # ── Step 1b: Ask for HA address (fallback when auto-detection fails) ────────
-
-    async def async_step_ha_url(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
-        """Ask the user for their Home Assistant address.
-
-        Shown only when the HA base URL cannot be determined automatically
-        (e.g. no internal_url configured and network helper unavailable).
-        The user's answer is stored in ``self._ha_base_url`` and the flow
-        continues to :meth:`async_step_ble_pair`.
-
-        Args:
-            user_input: Submitted form data, or ``None`` on first render.
-
-        Returns:
-            Config flow result — form or advance to BLE pairing.
-        """
-        errors: dict[str, str] = {}
-
-        if user_input is not None:
-            ha_url = str(user_input.get("ha_url", "")).strip().rstrip("/")
-            if ha_url:
-                self._ha_base_url = ha_url
-                return await self.async_step_ble_pair()
-            errors["ha_url"] = "invalid_ha_url"
-
-        return self.async_show_form(
-            step_id="ha_url",
-            data_schema=vol.Schema(
-                {
-                    vol.Required("ha_url", default="http://homeassistant.local:8123"): str,
-                }
-            ),
-            errors=errors,
-        )
 
     # ── Step 2: Select ─────────────────────────────────────────────────────────
 
