@@ -13,7 +13,7 @@
   "loggers": ["tuya_cloudless"],
   "requirements": ["cryptography>=42.0", "aiohttp>=3.9"],
   "homeassistant": "2025.1.0",
-  "version": "0.5.3",
+  "version": "0.5.4",
   "zeroconf": [
     {"type": "_tuya._tcp.local."}
   ],
