@@ -441,6 +441,74 @@ test.describe("Browser compatibility", () => {
     await expect(page.locator("#err-browser-unsupported")).toBeVisible();
     await expect(page.locator("#panel-wifi")).toBeHidden();
   });
+
+  test("iOS: shows iOS-specific message, no QR, no Chrome button", async ({ page }) => {
+    await setupRoutes(page);
+    await page.addInitScript(() => {
+      window._TEST_IS_IOS = true;
+      Object.defineProperty(navigator, "bluetooth", {
+        value: undefined, configurable: true, writable: true,
+      });
+    });
+
+    await loadPage(page);
+    await page.locator("#ssid").click();
+    await page.locator("#ssid").fill("TestNet");
+    await page.locator("#btn-next").click();
+
+    await expect(page.locator("#warn-browser")).toBeVisible();
+    const body = await page.locator("#err-browser-body").textContent();
+    expect(body).toMatch(/iOS/i);
+    await expect(page.locator("#qr-section")).toBeHidden();
+    await expect(page.locator("#btn-open-chrome")).toHaveCount(0);
+    await expect(page.locator("#btn-pair")).toBeDisabled();
+  });
+
+  test("Android: shows Chrome intent button, no QR section", async ({ page }) => {
+    await setupRoutes(page);
+    await page.addInitScript(() => {
+      window._TEST_IS_ANDROID = true;
+      Object.defineProperty(navigator, "bluetooth", {
+        value: undefined, configurable: true, writable: true,
+      });
+    });
+
+    await loadPage(page);
+    await page.locator("#ssid").click();
+    await page.locator("#ssid").fill("TestNet");
+    await page.locator("#btn-next").click();
+
+    await expect(page.locator("#warn-browser")).toBeVisible();
+    await expect(page.locator("#btn-open-chrome")).toBeVisible();
+    const href = await page.locator("#btn-open-chrome").getAttribute("href");
+    expect(href).toMatch(/^intent:\/\//);
+    expect(href).toContain("com.android.chrome");
+    await expect(page.locator("#qr-section")).toBeHidden();
+    await expect(page.locator("#btn-pair")).toBeDisabled();
+  });
+
+  test("Android Chrome button click shows fallback note after timeout", async ({ page }) => {
+    await setupRoutes(page);
+    await page.addInitScript(() => {
+      window._TEST_IS_ANDROID = true;
+      Object.defineProperty(navigator, "bluetooth", {
+        value: undefined, configurable: true, writable: true,
+      });
+      // Speed up the 2500 ms timer
+      const orig = window.setTimeout;
+      window.setTimeout = (fn, delay, ...args) => orig(fn, delay > 100 ? 50 : delay, ...args);
+    });
+
+    await loadPage(page);
+    await page.locator("#ssid").click();
+    await page.locator("#ssid").fill("TestNet");
+    await page.locator("#btn-next").click();
+
+    await expect(page.locator("#btn-open-chrome")).toBeVisible();
+    await expect(page.locator("#chrome-not-installed")).toBeHidden();
+    await page.locator("#btn-open-chrome").click();
+    await expect(page.locator("#chrome-not-installed")).toBeVisible({ timeout: 3000 });
+  });
 });
 
 // ── Tests: Language picker ────────────────────────────────────────────────────
