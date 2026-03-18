@@ -26,9 +26,7 @@
   "btn_add_ha": "Dodaj do Home Assistant",
   "footer_github": "GitHub",
   "footer_no_cloud": "Nie wymaga konta w chmurze",
-  "wiki_help": "Pomoc / Konfiguracja HTTPS",
   "warn_no_ssid": "⚠ Najpierw wpisz nazwę sieci Wi-Fi.",
-  "err_no_ble": "❌ Web Bluetooth niedostępny. Użyj Chrome lub Edge.",
   "spin_scanning": "Szukanie urządzenia Tuya…",
   "spin_connecting": "Łączenie z {name}…",
   "spin_handshake": "Uzgadnianie połączenia…",
@@ -59,5 +57,6 @@
   "wifi_ap_error": "WiFi AP pairing failed. Check that the device is in pairing mode and try again.",
   "wifi_ap_waiting": "Credentials sent — waiting for device to join your network…",
   "btn_pair_wifi_ap": "Pair device →",
-  "step1_desc_wifiap": "Your device will connect to this network. Enter the password and click Pair."
+  "step1_desc_wifiap": "Your device will connect to this network. Enter the password and click Pair.",
+  "wifi_ap_timeout": "Device did not activate within 2 minutes. Check pairing mode and try again."
 }

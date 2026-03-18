@@ -241,7 +241,11 @@
       border: 1px solid var(--border);
       border-radius: 8px;
       padding: 14px;
+      /* dl/dt/dd reset */
+      margin: 0;
     }
+    .result-grid dt,
+    .result-grid dd { margin: 0; padding: 0; }
     .result-label { color: var(--muted); }
     .result-value { font-family: monospace; word-break: break-all; }
     .key-value    { color: var(--success); font-weight: 700; letter-spacing: .05em; }
@@ -263,6 +267,13 @@
       flex-shrink: 0;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
+
+    .btn-open-chrome {
+      margin-top: 10px;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
 
     .badge {
       font-size: 0.72rem;
@@ -479,7 +490,7 @@
     <div id="s1-error" class="status-box hidden"></div>
 
     <!-- WiFi AP inline pairing status (hidden on BLE path) -->
-    <div id="wifi-ap-status" class="status-box hidden"></div>
+    <div id="wifi-ap-status" class="status-box hidden" role="status" aria-live="polite"></div>
 
     <button class="btn btn-primary" id="btn-next" type="button">
       <span id="btn-next-label">Next →</span>
@@ -549,7 +560,7 @@
       <span id="btn-pair-label">Scan &amp; Pair</span>
     </button>
 
-    <div id="pair-status" class="status-box hidden"></div>
+    <div id="pair-status" class="status-box hidden" role="status" aria-live="polite"></div>
 
     <div class="help-banner">
       <span>❓</span>
@@ -563,7 +574,7 @@
   <div id="panel-done" class="step-panel hidden">
     <div class="done-check">✅</div>
     <div class="step-title" id="step3-title" style="text-align:center">Your device is ready!</div>
-    <div id="result-grid" class="result-grid"></div>
+    <dl id="result-grid" class="result-grid"></dl>
     <div id="ha-flow-msg" class="ha-flow-notice hidden">
       Home Assistant is setting up your device. You can close this window and continue in the Home Assistant UI.
     </div>

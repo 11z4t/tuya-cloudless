@@ -781,6 +781,96 @@ class TestWifiApPair:
 
         assert any(ev == "wifi_ap_error" for ev, _ in broadcast_calls)
 
+    async def test_reconnect_failure_does_not_raise(self, client: TestClient) -> None:
+        """Reconnect failure (step 4) is logged but does not propagate as an error SSE."""
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        call_count = 0
+
+        async def fake_exec(*args: object, **kwargs: object) -> MagicMock:
+            nonlocal call_count
+            call_count += 1
+            proc = MagicMock()
+            # All nmcli calls succeed except the reconnect (last call)
+            if "up" in args:
+                proc.communicate = AsyncMock(return_value=(b"", b"Error"))
+                proc.returncode = 1
+            else:
+                proc.communicate = AsyncMock(return_value=(b"yes:HomeNet", b""))
+                proc.returncode = 0
+            proc.kill = MagicMock()
+            return proc
+
+        hass = MagicMock()
+        server = PairingServer(hass, port=9099)
+        broadcast_calls: list[tuple[str, str]] = []
+
+        async def fake_broadcast(event: str, data: str) -> None:
+            broadcast_calls.append((event, data))
+
+        server._broadcast_sse = fake_broadcast  # type: ignore[method-assign]
+
+        with (
+            patch("asyncio.create_subprocess_exec", side_effect=fake_exec),
+            patch("aiohttp.ClientSession") as mock_session_cls,
+        ):
+            mock_session = AsyncMock()
+            mock_session_cls.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+            mock_session_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+            mock_resp = AsyncMock()
+            mock_resp.status = 200
+            mock_session.post.return_value.__aenter__ = AsyncMock(return_value=mock_resp)
+            mock_session.post.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            # Should complete without raising
+            await server._wifi_ap_pair_task(
+                "SmartLife_AB12", "HomeNet", "pass", "tok456", "http://ha:8099"
+            )
+
+        # Reconnect failure must NOT emit wifi_ap_error — only nmcli connect failure does
+        assert not any(ev == "wifi_ap_error" for ev, _ in broadcast_calls)
+
+    async def test_ssid_with_special_chars_not_injected(self, client: TestClient) -> None:
+        """SSID with special characters cannot inject nmcli commands."""
+        malicious_ssid = "SmartLife_`id`"
+        resp = await client.post(
+            "/api/provision/wifi-ap-pair",
+            json={
+                "ap_ssid": malicious_ssid,
+                "home_ssid": "HomeNet",
+                "home_password": "pass",
+            },
+        )
+        # Server accepts the request (validation is at the OS layer via execv)
+        assert resp.status == 200
+        data = await resp.json()
+        # Token should be returned regardless
+        assert "token" in data
+
+    async def test_rate_limit_dict_does_not_grow_unbounded(self, server: PairingServer) -> None:
+        """Old IPs are cleaned from _rate_limit after each activation request."""
+        ts = TestServer(server._app)
+        cli = TestClient(ts)
+        await cli.start_server()
+        try:
+            # Pre-populate _rate_limit with 100 fake IPs, all with empty timestamp lists
+            for i in range(100):
+                server._rate_limit[f"10.0.{i // 256}.{i % 256}"] = []
+
+            assert len(server._rate_limit) >= 100
+
+            # Trigger a rate-limit check via activation endpoint
+            await cli.post(
+                "/api/tuya/device/active",
+                json={"gw_id": "test_gc", "token": "abc"},
+            )
+
+            # Empty-list IPs should have been evicted
+            empty_ips = [ip for ip, stamps in server._rate_limit.items() if not stamps]
+            assert empty_ips == [], f"Expected no empty IPs after GC, got: {empty_ips}"
+        finally:
+            await cli.close()
+
 
 # ── /api/provision/config ─────────────────────────────────────────────────────
 

@@ -72,6 +72,15 @@ _HA_PAIRING_PREFIX: Final[str] = "/api/tuya_cloudless/pairing"
 #: local_key length in bytes (Tuya standard: 16 bytes → 16 ASCII chars)
 _LOCAL_KEY_BYTES: Final[int] = 16
 
+#: Tuya device AP gateway IP — devices in AP mode always use this address
+_TUYA_AP_GATEWAY_IP: Final[str] = "192.168.4.1"
+
+#: Timeout (seconds) for the HTTP POST to the Tuya device gateway
+_TUYA_AP_GW_TIMEOUT: Final[float] = 8.0
+
+#: Timeout (seconds) for waiting for WiFi reconnect after AP pair
+_TUYA_AP_RECONNECT_TIMEOUT: Final[float] = 20.0
+
 # ── Rate limiting constants ─────────────────────────────────────────────────
 
 #: Maximum activation requests per IP per window (SEC-001 / PLAT-824)
@@ -544,6 +553,8 @@ class PairingServer:
             return web.Response(status=429, text="Too Many Requests")
         timestamps.append(now)
         self._rate_limit[client_ip] = timestamps
+        # Evict IPs with no recent activity to prevent unbounded dict growth
+        self._rate_limit = {ip: ts_list for ip, ts_list in self._rate_limit.items() if ts_list}
 
         _LOGGER.debug("Activation request from %s", client_ip)
 
@@ -953,9 +964,9 @@ class PairingServer:
                 async with (
                     _aiohttp.ClientSession() as session,
                     session.post(
-                        "http://192.168.4.1/gw.json",
+                        f"http://{_TUYA_AP_GATEWAY_IP}/gw.json",
                         json=payload,
-                        timeout=_aiohttp.ClientTimeout(total=8),
+                        timeout=_aiohttp.ClientTimeout(total=_TUYA_AP_GW_TIMEOUT),
                     ) as resp,
                 ):
                     _LOGGER.debug("gw.json response: %s", resp.status)
@@ -976,7 +987,7 @@ class PairingServer:
                 try:
                     await _run(
                         ["nmcli", "connection", "up", prev_connection],
-                        timeout=20.0,
+                        timeout=_TUYA_AP_RECONNECT_TIMEOUT,
                     )
                 except Exception as exc:
                     _LOGGER.warning("WiFi AP pair: reconnect failed: %s", exc)

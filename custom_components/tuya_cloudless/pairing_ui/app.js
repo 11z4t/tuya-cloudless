@@ -225,6 +225,10 @@ const _haFlowId  = _urlParams.get("flow_id") || null;
 async function loadServerConfig() {
   try {
     const r = await fetch(_PROVISION_BASE + "/config");
+    if (!r.ok) {
+      dbg("WARNING: Server config unavailable (HTTP " + r.status + ") — using defaults");
+      return;
+    }
     if (r.ok) {
       const cfg = await r.json();
       if (cfg.activator_url) ACTIVATOR_URL = cfg.activator_url;
@@ -280,25 +284,42 @@ async function scanWifi() {
 function showWifiDropdown(ssids, currentSsid) {
   const dd = document.getElementById("wifi-dropdown");
   dd.innerHTML = "";
+  dd.setAttribute("role", "listbox");
+  dd.setAttribute("aria-label", t("ssid_label"));
   if (ssids.length === 0) {
     const item = document.createElement("div");
     item.className = "wifi-option muted";
+    item.setAttribute("role", "option");
+    item.setAttribute("aria-disabled", "true");
     item.textContent = t("wifi_scan_none");
     dd.appendChild(item);
   } else {
     for (const ssid of ssids) {
       const item = document.createElement("div");
       item.className = "wifi-option";
+      item.setAttribute("role", "option");
+      item.setAttribute("tabindex", "0");
       item.textContent = ssid;
       if (ssid === currentSsid) {
         item.className += " wifi-option-current";
+        item.setAttribute("aria-selected", "true");
         item.title = t("wifi_current_network") || "Current network";
       }
-      item.addEventListener("click", () => selectWifi(ssid));
+      const pick = () => selectWifi(ssid);
+      item.addEventListener("click", pick);
+      item.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); pick(); }
+        if (e.key === "ArrowDown") { e.preventDefault(); (item.nextElementSibling || item).focus(); }
+        if (e.key === "ArrowUp")   { e.preventDefault(); (item.previousElementSibling || item).focus(); }
+        if (e.key === "Escape")    { dd.classList.add("hidden"); document.getElementById("ssid").focus(); }
+      });
       dd.appendChild(item);
     }
   }
   dd.classList.remove("hidden");
+  // Move focus into the first item for keyboard users
+  const first = dd.querySelector("[tabindex='0']");
+  if (first) first.focus();
 }
 
 function selectWifi(ssid) {
@@ -309,15 +330,17 @@ function selectWifi(ssid) {
 // ── Device discovery ───────────────────────────────────────────────────────────
 function showDeviceCard(ssid) {
   const list = document.getElementById("device-list");
-  const card = document.createElement("div");
+  const card = document.createElement("button");
+  card.type = "button";
   card.className = "device-card";
   card.dataset.ssid = ssid;
+  card.setAttribute("aria-label", esc(ssid) + " — " + t("pair_via_wifi_ap"));
   card.innerHTML =
     "<div class=\"device-card-left\">" +
     "<div class=\"device-card-name\">" + esc(ssid) + "</div>" +
     "<span class=\"device-ap-badge\">" + esc(t("pair_via_wifi_ap")) + "</span>" +
     "</div>" +
-    "<span class=\"device-card-arrow\">›</span>";
+    "<span class=\"device-card-arrow\" aria-hidden=\"true\">\u203a</span>";
   card.addEventListener("click", () => selectDeviceWifiAp(ssid));
   list.appendChild(card);
 }
@@ -394,6 +417,9 @@ function goToDevices() {
   document.getElementById("panel-devices").classList.remove("hidden");
   updateStepCounter(1);
   dbg("Step 1: Device discovery");
+  // Move focus to panel heading for screen reader announcement
+  const title = document.getElementById("devices-title");
+  if (title) { title.setAttribute("tabindex", "-1"); title.focus(); }
 }
 
 function goToCredentials() {
@@ -402,6 +428,9 @@ function goToCredentials() {
   document.getElementById("panel-wifi").classList.remove("hidden");
   updateStepCounter(2);
   dbg("Step 2: WiFi credentials");
+  // Move focus to SSID input so user can start typing immediately
+  const ssidEl = document.getElementById("ssid");
+  if (ssidEl) ssidEl.focus();
 }
 
 // Called by btn-next — branches on _pairMethod
@@ -436,14 +465,15 @@ function showDone(gw_id, local_key, ip_address) {
   document.getElementById("panel-done").classList.remove("hidden");
   updateStepCounter(_TOTAL_STEPS + 1);  // hides counter
 
+  // Render as a <dl> for semantic structure (screen readers announce label/value pairs)
   const grid = document.getElementById("result-grid");
   grid.innerHTML =
-    "<span class=\"result-label\">" + esc(t("label_device_id")) + "</span>" +
-    "<span class=\"result-value\">" + esc(gw_id) + "</span>" +
-    "<span class=\"result-label\">" + esc(t("label_ip")) + "</span>" +
-    "<span class=\"result-value\">" + esc(ip_address) + "</span>" +
-    "<span class=\"result-label\">" + esc(t("label_local_key")) + "</span>" +
-    "<span class=\"result-value key-value\">" + esc(local_key) + "</span>";
+    "<dt class=\"result-label\">" + esc(t("label_device_id")) + "</dt>" +
+    "<dd class=\"result-value\">" + esc(gw_id) + "</dd>" +
+    "<dt class=\"result-label\">" + esc(t("label_ip")) + "</dt>" +
+    "<dd class=\"result-value\">" + esc(ip_address) + "</dd>" +
+    "<dt class=\"result-label\">" + esc(t("label_local_key")) + "</dt>" +
+    "<dd class=\"result-value key-value\">" + esc(local_key) + "</dd>";
 
   if (_haFlowId) {
     document.getElementById("ha-flow-msg").classList.remove("hidden");
@@ -638,16 +668,22 @@ async function pairViaWifiAp() {
 
     // Wire up SSE listener — server fires "activated" when device joins home WiFi
     const es = new EventSource(EVENTS_URL);
+
+    const wifiApCleanup = (enableBtn) => {
+      es.close();
+      clearTimeout(wifiApTimer);
+      if (enableBtn) btn.disabled = false;
+    };
+
     es.addEventListener("activated", (e) => {
       try {
         const d = JSON.parse(e.data);
         if (!token || d.token === token || !d.token) {
-          es.close();
-          if (_ssid) saveLastSsid(_ssid);
+          wifiApCleanup(true);
+          if (_ssid) saveLastSsid(_ssid);  // save only on confirmed activation
           setWifiApStatus("status-success", t("success_activated"));
           dbg("Device activated: " + d.gw_id + " \u2713");
           showDone(d.gw_id, d.local_key, d.ip_address);
-          btn.disabled = false;
         }
       } catch (_) {}
     });
@@ -655,19 +691,22 @@ async function pairViaWifiAp() {
       try {
         const d = JSON.parse(e.data);
         if (!token || d.token === token) {
-          es.close();
+          wifiApCleanup(true);
           setWifiApStatus("status-error", "\u274C " + esc(t("wifi_ap_error")));
           dbg("WiFi AP error: " + (d.error || "unknown"));
-          btn.disabled = false;
         }
       } catch (_) {}
     });
-    es.onerror = () => es.close();
-    setTimeout(() => es.close(), 120000);
+    es.onerror = () => wifiApCleanup(true);
+    // After 120s with no activation, show timeout error and re-enable button
+    const wifiApTimer = setTimeout(() => {
+      wifiApCleanup(true);
+      setWifiApStatus("status-error", "\u274C " + esc(t("wifi_ap_timeout") || t("wifi_ap_error")));
+      dbg("WiFi AP pair: activation timeout after 120s");
+    }, 120000);
 
     showWifiApSpinner(t("wifi_ap_waiting"));
     dbg("WiFi AP pair: waiting for activation SSE\u2026");
-    if (_ssid) saveLastSsid(_ssid);
   } catch (err) {
     setWifiApStatus("status-error", "\u274C " + esc(err.message));
     dbg("WiFi AP pair error: " + err.message);
@@ -709,6 +748,7 @@ async function startPairing() {
 
     await notifyChar.startNotifications();
     notifyChar.addEventListener("characteristicvaluechanged", onNotify);
+    const _cleanupNotify = () => notifyChar.removeEventListener("characteristicvaluechanged", onNotify);
 
     dbg(t("spin_handshake"));
     showSpinner(t("spin_handshake"));
@@ -742,9 +782,11 @@ async function startPairing() {
     dbg(t("spin_waiting"));
     showSpinner(t("spin_waiting"));
 
+    _cleanupNotify();
     if (server.connected) server.disconnect();
 
   } catch (err) {
+    if (typeof _cleanupNotify === "function") _cleanupNotify();
     es.close();
     if (err.name === "NotFoundError" || err.name === "AbortError") {
       setPairStatus("status-warn", t("warn_scan_cancelled"));
@@ -857,11 +899,7 @@ function copyShareUrl() {
       if (intentUrl) {
         const btn = document.createElement("a");
         btn.href = intentUrl;
-        btn.className = "btn btn-primary";
-        btn.style.marginTop = "10px";
-        btn.style.display = "inline-flex";
-        btn.style.alignItems = "center";
-        btn.style.gap = "6px";
+        btn.className = "btn btn-primary btn-open-chrome";
         btn.id = "btn-open-chrome";
         btn.innerHTML =
           "<svg width='16' height='16' viewBox='0 0 24 24' fill='none' aria-hidden='true'>" +
