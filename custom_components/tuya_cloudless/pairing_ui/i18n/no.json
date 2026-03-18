@@ -2,7 +2,7 @@
   "title": "Tuya Cloudless — Koble enhet",
   "lang_picker_label": "Språk",
   "error_https_required_title": "HTTPS kreves",
-  "error_https_required_body": "Web Bluetooth krever en sikker kontekst (HTTPS eller localhost). Din nåværende tilkobling er HTTP.",
+  "error_https_required_body": "Web Bluetooth krever HTTPS. Denne parringssiden åpnes via Home Assistant, som må konfigureres med HTTPS. Hvis du nådde denne siden direkte via HTTP, aktiver HTTPS i Home Assistant først.",
   "error_https_link": "HTTPS-oppsettsveiledning",
   "error_browser_title": "Nettleseren støttes ikke",
   "error_browser_body": "Web Bluetooth krever Chrome eller Edge på datamaskin eller Android. Safari og Firefox støtter ikke Web Bluetooth.",

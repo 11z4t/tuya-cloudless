@@ -2,7 +2,7 @@
   "title": "Tuya Cloudless — Parr enhed",
   "lang_picker_label": "Sprog",
   "error_https_required_title": "HTTPS påkrævet",
-  "error_https_required_body": "Web Bluetooth kræver en sikker kontekst (HTTPS eller localhost). Din nuværende forbindelse er HTTP.",
+  "error_https_required_body": "Web Bluetooth kræver HTTPS. Denne parringsside åbnes via din Home Assistant, som skal konfigureres med HTTPS. Hvis du nåede denne side direkte via HTTP, skal du først aktivere HTTPS i Home Assistant.",
   "error_https_link": "HTTPS-opsætningsvejledning",
   "error_browser_title": "Browser understøttes ikke",
   "error_browser_body": "Web Bluetooth kræver Chrome eller Edge på desktop eller Android. Safari og Firefox understøtter ikke Web Bluetooth.",

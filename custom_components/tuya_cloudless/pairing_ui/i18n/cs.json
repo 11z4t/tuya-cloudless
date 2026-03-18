@@ -2,7 +2,7 @@
   "title": "Tuya Cloudless — Spárovat zařízení",
   "lang_picker_label": "Jazyk",
   "error_https_required_title": "Vyžadován HTTPS",
-  "error_https_required_body": "Web Bluetooth vyžaduje zabezpečený kontext (HTTPS nebo localhost). Vaše aktuální připojení je HTTP.",
+  "error_https_required_body": "Web Bluetooth vyžaduje HTTPS. Tato stránka párování se otevírá prostřednictvím vašeho Home Assistant, který musí být nakonfigurován s HTTPS. Pokud jste se na tuto stránku dostali přímo přes HTTP, nejprve povolte HTTPS v Home Assistant.",
   "error_https_link": "Průvodce nastavením HTTPS",
   "error_browser_title": "Prohlížeč není podporován",
   "error_browser_body": "Web Bluetooth vyžaduje Chrome nebo Edge na počítači nebo Androidu. Safari a Firefox Web Bluetooth nepodporují.",

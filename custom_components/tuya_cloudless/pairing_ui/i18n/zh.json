@@ -2,7 +2,7 @@
   "title": "Tuya Cloudless — 配对设备",
   "lang_picker_label": "语言",
   "error_https_required_title": "需要 HTTPS",
-  "error_https_required_body": "Web 蓝牙需要安全上下文（HTTPS 或 localhost）。您当前的连接为 HTTP。",
+  "error_https_required_body": "Web Bluetooth需要HTTPS。此配对页面通过您的Home Assistant打开，Home Assistant必须配置为HTTPS。如果您直接通过HTTP访问此页面，请先在Home Assistant中启用HTTPS。",
   "error_https_link": "HTTPS 设置指南",
   "error_browser_title": "不支持此浏览器",
   "error_browser_body": "Web 蓝牙需要桌面或 Android 上的 Chrome 或 Edge。Safari 和 Firefox 不支持 Web 蓝牙。",

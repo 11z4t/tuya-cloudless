@@ -2,7 +2,7 @@
   "title": "Tuya Cloudless — Searvvahit Vehkiid",
   "lang_picker_label": "Giella",
   "error_https_required_title": "HTTPS dárbbašuvvo",
-  "error_https_required_body": "Web Bluetooth dárbbašugoahtá suodjaluvvon konteavstta (HTTPS dahje localhost). Du dálá oktavuohta lea HTTP.",
+  "error_https_required_body": "Web Bluetooth HTTPS-bajisin sáhttá. Dát searvvahangoddi rahpasuvvá Home Assistant-bajisin, mii galgá leat ráhkaduvvon HTTPS:ain. Jos leat boahtán siidii njuolga HTTP:a bokte, dábistit HTTPS Home Assistantas vuosttaš.",
   "error_https_link": "HTTPS-mearrádusmeroštallangohte",
   "error_browser_title": "Selainna ii doarjjo",
   "error_browser_body": "Web Bluetooth dárbbašugoahtá Chrome dahje Edge Windows dahje Android-sis. Safari ja Firefox eai doarjo Web Bluetooth.",

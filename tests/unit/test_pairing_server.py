@@ -7,6 +7,7 @@ and helper utilities — without needing a real HA instance or Tuya device.
 from __future__ import annotations
 
 import asyncio
+import json
 import sys
 import time
 from pathlib import Path
@@ -1522,3 +1523,328 @@ class TestCreateTaskUsed:
             srv.unregister_flow("flow-rob2")
 
         mock_ef.assert_not_called()
+
+
+# ── ha_ui_url ─────────────────────────────────────────────────────────────────
+
+
+class TestHaUiUrl:
+    """Tests for PairingServer.ha_ui_url() — prefers HTTPS HA over port 8099."""
+
+    def test_returns_https_url_when_ha_is_https(self) -> None:
+        """When HA's internal URL is HTTPS, ha_ui_url returns the HA HTTPS path."""
+        hass = MagicMock()
+        server = PairingServer(hass, port=8099)
+
+        with (
+            patch(
+                "custom_components.tuya_cloudless.pairing_server.PairingServer.ha_local_url",
+            ),
+            patch(
+                "homeassistant.helpers.network.get_url",
+                return_value="https://ha.example.com:8123",
+            ),
+        ):
+            url = server.ha_ui_url()
+
+        assert url.startswith("https://ha.example.com:8123")
+        assert "/api/tuya_cloudless/pairing" in url
+
+    def test_falls_back_to_http_when_ha_is_http(self) -> None:
+        """When HA's internal URL is HTTP, ha_ui_url falls back to port-8099."""
+        hass = MagicMock()
+        hass.config.internal_url = "http://homeassistant.local:8123"
+        server = PairingServer(hass, port=8099)
+
+        with patch(
+            "homeassistant.helpers.network.get_url",
+            return_value="http://homeassistant.local:8123",
+        ):
+            url = server.ha_ui_url()
+
+        assert url.startswith("http://")
+        assert "8099" in url
+
+    def test_falls_back_to_http_when_get_url_raises(self) -> None:
+        """When get_url raises, ha_ui_url falls back to port-8099 URL."""
+        hass = MagicMock()
+        hass.config.internal_url = "http://homeassistant.local:8123"
+        server = PairingServer(hass, port=8099)
+
+        with patch(
+            "homeassistant.helpers.network.get_url",
+            side_effect=Exception("network error"),
+        ):
+            url = server.ha_ui_url()
+
+        assert url.startswith("http://")
+        assert "8099" in url
+
+    def test_no_trailing_double_slash(self) -> None:
+        """ha_ui_url must not produce a double-slash when HA URL has trailing slash."""
+        hass = MagicMock()
+        server = PairingServer(hass, port=8099)
+
+        with patch(
+            "homeassistant.helpers.network.get_url",
+            return_value="https://ha.example.com:8123/",
+        ):
+            url = server.ha_ui_url()
+
+        assert "//" not in url.replace("https://", "")
+
+
+# ── HA index view (_handle_ha_index) ─────────────────────────────────────────
+
+
+class TestHandleHaIndex:
+    """Tests for _handle_ha_index — serves index.html with injected globals."""
+
+    async def test_returns_200(self, server: PairingServer, tmp_path: Path) -> None:
+        """Returns 200 with text/html when index.html exists."""
+        ui_dir = tmp_path / "pairing_ui"
+        ui_dir.mkdir()
+        (ui_dir / "index.html").write_text(
+            '<html><head></head><body><script src="/static/app.js"></script></body></html>',
+            encoding="utf-8",
+        )
+        with patch(
+            "custom_components.tuya_cloudless.pairing_server._UI_DIR",
+            ui_dir,
+        ):
+            req = MagicMock()
+            resp = await server._handle_ha_index(req)
+
+        assert resp.status == 200
+        assert "text/html" in resp.content_type
+
+    async def test_injects_globals(self, server: PairingServer, tmp_path: Path) -> None:
+        """Response body contains injected window globals."""
+        ui_dir = tmp_path / "pairing_ui"
+        ui_dir.mkdir()
+        (ui_dir / "index.html").write_text(
+            "<html><head></head><body></body></html>", encoding="utf-8"
+        )
+        with patch(
+            "custom_components.tuya_cloudless.pairing_server._UI_DIR",
+            ui_dir,
+        ):
+            req = MagicMock()
+            resp = await server._handle_ha_index(req)
+
+        body = resp.text
+        assert "_TUYA_PROVISION_BASE" in body
+        assert "_TUYA_STATIC_BASE" in body
+        assert "_TUYA_ACTIVATOR_BASE" in body
+
+    async def test_rewrites_static_paths(self, server: PairingServer, tmp_path: Path) -> None:
+        """Static asset paths are rewritten to the HA-relative prefix."""
+        ui_dir = tmp_path / "pairing_ui"
+        ui_dir.mkdir()
+        (ui_dir / "index.html").write_text(
+            '<html><head></head><body><img src="/static/icon.png"></body></html>',
+            encoding="utf-8",
+        )
+        with patch(
+            "custom_components.tuya_cloudless.pairing_server._UI_DIR",
+            ui_dir,
+        ):
+            req = MagicMock()
+            resp = await server._handle_ha_index(req)
+
+        body = resp.text
+        assert "/api/tuya_cloudless/pairing/static/icon.png" in body
+        assert '="/static/' not in body
+
+    async def test_404_when_index_missing(self, server: PairingServer, tmp_path: Path) -> None:
+        """Returns 404 when index.html does not exist."""
+        empty_dir = tmp_path / "empty"
+        empty_dir.mkdir()
+        with patch(
+            "custom_components.tuya_cloudless.pairing_server._UI_DIR",
+            empty_dir,
+        ):
+            req = MagicMock()
+            resp = await server._handle_ha_index(req)
+
+        assert resp.status == 404
+
+
+# ── HA config view (_handle_ha_config) ───────────────────────────────────────
+
+
+class TestHandleHaConfig:
+    """Tests for _handle_ha_config — returns HTTPS-safe config."""
+
+    async def test_returns_200_json(self, server: PairingServer) -> None:
+        """Returns 200 JSON response."""
+        req = MagicMock()
+        with patch.object(server, "_get_default_ssid", new=AsyncMock(return_value=None)):
+            resp = await server._handle_ha_config(req)
+
+        assert resp.status == 200
+        body = json.loads(resp.body)
+        assert "activator_url" in body
+        assert "events_url" in body
+        assert "result_url_template" in body
+
+    async def test_activator_url_is_http(self, server: PairingServer) -> None:
+        """activator_url is always HTTP (Tuya device cannot do TLS)."""
+        req = MagicMock()
+        with patch.object(server, "_get_default_ssid", new=AsyncMock(return_value=None)):
+            resp = await server._handle_ha_config(req)
+
+        body = json.loads(resp.body)
+        assert body["activator_url"].startswith("http://")
+
+    async def test_events_url_is_ha_relative(self, server: PairingServer) -> None:
+        """events_url is the HA-relative path (not port-8099 absolute URL)."""
+        req = MagicMock()
+        with patch.object(server, "_get_default_ssid", new=AsyncMock(return_value=None)):
+            resp = await server._handle_ha_config(req)
+
+        body = json.loads(resp.body)
+        assert body["events_url"].startswith("/api/tuya_cloudless/pairing/provision/events")
+
+    async def test_result_url_has_token_placeholder(self, server: PairingServer) -> None:
+        """result_url_template contains {token} placeholder."""
+        req = MagicMock()
+        with patch.object(server, "_get_default_ssid", new=AsyncMock(return_value=None)):
+            resp = await server._handle_ha_config(req)
+
+        body = json.loads(resp.body)
+        assert "{token}" in body["result_url_template"]
+
+
+# ── _register_ha_views ────────────────────────────────────────────────────────
+
+
+class TestRegisterHaViews:
+    """Tests for _register_ha_views — registers HA HTTP views once."""
+
+    async def test_registers_views_on_first_call(self) -> None:
+        """_register_ha_views calls hass.http.register_view for each view."""
+        hass = MagicMock()
+        server = PairingServer(hass, port=8099)
+        await server._register_ha_views()
+        assert hass.http.register_view.called
+
+    async def test_idempotent_second_call_skipped(self) -> None:
+        """_register_ha_views is a no-op on the second call."""
+        hass = MagicMock()
+        server = PairingServer(hass, port=8099)
+        await server._register_ha_views()
+        first_call_count = hass.http.register_view.call_count
+        await server._register_ha_views()
+        second_call_count = hass.http.register_view.call_count
+        assert second_call_count == first_call_count  # no extra calls
+
+    async def test_ha_views_registered_flag_set(self) -> None:
+        """_ha_views_registered is True after first call."""
+        hass = MagicMock()
+        server = PairingServer(hass, port=8099)
+        assert server._ha_views_registered is False
+        await server._register_ha_views()
+        assert server._ha_views_registered is True
+
+    async def test_registers_six_views(self) -> None:
+        """Exactly 6 views are registered (index, config, events, result, wifi-scan, static)."""
+        hass = MagicMock()
+        server = PairingServer(hass, port=8099)
+        await server._register_ha_views()
+        assert hass.http.register_view.call_count == 6
+
+
+# ── Static file view (path traversal guard) ───────────────────────────────────
+
+
+class TestHaStaticView:
+    """Tests for the inline _PairingStaticView path-traversal guard."""
+
+    def _get_static_view(self, ui_dir: Path) -> object:
+        """Register views with the given ui_dir and return the static view instance."""
+        hass = MagicMock()
+        srv = PairingServer(hass, port=8099)
+        captured_views: list[object] = []
+        hass.http.register_view.side_effect = captured_views.append
+
+        import asyncio
+
+        with patch(
+            "custom_components.tuya_cloudless.pairing_server._UI_DIR",
+            ui_dir,
+        ):
+            asyncio.get_event_loop().run_until_complete(srv._register_ha_views())
+
+        return next(
+            (v for v in captured_views if hasattr(v, "url") and "static" in str(v.url)),
+            None,
+        )
+
+    async def test_serves_file(self, tmp_path: Path) -> None:
+        """A valid relative path returns 200 with the file content."""
+        ui_dir = tmp_path / "ui"
+        ui_dir.mkdir()
+        (ui_dir / "app.js").write_text("// app", encoding="utf-8")
+
+        hass = MagicMock()
+        srv = PairingServer(hass, port=8099)
+        captured_views: list[object] = []
+        hass.http.register_view.side_effect = captured_views.append
+
+        with patch("custom_components.tuya_cloudless.pairing_server._UI_DIR", ui_dir):
+            await srv._register_ha_views()
+
+        static_view = next(
+            (v for v in captured_views if hasattr(v, "url") and "static" in str(v.url)),
+            None,
+        )
+        assert static_view is not None
+        req = MagicMock()
+        resp = await static_view.get(req, path="app.js")  # type: ignore[union-attr]
+        assert resp.status == 200
+
+    async def test_path_traversal_blocked(self, tmp_path: Path) -> None:
+        """Path traversal (../secret.txt) returns 403."""
+        ui_dir = tmp_path / "ui"
+        ui_dir.mkdir()
+        (tmp_path / "secret.txt").write_text("secret", encoding="utf-8")
+
+        hass = MagicMock()
+        srv = PairingServer(hass, port=8099)
+        captured_views: list[object] = []
+        hass.http.register_view.side_effect = captured_views.append
+
+        with patch("custom_components.tuya_cloudless.pairing_server._UI_DIR", ui_dir):
+            await srv._register_ha_views()
+
+        static_view = next(
+            (v for v in captured_views if hasattr(v, "url") and "static" in str(v.url)),
+            None,
+        )
+        assert static_view is not None
+        req = MagicMock()
+        resp = await static_view.get(req, path="../secret.txt")  # type: ignore[union-attr]
+        assert resp.status == 403
+
+    async def test_missing_file_returns_404(self, tmp_path: Path) -> None:
+        """A path that does not exist returns 404."""
+        ui_dir = tmp_path / "ui"
+        ui_dir.mkdir()
+
+        hass = MagicMock()
+        srv = PairingServer(hass, port=8099)
+        captured_views: list[object] = []
+        hass.http.register_view.side_effect = captured_views.append
+
+        with patch("custom_components.tuya_cloudless.pairing_server._UI_DIR", ui_dir):
+            await srv._register_ha_views()
+
+        static_view = next(
+            (v for v in captured_views if hasattr(v, "url") and "static" in str(v.url)),
+            None,
+        )
+        assert static_view is not None
+        req = MagicMock()
+        resp = await static_view.get(req, path="nonexistent.js")  # type: ignore[union-attr]
+        assert resp.status == 404

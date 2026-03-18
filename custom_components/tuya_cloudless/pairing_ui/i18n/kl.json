@@ -2,7 +2,7 @@
   "title": "Tuya Cloudless — Nalunaarsuiffiit",
   "lang_picker_label": "Oqaatsit",
   "error_https_required_title": "HTTPS nakorsimassaaq",
-  "error_https_required_body": "Web Bluetooth HTTPS immikkut allaffissornissaminnik nalilersorneqassasoq (HTTPS qanoq localhost). Tuluttut HTTP atorpisi.",
+  "error_https_required_body": "Web Bluetooth HTTPS-imik nassatarisassaqarpoq. Uminga nalunaarsuineq Home Assistant-ikkut atorneqarpoq, HTTPS-imik atorsinnaanissaminni apeqqutissaqarpoq. HTTP-ikkut nalunaarsuineq naapertoqqissaarusiorfigineqarsinnaanngilaq.",
   "error_https_link": "HTTPS atorneqarsinnaanissaminnik nalilersorneq",
   "error_browser_title": "Browser atorneqarsinnaanngikkaluarluni",
   "error_browser_body": "Web Bluetooth Chrome qanoq Edge Windows qanoq Android-imi atorneqassasoq. Safari qanoq Firefox Web Bluetooth nalunngissumillu atorsinnaanngikkaluarpoq.",

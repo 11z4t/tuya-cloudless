@@ -2,7 +2,7 @@
   "title": "Tuya Cloudless — Yhdistä laite",
   "lang_picker_label": "Kieli",
   "error_https_required_title": "HTTPS vaaditaan",
-  "error_https_required_body": "Web Bluetooth vaatii suojatun yhteyden (HTTPS tai localhost). Nykyinen yhteytesi on HTTP.",
+  "error_https_required_body": "Web Bluetooth vaatii HTTPS:n. Tämä paraussivusto avataan Home Assistantin kautta, joka on oltava HTTPS-konfiguroitu. Jos saavutit tämän sivun suoraan HTTP:n kautta, ota ensin HTTPS käyttöön Home Assistantissa.",
   "error_https_link": "HTTPS-asennusopas",
   "error_browser_title": "Selain ei ole tuettu",
   "error_browser_body": "Web Bluetooth vaatii Chromen tai Edgen työpöydällä tai Androidilla. Safari ja Firefox eivät tue Web Bluetoothia.",

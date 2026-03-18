@@ -2,7 +2,7 @@
   "title": "Tuya Cloudless — Associer un appareil",
   "lang_picker_label": "Langue",
   "error_https_required_title": "HTTPS requis",
-  "error_https_required_body": "Le Web Bluetooth nécessite un contexte sécurisé (HTTPS ou localhost). Votre connexion actuelle est en HTTP.",
+  "error_https_required_body": "Web Bluetooth requiert HTTPS. Cette page de couplage est ouverte via votre Home Assistant, qui doit être configuré avec HTTPS. Si vous avez atteint cette page directement via HTTP, activez d'abord HTTPS sur Home Assistant.",
   "error_https_link": "Guide de configuration HTTPS",
   "error_browser_title": "Navigateur non pris en charge",
   "error_browser_body": "Le Web Bluetooth nécessite Chrome ou Edge sur ordinateur ou Android. Safari et Firefox ne prennent pas en charge le Web Bluetooth.",

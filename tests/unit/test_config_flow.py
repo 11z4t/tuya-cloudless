@@ -1214,7 +1214,7 @@ class TestBlePairHttpsCheck:
         flow = self._make_ble_flow()
 
         mock_server = MagicMock()
-        mock_server.ha_local_url.return_value = "http://192.168.1.100:8099"
+        mock_server.ha_ui_url.return_value = "http://192.168.1.100:8099"
 
         with (
             patch(
@@ -1240,7 +1240,7 @@ class TestBlePairHttpsCheck:
         flow = self._make_ble_flow()
 
         mock_server = MagicMock()
-        mock_server.ha_local_url.return_value = "http://192.168.1.100:8099"
+        mock_server.ha_ui_url.return_value = "http://192.168.1.100:8099"
 
         with (
             patch(
@@ -1264,7 +1264,10 @@ class TestBlePairHttpsCheck:
         flow = self._make_ble_flow()
 
         mock_server = MagicMock()
-        mock_server.ha_local_url.return_value = "http://192.168.1.100:8099"
+        # ha_ui_url returns the HA HTTPS path when HA is HTTPS
+        mock_server.ha_ui_url.return_value = (
+            "https://homeassistant.local:8123/api/tuya_cloudless/pairing"
+        )
 
         with (
             patch(
@@ -1288,7 +1291,7 @@ class TestBlePairHttpsCheck:
         flow = self._make_ble_flow()
 
         mock_server = MagicMock()
-        mock_server.ha_local_url.return_value = "http://localhost:8099"
+        mock_server.ha_ui_url.return_value = "http://localhost:8099"
 
         with patch(
             "custom_components.tuya_cloudless.pairing_server.ensure_pairing_server",
@@ -1306,7 +1309,7 @@ class TestBlePairHttpsCheck:
         flow = self._make_ble_flow()
 
         mock_server = MagicMock()
-        mock_server.ha_local_url.return_value = "http://127.0.0.1:8099"
+        mock_server.ha_ui_url.return_value = "http://127.0.0.1:8099"
 
         with patch(
             "custom_components.tuya_cloudless.pairing_server.ensure_pairing_server",

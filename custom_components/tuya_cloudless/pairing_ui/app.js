@@ -42,7 +42,7 @@ let _currentLang = "en";
 
 async function loadLang(lang) {
   try {
-    const r = await fetch("/static/i18n/" + lang + ".json");
+    const r = await fetch(_STATIC_BASE + "/i18n/" + lang + ".json");
     if (!r.ok) throw new Error("not found");
     _strings = await r.json();
     _currentLang = lang;
@@ -178,16 +178,26 @@ function loadLastSsid() {
   } catch (_) { return null; }
 }
 
+// ── Configurable base paths ───────────────────────────────────────────────────
+// When served via HA HTTPS these are injected as window globals by the server.
+// When accessed directly at http://ha-host:8099/ the globals are undefined and
+// the defaults resolve correctly against the page origin.
+const _PROVISION_BASE = (typeof window._TUYA_PROVISION_BASE !== "undefined")
+  ? window._TUYA_PROVISION_BASE : "/api/provision";
+const _STATIC_BASE = (typeof window._TUYA_STATIC_BASE !== "undefined")
+  ? window._TUYA_STATIC_BASE : "/static";
+
 // ── Server config ─────────────────────────────────────────────────────────────
-let ACTIVATOR_URL = window.location.origin;
-let EVENTS_URL    = ACTIVATOR_URL + "/api/provision/events";
+let ACTIVATOR_URL = (typeof window._TUYA_ACTIVATOR_BASE !== "undefined")
+  ? window._TUYA_ACTIVATOR_BASE : window.location.origin;
+let EVENTS_URL    = _PROVISION_BASE + "/events";
 
 const _urlParams = new URLSearchParams(window.location.search);
 const _haFlowId  = _urlParams.get("flow_id") || null;
 
 async function loadServerConfig() {
   try {
-    const r = await fetch("/api/provision/config");
+    const r = await fetch(_PROVISION_BASE + "/config");
     if (r.ok) {
       const cfg = await r.json();
       if (cfg.activator_url) ACTIVATOR_URL = cfg.activator_url;
@@ -225,7 +235,7 @@ async function scanWifi() {
   // Close dropdown if already open
   document.getElementById("wifi-dropdown").classList.add("hidden");
   try {
-    const r = await fetch("/api/provision/wifi-scan");
+    const r = await fetch(_PROVISION_BASE + "/wifi-scan");
     if (!r.ok) throw new Error("scan HTTP " + r.status);
     const data = await r.json();
     const ssids = data.ssids || [];

@@ -252,7 +252,7 @@ class TuyaCloudlessConfigFlow(ConfigFlow, domain=DOMAIN):
         # can use Web Bluetooth (which requires a secure context).
         from homeassistant.helpers.network import NoURLAvailableError, get_url
 
-        pairing_url = server.ha_local_url()
+        pairing_url = server.ha_ui_url()
         _parsed_pairing = urlparse(pairing_url)
         _hostname = _parsed_pairing.hostname or ""
         _is_localhost = _hostname in ("localhost", "127.0.0.1")

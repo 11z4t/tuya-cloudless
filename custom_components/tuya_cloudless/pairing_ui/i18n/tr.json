@@ -2,7 +2,7 @@
   "title": "Tuya Cloudless — Cihaz Eşleştir",
   "lang_picker_label": "Dil",
   "error_https_required_title": "HTTPS gerekli",
-  "error_https_required_body": "Web Bluetooth, güvenli bir bağlam (HTTPS veya localhost) gerektirir. Mevcut bağlantınız HTTP kullanıyor.",
+  "error_https_required_body": "Web Bluetooth, HTTPS gerektirir. Bu eşleştirme sayfası, HTTPS için yapılandırılmış olması gereken Home Assistant üzerinden açılır. Bu sayfaya doğrudan HTTP üzerinden eriştiyseniz önce Home Assistant'ta HTTPS'yi etkinleştirin.",
   "error_https_link": "HTTPS kurulum kılavuzu",
   "error_browser_title": "Tarayıcı desteklenmiyor",
   "error_browser_body": "Web Bluetooth, masaüstü veya Android'de Chrome ya da Edge gerektirir. Safari ve Firefox Web Bluetooth'u desteklemiyor.",

@@ -66,6 +66,9 @@ _UI_DIR: Final[Path] = Path(__file__).parent / "pairing_ui"
 #: Path to the brand assets directory (icon.png etc.)
 _BRAND_DIR: Final[Path] = Path(__file__).parent / "brand"
 
+#: URL prefix for pairing views on HA's own HTTP/HTTPS server
+_HA_PAIRING_PREFIX: Final[str] = "/api/tuya_cloudless/pairing"
+
 #: local_key length in bytes (Tuya standard: 16 bytes → 16 ASCII chars)
 _LOCAL_KEY_BYTES: Final[int] = 16
 
@@ -167,6 +170,8 @@ class PairingServer:
         self._auto_stop_task: asyncio.Task[None] | None = None
         # Per-IP rate limit: maps IP → list of request timestamps (SEC-001)
         self._rate_limit: dict[str, list[float]] = {}
+        # Guard: only register HA views once per server instance
+        self._ha_views_registered: bool = False
 
     # ── Lifecycle ──────────────────────────────────────────────────────────
 
@@ -186,6 +191,7 @@ class PairingServer:
         await self._site.start()
         _LOGGER.info("Tuya Cloudless pairing server listening on port %d", self._port)
         await register_redirect_view(self._hass, self._port)
+        await self._register_ha_views()
 
     async def stop(self) -> None:
         """Stop the HTTP server and clean up resources."""
@@ -262,6 +268,26 @@ class PairingServer:
 
         hostname = socket.getfqdn() or socket.gethostname() or "homeassistant.local"
         return f"http://{hostname}:{self._port}"
+
+    def ha_ui_url(self) -> str:
+        """Return the URL to open the pairing UI.
+
+        When HA is configured for HTTPS, returns the HA-relative HTTPS path so
+        the browser runs in a secure context and Web Bluetooth is available.
+        Falls back to the HTTP port-8099 URL when HA is not HTTPS.
+
+        Returns:
+            Absolute URL string for the pairing UI (HTTPS when possible).
+        """
+        try:
+            from homeassistant.helpers.network import get_url
+
+            base = get_url(self._hass, allow_internal=True, allow_external=False)
+            if base.startswith("https://"):
+                return base.rstrip("/") + _HA_PAIRING_PREFIX
+        except Exception as exc:  # broad catch intentional — URL resolution must never crash
+            _LOGGER.debug("ha_ui_url HTTPS fallback: %s", exc)
+        return self.ha_local_url()
 
     def register_flow(self, flow_id: str) -> None:
         """Register a config flow to be notified when a device activates.
@@ -677,6 +703,182 @@ class PairingServer:
             {"ssids": ssids},
             headers={"Access-Control-Allow-Origin": "*"},
         )
+
+    # ── HA HTTPS views ─────────────────────────────────────────────────────
+
+    async def _handle_ha_index(self, request: web.Request) -> web.Response:
+        """Serve index.html via HA's HTTPS server with paths and globals injected.
+
+        Rewrites all ``/static/`` references to the HA-relative path and injects
+        JS globals so ``app.js`` uses the correct provision base URL and the HTTP
+        port-8099 URL for the Tuya device activator.
+
+        Args:
+            request: Incoming HTTP request.
+
+        Returns:
+            HTML response with rewritten paths and injected globals.
+        """
+        index_path = _UI_DIR / "index.html"
+        if not index_path.is_file():
+            return web.Response(
+                status=404,
+                text="Pairing UI not found. This is a bug — please report it.",
+            )
+
+        html = index_path.read_text(encoding="utf-8")
+        static_base = _HA_PAIRING_PREFIX + "/static"
+        provision_base = _HA_PAIRING_PREFIX + "/provision"
+        activator_url = self.ha_local_url()  # Always HTTP — Tuya device cannot do TLS
+
+        # Rewrite /static/ asset references to the HA-relative path
+        html = html.replace('="/static/', f'="{static_base}/')
+        # Rewrite QR image src to HA path (404 → JS error handler shows "unavailable")
+        html = html.replace(
+            'src="/api/provision/qr.svg"',
+            f'src="{provision_base}/qr.svg"',
+        )
+
+        # Inject window globals before </head> so app.js reads them on load
+        globals_script = (
+            "<script>\n"
+            f"window._TUYA_ACTIVATOR_BASE={json.dumps(activator_url)};\n"
+            f"window._TUYA_PROVISION_BASE={json.dumps(provision_base)};\n"
+            f"window._TUYA_STATIC_BASE={json.dumps(static_base)};\n"
+            "</script>\n"
+        )
+        html = html.replace("</head>", globals_script + "</head>", 1)
+
+        return web.Response(text=html, content_type="text/html", charset="utf-8")
+
+    async def _handle_ha_config(self, request: web.Request) -> web.Response:
+        """Config endpoint when the pairing UI is served via HA HTTPS.
+
+        Returns the HTTP port-8099 URL as ``activator_url`` (Tuya device cannot
+        do TLS) but HA-relative paths for ``events_url`` and
+        ``result_url_template`` so the browser uses same-origin HTTPS.
+
+        Args:
+            request: Incoming HTTP request from the browser.
+
+        Returns:
+            JSON configuration for the pairing UI.
+        """
+        activator_url = self.ha_local_url()
+        provision_base = _HA_PAIRING_PREFIX + "/provision"
+        default_ssid = await self._get_default_ssid()
+        return web.json_response(
+            {
+                "activator_url": activator_url,
+                "events_url": f"{provision_base}/events",
+                "result_url_template": f"{provision_base}/result/{{token}}",
+                "default_ssid": default_ssid,
+            },
+            headers={"Access-Control-Allow-Origin": "*"},
+        )
+
+    async def _register_ha_views(self) -> None:
+        """Register pairing UI views on HA's HTTP server (HTTPS when HA is HTTPS).
+
+        This mirrors the port-8099 endpoints on HA's own server so the browser
+        runs in a secure context and Web Bluetooth works.  The Tuya device
+        activation endpoint stays on port 8099 (HTTP) because devices cannot
+        do TLS.
+
+        Safe to call multiple times — guarded by ``_ha_views_registered``.
+        """
+        if self._ha_views_registered:
+            return
+        self._ha_views_registered = True
+
+        import mimetypes
+
+        from homeassistant.components.http import HomeAssistantView
+
+        server = self
+        ui_dir = _UI_DIR
+
+        class _PairingIndexView(HomeAssistantView):
+            requires_auth = False
+            url = _HA_PAIRING_PREFIX + "/"
+            name = "api:tuya_cloudless:pairing:index"
+
+            async def get(  # type: ignore[override]
+                self, request: web.Request
+            ) -> web.Response:
+                return await server._handle_ha_index(request)
+
+        class _PairingConfigView(HomeAssistantView):
+            requires_auth = False
+            url = _HA_PAIRING_PREFIX + "/provision/config"
+            name = "api:tuya_cloudless:pairing:config"
+
+            async def get(  # type: ignore[override]
+                self, request: web.Request
+            ) -> web.Response:
+                return await server._handle_ha_config(request)
+
+        class _PairingEventsView(HomeAssistantView):
+            requires_auth = False
+            url = _HA_PAIRING_PREFIX + "/provision/events"
+            name = "api:tuya_cloudless:pairing:events"
+
+            async def get(  # type: ignore[override]
+                self, request: web.Request
+            ) -> web.StreamResponse:
+                return await server._handle_sse(request)
+
+        class _PairingResultView(HomeAssistantView):
+            requires_auth = False
+            url = _HA_PAIRING_PREFIX + "/provision/result/{token}"
+            name = "api:tuya_cloudless:pairing:result"
+
+            async def get(  # type: ignore[override]
+                self, request: web.Request, token: str
+            ) -> web.Response:
+                return await server._handle_get_result(request)
+
+        class _PairingWifiScanView(HomeAssistantView):
+            requires_auth = False
+            url = _HA_PAIRING_PREFIX + "/provision/wifi-scan"
+            name = "api:tuya_cloudless:pairing:wifi_scan"
+
+            async def get(  # type: ignore[override]
+                self, request: web.Request
+            ) -> web.Response:
+                return await server._handle_wifi_scan(request)
+
+        class _PairingStaticView(HomeAssistantView):
+            requires_auth = False
+            url = _HA_PAIRING_PREFIX + "/static/{path:.+}"
+            name = "api:tuya_cloudless:pairing:static"
+
+            async def get(  # type: ignore[override]
+                self, request: web.Request, path: str
+            ) -> web.Response:
+                file_path = (ui_dir / path).resolve()
+                # Security: prevent path traversal outside the UI directory
+                try:
+                    ui_resolved = ui_dir.resolve()
+                    if not str(file_path).startswith(str(ui_resolved)):
+                        return web.Response(status=403, text="Forbidden")
+                except (ValueError, OSError):
+                    return web.Response(status=400, text="Bad request")
+                if not file_path.is_file():
+                    return web.Response(status=404, text="Not found")
+                content_type = mimetypes.guess_type(str(file_path))[0] or "application/octet-stream"
+                return web.Response(
+                    body=file_path.read_bytes(),
+                    content_type=content_type,
+                    headers={"Cache-Control": "max-age=3600"},
+                )
+
+        self._hass.http.register_view(_PairingIndexView())
+        self._hass.http.register_view(_PairingConfigView())
+        self._hass.http.register_view(_PairingEventsView())
+        self._hass.http.register_view(_PairingResultView())
+        self._hass.http.register_view(_PairingWifiScanView())
+        self._hass.http.register_view(_PairingStaticView())
 
     # ── Private helpers ────────────────────────────────────────────────────
 

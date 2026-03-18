@@ -2,7 +2,7 @@
   "title": "Tuya Cloudless — Parkoppla enhet",
   "lang_picker_label": "Språk",
   "error_https_required_title": "HTTPS krävs",
-  "error_https_required_body": "Web Bluetooth kräver en säker anslutning (HTTPS eller localhost). Din nuvarande anslutning är HTTP.",
+  "error_https_required_body": "Web Bluetooth kräver HTTPS. Den här parkopplingssidan öppnas via Home Assistant, som måste vara konfigurerat med HTTPS. Om du nådde den här sidan direkt via HTTP måste du aktivera HTTPS i Home Assistant först.",
   "error_https_link": "Guide för HTTPS-installation",
   "error_browser_title": "Webbläsaren stöds inte",
   "error_browser_body": "Web Bluetooth kräver Chrome eller Edge på dator eller Android. Safari och Firefox stöder inte Web Bluetooth.",
