@@ -574,6 +574,16 @@ function goToCredentials() {
   // Clear stale WiFi AP status from a previous pairing attempt
   const apStatus = document.getElementById("wifi-ap-status");
   if (apStatus) apStatus.className = "status-box hidden";
+  // Reset password field to hidden — ensures it's not left visible after BLE back navigation
+  const pwdCredEl = document.getElementById("password");
+  if (pwdCredEl && pwdCredEl.type === "text") {
+    pwdCredEl.type = "password";
+    const toggle = document.getElementById("btn-pwd-toggle");
+    if (toggle) {
+      toggle.setAttribute("aria-pressed", "false");
+      toggle.setAttribute("aria-label", t("show_password"));
+    }
+  }
   // Move focus to SSID input so user can start typing immediately
   const ssidEl = document.getElementById("ssid");
   if (ssidEl) ssidEl.focus();
@@ -638,6 +648,8 @@ function goToStep2() {
 }
 
 function showDone(gw_id, local_key, ip_address) {
+  // Clear sensitive credential from memory now that pairing is complete
+  _pwd = "";
   document.getElementById("panel-ble").classList.add("hidden");
   document.getElementById("panel-wifi").classList.add("hidden");
   document.getElementById("panel-devices").classList.add("hidden");
@@ -679,6 +691,10 @@ function showDone(gw_id, local_key, ip_address) {
     }
   }
   document.getElementById("btn-pair-another").classList.remove("hidden");
+
+  // Move focus to the done title so screen readers announce the success state
+  const doneTitle = document.getElementById("step3-title");
+  if (doneTitle) { doneTitle.setAttribute("tabindex", "-1"); doneTitle.focus(); }
 
   // Wire up the key reveal toggle
   const revealBtn = document.getElementById("btn-reveal-key");

@@ -764,6 +764,47 @@ test.describe("Full pairing flow", () => {
     expect(typeof stored.saved_at).toBe("number");
   });
 
+  test("done screen: focus moves to step3-title heading on success", async ({ page }) => {
+    await setupRoutes(page);
+    await mockBle(page, ACTIVATION);
+    await loadPage(page);
+    await navigateToCredentials(page);
+    await page.locator("#ssid").click();
+    await page.locator("#ssid").fill("HomeNet");
+    await page.locator("#btn-next").click();
+    await page.locator("#btn-pair").click();
+
+    await expect(page.locator("#panel-done")).toBeVisible({ timeout: 5000 });
+    // Focus should move to the done screen title for screen reader accessibility
+    const focusedId = await page.evaluate(() => document.activeElement?.id);
+    expect(focusedId).toBe("step3-title");
+  });
+
+  test("password visibility resets to hidden when navigating back from BLE to credentials", async ({ page }) => {
+    await setupRoutes(page);
+    await loadPage(page);
+    await navigateToCredentials(page);
+    await page.locator("#ssid").click();
+    await page.locator("#ssid").fill("HomeNet");
+
+    // Show password
+    await page.locator("#btn-pwd-toggle").click();
+    await expect(page.locator("#password")).toHaveAttribute("type", "text");
+
+    // Navigate to BLE panel
+    await page.locator("#btn-ble-scan").click();
+    await page.locator("#btn-next").click();
+    await expect(page.locator("#panel-ble")).toBeVisible();
+
+    // Click Back from BLE panel — returns to credentials
+    await page.locator("#btn-back-ble").click();
+    await expect(page.locator("#panel-wifi")).toBeVisible();
+
+    // Password should be reset to hidden
+    await expect(page.locator("#password")).toHaveAttribute("type", "password");
+    await expect(page.locator("#btn-pwd-toggle")).toHaveAttribute("aria-pressed", "false");
+  });
+
   test("BLE scan cancelled shows warning (not error) and re-enables button", async ({
     page,
   }) => {
