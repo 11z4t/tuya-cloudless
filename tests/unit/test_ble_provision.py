@@ -441,3 +441,658 @@ class TestParseBleResponse:
     def test_empty_chunks_raises(self) -> None:
         with pytest.raises(PairingError):
             parse_ble_response([])
+
+
+# ── _reassemble_chunks gap error ──────────────────────────────────────────────
+
+
+class TestReassembleChunksGap:
+    def test_sequence_gap_raises(self) -> None:
+        """_reassemble_chunks raises PairingError on a chunk sequence gap.
+
+        Construct two chunks that both claim total=2 but have the same chunk
+        index (0), so after sorting by chunk_no we see index 0 twice instead
+        of 0,1 — triggering the gap check on the second iteration.
+        """
+        # chunk[0] = chunk_no, chunk[1] = total
+        chunk_a = bytes([0, 2]) + b"A" * 10  # idx=0, total=2
+        chunk_b = bytes([0, 2]) + b"B" * 10  # idx=0 again — gap after sorting
+        with pytest.raises(PairingError, match="sequence gap"):
+            _reassemble_chunks([chunk_a, chunk_b])
+
+
+# ── BleProvisioner — scan ──────────────────────────────────────────────────────
+
+
+class TestBleProvisionerScan:
+    """Tests for BleProvisioner.scan() with bleak mocked."""
+
+    @pytest.mark.asyncio
+    async def test_scan_raises_if_bleak_missing(self) -> None:
+        """scan() raises PairingError when bleak is not installed."""
+        import sys
+        from unittest.mock import patch
+
+        from tuya_cloudless.ble_provision import BleProvisioner
+
+        with patch.dict(sys.modules, {"bleak": None}):
+            p = BleProvisioner()
+            with pytest.raises(PairingError, match="bleak is required"):
+                await p.scan()
+
+    @pytest.mark.asyncio
+    async def test_scan_returns_address_when_device_found(self) -> None:
+        """scan() returns the BLE address of the discovered device."""
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        from tuya_cloudless.ble_provision import BleProvisioner
+
+        mock_device = MagicMock()
+        mock_device.address = "AA:BB:CC:DD:EE:FF"
+
+        mock_scanner = MagicMock()
+        mock_scanner.find_device_by_filter = AsyncMock(return_value=mock_device)
+
+        mock_bleak = MagicMock()
+        mock_bleak.BleakScanner = mock_scanner
+
+        import sys
+
+        with patch.dict(sys.modules, {"bleak": mock_bleak}):
+            p = BleProvisioner()
+            addr = await p.scan(timeout=5.0)
+
+        assert addr == "AA:BB:CC:DD:EE:FF"
+
+    @pytest.mark.asyncio
+    async def test_scan_raises_when_no_device_found(self) -> None:
+        """scan() raises PairingError when BleakScanner returns None."""
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        from tuya_cloudless.ble_provision import BleProvisioner
+
+        mock_scanner = MagicMock()
+        mock_scanner.find_device_by_filter = AsyncMock(return_value=None)
+
+        mock_bleak = MagicMock()
+        mock_bleak.BleakScanner = mock_scanner
+
+        import sys
+
+        with patch.dict(sys.modules, {"bleak": mock_bleak}):
+            p = BleProvisioner(scan_timeout=3.0)
+            with pytest.raises(PairingError, match="No Tuya BLE device found"):
+                await p.scan()
+
+    @pytest.mark.asyncio
+    async def test_scan_uses_default_timeout(self) -> None:
+        """scan() uses scan_timeout from constructor when no explicit timeout given."""
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        from tuya_cloudless.ble_provision import BleProvisioner
+
+        mock_scanner = MagicMock()
+        mock_scanner.find_device_by_filter = AsyncMock(return_value=None)
+
+        mock_bleak = MagicMock()
+        mock_bleak.BleakScanner = mock_scanner
+
+        import sys
+
+        with patch.dict(sys.modules, {"bleak": mock_bleak}):
+            p = BleProvisioner(scan_timeout=7.0)
+            with pytest.raises(PairingError):
+                await p.scan()
+
+        # Verify timeout=7.0 was passed to find_device_by_filter
+        call_kwargs = mock_scanner.find_device_by_filter.call_args
+        assert call_kwargs[1]["timeout"] == 7.0
+
+
+# ── BleProvisioner — context manager & disconnect ────────────────────────────
+
+
+class TestBleProvisionerContextManager:
+    @pytest.mark.asyncio
+    async def test_aenter_returns_self(self) -> None:
+        from tuya_cloudless.ble_provision import BleProvisioner
+
+        p = BleProvisioner()
+        result = await p.__aenter__()
+        assert result is p
+
+    @pytest.mark.asyncio
+    async def test_aexit_calls_disconnect(self) -> None:
+        from unittest.mock import AsyncMock, patch
+
+        from tuya_cloudless.ble_provision import BleProvisioner
+
+        p = BleProvisioner()
+        with patch.object(p, "disconnect", new=AsyncMock()) as mock_disconnect:
+            await p.__aexit__(None, None, None)
+            mock_disconnect.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_disconnect_noop_when_no_client(self) -> None:
+        """disconnect() does nothing when _client is None."""
+        from tuya_cloudless.ble_provision import BleProvisioner
+
+        p = BleProvisioner()
+        assert p._client is None
+        await p.disconnect()  # must not raise
+
+    @pytest.mark.asyncio
+    async def test_disconnect_clears_client(self) -> None:
+        """disconnect() clears _client even when bleak is not available."""
+        import sys
+        from unittest.mock import MagicMock, patch
+
+        from tuya_cloudless.ble_provision import BleProvisioner
+
+        p = BleProvisioner()
+        # Set a fake client that is not a BleakClient instance
+        fake_client = MagicMock(spec=[])  # no is_connected attribute
+        p._client = fake_client
+
+        mock_bleak = MagicMock()
+        mock_bleak.BleakClient = type("BleakClient", (), {})  # won't match isinstance
+
+        with patch.dict(sys.modules, {"bleak": mock_bleak}):
+            await p.disconnect()
+
+        assert p._client is None
+
+
+# ── BleProvisioner — provision error paths ────────────────────────────────────
+
+
+class TestBleProvisionerProvision:
+    """Test provision() error handling using mocked BleakClient."""
+
+    def _make_payload(self) -> ProvisionPayload:
+        return ProvisionPayload(
+            ssid="TestNet",
+            password="testpass",
+            token=ProvisionPayload.generate_token(),
+            activator_url="http://192.168.1.1:8099",
+        )
+
+    @pytest.mark.asyncio
+    async def test_provision_raises_if_bleak_missing(self) -> None:
+        """provision() raises PairingError when bleak is not installed."""
+        import sys
+        from unittest.mock import patch
+
+        from tuya_cloudless.ble_provision import BleProvisioner
+
+        with patch.dict(sys.modules, {"bleak": None, "bleak.backends.characteristic": None}):
+            p = BleProvisioner()
+            with pytest.raises(PairingError, match="bleak is required"):
+                await p.provision("AA:BB:CC:DD:EE:FF", self._make_payload())
+
+    @pytest.mark.asyncio
+    async def test_provision_raises_pairing_error_on_os_error(self) -> None:
+        """provision() converts OSError from BleakClient to PairingError."""
+        import sys
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        from tuya_cloudless.ble_provision import BleProvisioner
+
+        # BleakClient context manager raises OSError on connect
+        mock_client_instance = MagicMock()
+        mock_client_instance.__aenter__ = AsyncMock(side_effect=OSError("connection refused"))
+        mock_client_instance.__aexit__ = AsyncMock(return_value=False)
+
+        mock_bleak_client_cls = MagicMock(return_value=mock_client_instance)
+
+        mock_char = MagicMock()
+        mock_bleak = MagicMock()
+        mock_bleak.BleakClient = mock_bleak_client_cls
+
+        mock_backends = MagicMock()
+        mock_backends.characteristic = MagicMock()
+        mock_backends.characteristic.BleakGATTCharacteristic = mock_char
+
+        with patch.dict(
+            sys.modules,
+            {
+                "bleak": mock_bleak,
+                "bleak.backends": mock_backends,
+                "bleak.backends.characteristic": mock_backends.characteristic,
+            },
+        ):
+            p = BleProvisioner()
+            with pytest.raises(PairingError, match="BLE provisioning failed"):
+                await p.provision("AA:BB:CC:DD:EE:FF", self._make_payload())
+
+    @pytest.mark.asyncio
+    async def test_provision_happy_path_success(self) -> None:
+        """provision() completes without exception when device responds correctly."""
+        import asyncio
+        import sys
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        from tuya_cloudless.ble_provision import (
+            BLE_NOTIFY_CHAR_UUID,
+            CMD_PAIR_SUCCESS,
+            BleFrame,
+            BleProvisioner,
+            _chunk_frame,
+        )
+
+        device_nonce = bytes(range(16))
+        resp_frame = BleFrame(seq=0, cmd=0x00, payload=device_nonce)
+        resp_chunks = _chunk_frame(resp_frame.encode())
+
+        ack_frame = BleFrame(seq=2, cmd=CMD_PAIR_SUCCESS, payload=b"")
+        ack_chunks = _chunk_frame(ack_frame.encode())
+
+        notify_callbacks: dict = {}
+        mock_client = MagicMock()
+        mock_client.write_gatt_char = AsyncMock()
+
+        async def fake_start_notify(char_uuid: str, callback):  # type: ignore[no-untyped-def]
+            notify_callbacks[char_uuid] = callback
+
+        mock_client.start_notify = fake_start_notify
+        mock_gatt_char = MagicMock()
+
+        # Use AsyncMock for __aenter__ so it handles being called as a bound method
+        mock_client_cm = MagicMock()
+        mock_client_cm.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client_cm.__aexit__ = AsyncMock(return_value=False)
+
+        GATTCharType = type("BleakGATTCharacteristic", (), {})
+        mock_char_module = MagicMock()
+        mock_char_module.BleakGATTCharacteristic = GATTCharType
+        mock_bleak = MagicMock()
+        mock_bleak.BleakClient = MagicMock(return_value=mock_client_cm)
+        mock_backends = MagicMock()
+        mock_backends.characteristic = mock_char_module
+
+        with patch.dict(
+            sys.modules,
+            {
+                "bleak": mock_bleak,
+                "bleak.backends": mock_backends,
+                "bleak.backends.characteristic": mock_char_module,
+            },
+        ):
+            p = BleProvisioner()
+
+            async def run_provision() -> None:
+                task = asyncio.create_task(
+                    p.provision("AA:BB:CC:DD:EE:FF", self._make_payload(), pair_timeout=5.0)
+                )
+                await asyncio.sleep(0)
+                cb = notify_callbacks.get(BLE_NOTIFY_CHAR_UUID)
+                if cb is not None:
+                    for chunk in resp_chunks:
+                        cb(mock_gatt_char, bytearray(chunk))
+                await asyncio.sleep(0)
+                cb = notify_callbacks.get(BLE_NOTIFY_CHAR_UUID)
+                if cb is not None:
+                    for chunk in ack_chunks:
+                        cb(mock_gatt_char, bytearray(chunk))
+                await task
+
+            await run_provision()
+
+        mock_client.write_gatt_char.assert_awaited()
+
+    @pytest.mark.asyncio
+    async def test_provision_handshake_timeout_raises(self) -> None:
+        """provision() raises PairingError on handshake response timeout."""
+        import asyncio
+        import sys
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        from tuya_cloudless.ble_provision import BleProvisioner
+
+        mock_client = MagicMock()
+        mock_client.write_gatt_char = AsyncMock()
+        mock_client.start_notify = AsyncMock()
+
+        mock_client_cm = MagicMock()
+        mock_client_cm.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client_cm.__aexit__ = AsyncMock(return_value=False)
+
+        GATTCharType = type("BleakGATTCharacteristic", (), {})
+        mock_char_module = MagicMock()
+        mock_char_module.BleakGATTCharacteristic = GATTCharType
+        mock_bleak = MagicMock()
+        mock_bleak.BleakClient = MagicMock(return_value=mock_client_cm)
+        mock_backends = MagicMock()
+        mock_backends.characteristic = mock_char_module
+
+        with patch.dict(
+            sys.modules,
+            {
+                "bleak": mock_bleak,
+                "bleak.backends": mock_backends,
+                "bleak.backends.characteristic": mock_char_module,
+            },
+        ):
+            original_wait_for = asyncio.wait_for
+            call_count = 0
+
+            async def fake_wait_for(coro, timeout):  # type: ignore[no-untyped-def]
+                nonlocal call_count
+                call_count += 1
+                if call_count == 1:
+                    coro.close()
+                    raise TimeoutError("handshake timeout")
+                return await original_wait_for(coro, timeout)
+
+            with patch("asyncio.wait_for", fake_wait_for):
+                p = BleProvisioner()
+                with pytest.raises(PairingError, match="Timeout waiting for BLE handshake"):
+                    await p.provision("AA:BB:CC:DD:EE:FF", self._make_payload())
+
+
+# ── BleProvisioner disconnect with connected BleakClient ─────────────────────
+
+
+class TestBleProvisionerProvisionInternalErrors:
+    """Tests for the internal error paths inside provision()."""
+
+    def _make_payload(self) -> ProvisionPayload:
+        return ProvisionPayload(
+            ssid="Net",
+            password="pw",
+            token=ProvisionPayload.generate_token(),
+            activator_url="http://ha:8099",
+        )
+
+    def _build_bleak_mock(self, mock_client: object) -> tuple[object, object, object, object]:
+        """Return (mock_bleak, mock_backends, mock_char_module, mock_client_cm)."""
+        from unittest.mock import AsyncMock, MagicMock
+
+        GATTCharType = type("BleakGATTCharacteristic", (), {})
+        mock_char_module = MagicMock()
+        mock_char_module.BleakGATTCharacteristic = GATTCharType
+        mock_bleak = MagicMock()
+        mock_client_cm = MagicMock()
+        mock_client_cm.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client_cm.__aexit__ = AsyncMock(return_value=False)
+        mock_bleak.BleakClient = MagicMock(return_value=mock_client_cm)
+        mock_backends = MagicMock()
+        mock_backends.characteristic = mock_char_module
+        return mock_bleak, mock_backends, mock_char_module, mock_client_cm
+
+    @pytest.mark.asyncio
+    async def test_provision_unexpected_handshake_response_raises(self) -> None:
+        """provision() raises PairingError when handshake response has wrong cmd."""
+        import asyncio
+        import sys
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        from tuya_cloudless.ble_provision import (
+            BLE_NOTIFY_CHAR_UUID,
+            BleFrame,
+            BleProvisioner,
+            _chunk_frame,
+        )
+
+        # Build a response with wrong command (not 0x00 = CMD_HANDSHAKE_RESP)
+        bad_resp = BleFrame(seq=0, cmd=0xFF, payload=bytes(16))
+        bad_chunks = _chunk_frame(bad_resp.encode())
+
+        notify_callbacks: dict = {}
+        mock_client = MagicMock()
+        mock_client.write_gatt_char = AsyncMock()
+        mock_gatt_char = MagicMock()
+
+        async def fake_start_notify(char_uuid: str, callback):  # type: ignore[no-untyped-def]
+            notify_callbacks[char_uuid] = callback
+
+        mock_client.start_notify = fake_start_notify
+
+        mock_bleak, mock_backends, mock_char_module, _ = self._build_bleak_mock(mock_client)
+
+        with patch.dict(
+            sys.modules,
+            {
+                "bleak": mock_bleak,
+                "bleak.backends": mock_backends,
+                "bleak.backends.characteristic": mock_char_module,
+            },
+        ):
+            p = BleProvisioner()
+
+            async def run_with_bad_resp() -> None:
+                task = asyncio.create_task(p.provision("AA:BB:CC:DD:EE:FF", self._make_payload()))
+                await asyncio.sleep(0)
+                cb = notify_callbacks.get(BLE_NOTIFY_CHAR_UUID)
+                if cb is not None:
+                    for chunk in bad_chunks:
+                        cb(mock_gatt_char, bytearray(chunk))
+                await task
+
+            with pytest.raises(PairingError, match="Unexpected handshake response"):
+                await run_with_bad_resp()
+
+    @pytest.mark.asyncio
+    async def test_provision_ack_timeout_raises(self) -> None:
+        """provision() raises PairingError when WiFi config ACK times out."""
+        import asyncio
+        import sys
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        from tuya_cloudless.ble_provision import (
+            BLE_NOTIFY_CHAR_UUID,
+            BleFrame,
+            BleProvisioner,
+            _chunk_frame,
+        )
+
+        # Valid handshake response with 16-byte nonce
+        device_nonce = bytes(range(16))
+        resp_frame = BleFrame(seq=0, cmd=0x00, payload=device_nonce)
+        resp_chunks = _chunk_frame(resp_frame.encode())
+
+        notify_callbacks: dict = {}
+        mock_client = MagicMock()
+        mock_client.write_gatt_char = AsyncMock()
+        mock_gatt_char = MagicMock()
+
+        async def fake_start_notify(char_uuid: str, callback):  # type: ignore[no-untyped-def]
+            notify_callbacks[char_uuid] = callback
+
+        mock_client.start_notify = fake_start_notify
+
+        mock_bleak, mock_backends, mock_char_module, _ = self._build_bleak_mock(mock_client)
+
+        with patch.dict(
+            sys.modules,
+            {
+                "bleak": mock_bleak,
+                "bleak.backends": mock_backends,
+                "bleak.backends.characteristic": mock_char_module,
+            },
+        ):
+            original_wait_for = asyncio.wait_for
+            call_count = 0
+
+            async def fake_wait_for(coro, timeout):  # type: ignore[no-untyped-def]
+                nonlocal call_count
+                call_count += 1
+                if call_count == 2:
+                    # Second call = waiting for WiFi config ACK
+                    coro.close()
+                    raise TimeoutError("ack timeout")
+                return await original_wait_for(coro, timeout)
+
+            p = BleProvisioner()
+
+            async def run_with_ack_timeout() -> None:
+                task = asyncio.create_task(
+                    p.provision("AA:BB:CC:DD:EE:FF", self._make_payload(), pair_timeout=1.0)
+                )
+                await asyncio.sleep(0)
+                # Deliver valid handshake response
+                cb = notify_callbacks.get(BLE_NOTIFY_CHAR_UUID)
+                if cb is not None:
+                    for chunk in resp_chunks:
+                        cb(mock_gatt_char, bytearray(chunk))
+                await task
+
+            with (
+                patch("asyncio.wait_for", fake_wait_for),
+                pytest.raises(PairingError, match="Timeout waiting for WiFi config ACK"),
+            ):
+                await run_with_ack_timeout()
+
+    @pytest.mark.asyncio
+    async def test_provision_pair_fail_raises(self) -> None:
+        """provision() raises PairingError when device sends CMD_PAIR_FAIL."""
+        import asyncio
+        import sys
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        from tuya_cloudless.ble_provision import (
+            BLE_NOTIFY_CHAR_UUID,
+            CMD_PAIR_FAIL,
+            BleFrame,
+            BleProvisioner,
+            _chunk_frame,
+        )
+
+        device_nonce = bytes(range(16))
+        resp_frame = BleFrame(seq=0, cmd=0x00, payload=device_nonce)
+        resp_chunks = _chunk_frame(resp_frame.encode())
+
+        fail_frame = BleFrame(seq=2, cmd=CMD_PAIR_FAIL, payload=b"")
+        fail_chunks = _chunk_frame(fail_frame.encode())
+
+        notify_callbacks: dict = {}
+        mock_client = MagicMock()
+        mock_client.write_gatt_char = AsyncMock()
+        mock_gatt_char = MagicMock()
+
+        async def fake_start_notify(char_uuid: str, callback):  # type: ignore[no-untyped-def]
+            notify_callbacks[char_uuid] = callback
+
+        mock_client.start_notify = fake_start_notify
+
+        mock_bleak, mock_backends, mock_char_module, _ = self._build_bleak_mock(mock_client)
+
+        with patch.dict(
+            sys.modules,
+            {
+                "bleak": mock_bleak,
+                "bleak.backends": mock_backends,
+                "bleak.backends.characteristic": mock_char_module,
+            },
+        ):
+            p = BleProvisioner()
+
+            async def run_with_fail() -> None:
+                task = asyncio.create_task(
+                    p.provision("AA:BB:CC:DD:EE:FF", self._make_payload(), pair_timeout=5.0)
+                )
+                await asyncio.sleep(0)
+                cb = notify_callbacks.get(BLE_NOTIFY_CHAR_UUID)
+                if cb is not None:
+                    for chunk in resp_chunks:
+                        cb(mock_gatt_char, bytearray(chunk))
+                await asyncio.sleep(0)
+                cb = notify_callbacks.get(BLE_NOTIFY_CHAR_UUID)
+                if cb is not None:
+                    for chunk in fail_chunks:
+                        cb(mock_gatt_char, bytearray(chunk))
+                await task
+
+            with pytest.raises(PairingError, match="Device rejected WiFi config"):
+                await run_with_fail()
+
+    @pytest.mark.asyncio
+    async def test_provision_unexpected_ack_raises(self) -> None:
+        """provision() raises PairingError when device sends an unexpected ACK command."""
+        import asyncio
+        import sys
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        from tuya_cloudless.ble_provision import (
+            BLE_NOTIFY_CHAR_UUID,
+            BleFrame,
+            BleProvisioner,
+            _chunk_frame,
+        )
+
+        device_nonce = bytes(range(16))
+        resp_frame = BleFrame(seq=0, cmd=0x00, payload=device_nonce)
+        resp_chunks = _chunk_frame(resp_frame.encode())
+
+        # Unknown command (0x10 is not WIFI_CONFIG_RESP or PAIR_SUCCESS)
+        bad_ack = BleFrame(seq=2, cmd=0x10, payload=b"")
+        bad_ack_chunks = _chunk_frame(bad_ack.encode())
+
+        notify_callbacks: dict = {}
+        mock_client = MagicMock()
+        mock_client.write_gatt_char = AsyncMock()
+        mock_gatt_char = MagicMock()
+
+        async def fake_start_notify(char_uuid: str, callback):  # type: ignore[no-untyped-def]
+            notify_callbacks[char_uuid] = callback
+
+        mock_client.start_notify = fake_start_notify
+
+        mock_bleak, mock_backends, mock_char_module, _ = self._build_bleak_mock(mock_client)
+
+        with patch.dict(
+            sys.modules,
+            {
+                "bleak": mock_bleak,
+                "bleak.backends": mock_backends,
+                "bleak.backends.characteristic": mock_char_module,
+            },
+        ):
+            p = BleProvisioner()
+
+            async def run_with_bad_ack() -> None:
+                task = asyncio.create_task(
+                    p.provision("AA:BB:CC:DD:EE:FF", self._make_payload(), pair_timeout=5.0)
+                )
+                await asyncio.sleep(0)
+                cb = notify_callbacks.get(BLE_NOTIFY_CHAR_UUID)
+                if cb is not None:
+                    for chunk in resp_chunks:
+                        cb(mock_gatt_char, bytearray(chunk))
+                await asyncio.sleep(0)
+                cb = notify_callbacks.get(BLE_NOTIFY_CHAR_UUID)
+                if cb is not None:
+                    for chunk in bad_ack_chunks:
+                        cb(mock_gatt_char, bytearray(chunk))
+                await task
+
+            with pytest.raises(PairingError, match="Unexpected ACK command"):
+                await run_with_bad_ack()
+
+
+class TestBleProvisionerDisconnectConnected:
+    @pytest.mark.asyncio
+    async def test_disconnect_with_connected_bleak_client(self) -> None:
+        """disconnect() calls client.disconnect() when isinstance check passes."""
+        import sys
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        from tuya_cloudless.ble_provision import BleProvisioner
+
+        # Disconnect clears _client even when BleakClient check fires
+        p = BleProvisioner()
+
+        # Simulate a client that passes isinstance but is_connected = True
+        BleakClientCls = type("BleakClient", (), {})
+        mock_client = BleakClientCls()
+        mock_client.is_connected = True  # type: ignore[attr-defined]
+        mock_client.disconnect = AsyncMock()  # type: ignore[attr-defined]
+
+        mock_bleak = MagicMock()
+        mock_bleak.BleakClient = BleakClientCls
+
+        p._client = mock_client
+        with patch.dict(sys.modules, {"bleak": mock_bleak}):
+            await p.disconnect()
+
+        assert p._client is None

@@ -122,9 +122,11 @@
     "error": {
       "cannot_connect": "Could not reach the device — check the IP address and that the device is on the same network as Home Assistant",
       "invalid_local_key": "Invalid security key — must be exactly 16 characters",
+      "invalid_local_key_chars": "Invalid security key — must contain only printable ASCII characters",
       "invalid_auth_key": "The security key was rejected by the device — double-check the key and try again.",
       "invalid_gw_id": "Invalid device ID — must not be empty",
       "invalid_ip": "Invalid IP address — must not be empty",
+      "invalid_ip_address": "Invalid IP address — enter a valid IPv4 or IPv6 address",
       "auth_failed": "Connection refused — the security key may be wrong, or the device was paired again using the Tuya app",
       "no_devices_found": "No Tuya devices found on your network. Make sure the device is powered on and on the same Wi-Fi. Switch to **Manual** above to enter details by hand.",
       "unknown": "Unexpected error — check the Home Assistant log for details",

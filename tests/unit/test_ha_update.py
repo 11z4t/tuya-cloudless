@@ -36,7 +36,7 @@ def _make_entity(
     entity.coordinator = coord
     entity._dp_id = None
     entity._attr_unique_id = f"{coord.gw_id}_update_firmware"
-    entity._attr_translation_key = "firmware_version"
+    entity._attr_translation_key = "protocol_version"
     return entity
 
 
@@ -68,11 +68,14 @@ class TestTuyaCloudlessUpdateEntity:
         assert entity._attr_supported_features == 0
         assert not (entity._attr_supported_features & UpdateEntityFeature.INSTALL)
 
-    def test_device_class_firmware(self) -> None:
-        from homeassistant.components.update import UpdateDeviceClass
+    def test_device_class_is_none(self) -> None:
+        """HA-003 / PLAT-843: device_class must be None (not FIRMWARE).
 
+        The entity shows a protocol version, not actual firmware, so using
+        UpdateDeviceClass.FIRMWARE would be misleading.
+        """
         entity = _make_entity()
-        assert entity._attr_device_class == UpdateDeviceClass.FIRMWARE
+        assert entity._attr_device_class is None
 
     def test_entity_category_diagnostic(self) -> None:
         from homeassistant.const import EntityCategory
@@ -100,8 +103,9 @@ class TestTuyaCloudlessUpdateEntity:
             assert entity.latest_version == version
 
     def test_translation_key(self) -> None:
+        """HA-003 / PLAT-843: translation key must be protocol_version."""
         entity = _make_entity()
-        assert entity._attr_translation_key == "firmware_version"
+        assert entity._attr_translation_key == "protocol_version"
 
 
 # ── async_setup_entry ──────────────────────────────────────────────────────────

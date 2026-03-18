@@ -16,7 +16,7 @@
         "description": "Parningsverktyget öppnas automatiskt i en ny flik. Följ stegen där för att ansluta din enhet via Bluetooth och hämta din säkerhetsnyckel.\n\nOm fliken inte öppnades automatiskt, klicka på knappen nedan.\n\n**Kräver Chrome eller Edge** (dator eller Android) och **HTTPS** — se [HTTPS-installationsguiden](https://github.com/11z4t/tuya-cloudless/wiki/HTTPS-Setup) vid behov."
       },
       "ble_confirm": {
-        "title": "Enhet parkopplad ✓",
+        "title": "Enhet parkopplad",
         "description": "Din enhet på **{ip_address}** (ID: `{gw_id}`) parkopplades. Ge den ett namn och välj enhetstyp.",
         "data": {
           "device_name": "Enhetsnamn",
@@ -128,7 +128,9 @@
       "auth_failed": "Anslutningen nekades — säkerhetsnyckeln kan vara felaktig eller enheten har kopplats ihop på nytt med Tuya-appen",
       "no_devices_found": "Inga Tuya-enheter hittades på nätverket. Se till att enheten är påslagen och på samma Wi-Fi. Byt till **Manuell** ovan för att ange uppgifterna för hand.",
       "unknown": "Oväntat fel — kontrollera Home Assistant-loggen för detaljer",
-      "invalid_ha_url": "Ange en giltig adress, till exempel http://homeassistant.local:8123"
+      "invalid_ha_url": "Ange en giltig adress, till exempel http://homeassistant.local:8123",
+      "invalid_local_key_chars": "Säkerhetsnyckeln innehåller ogiltiga tecken (måste vara utskrivbara ASCII-tecken)",
+      "invalid_ip_address": "Ogiltigt IP-adressformat"
     },
     "abort": {
       "already_configured": "Den här enheten är redan inlagd",
@@ -198,7 +200,7 @@
         "step": {
           "confirm": {
             "title": "Uppdatera anslutningsinställningar",
-            "description": "Öppna enhetsinställningarna för att uppdatera IP-adressen."
+            "description": "Klicka på **Skicka** för att öppna konfigurationsdialogrutan där du kan uppdatera IP-adressen och säkerhetsnyckeln. Alternativt, gå till **Inställningar → Enheter och tjänster → Tuya Cloudless → [din enhet] → Konfigurera**."
           }
         }
       }

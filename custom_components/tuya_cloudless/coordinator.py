@@ -58,6 +58,11 @@ _MAX_BUFFER_BYTES = 65_536  # 64 KB
 _DP_QUERY_MAX_RETRIES: int = 3
 _DP_QUERY_RETRY_DELAY: float = 2.0
 
+#: Timeout (seconds) for each individual read in the v3.4/3.5 ECDH session key
+#: negotiation (ROB-002 / PLAT-831).  Applies separately to the header read and
+#: to the frame-body read within ``_negotiate_session_key_once``.
+_SESSION_KEY_NEG_TIMEOUT: float = 5.0
+
 #: PLAT-767 — IP auto-recovery via UDP discovery
 #: Trigger a UDP broadcast scan after this many consecutive connection failures.
 _IP_REDISCOVER_THRESHOLD: int = 3
@@ -167,6 +172,12 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     async def async_start(self) -> None:
         """Start the connection manager."""
+        # ROB-001 (PLAT-830): Guard against duplicate connection loops.
+        # If a connect task is already running (e.g. async_start called twice),
+        # do nothing — the existing loop will handle reconnects on its own.
+        if self._connect_task is not None and not self._connect_task.done():
+            return  # Already connecting/connected
+
         _LOGGER.info("[%s] Starting coordinator for %s", self._gw_id, self._ip)
         self._connect_task = self.hass.async_create_task(
             self._connection_loop(), name=f"tuya-cloudless-connect:{self._gw_id}"
@@ -431,6 +442,10 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         from tuya_cloudless.message import MessageBuffer
         from tuya_cloudless.protocol import TuyaFrame
 
+        # MessageBuffer is intentionally local to _receive_loop.
+        # It must NOT be hoisted to an instance variable without calling
+        # buf.clear() (or recreating it) on each reconnect, to prevent
+        # stale bytes from a previous TCP session corrupting the next one.
         msg_buf = MessageBuffer(
             version=ProtocolVersion(self._version),
             local_key=self._local_key,
@@ -677,14 +692,16 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         try:
             header_bytes = await asyncio.wait_for(
-                reader.readexactly(FRAME_HEADER_SIZE), timeout=5.0
+                reader.readexactly(FRAME_HEADER_SIZE), timeout=_SESSION_KEY_NEG_TIMEOUT
             )
             frame_payload_len = _struct.unpack(">I", header_bytes[12:16])[0]
             if frame_payload_len > MAX_PAYLOAD_SIZE:
                 raise TuyaCloudlessError(
                     f"Session key response frame too large ({frame_payload_len} bytes)"
                 )
-            rest_bytes = await asyncio.wait_for(reader.readexactly(frame_payload_len), timeout=5.0)
+            rest_bytes = await asyncio.wait_for(
+                reader.readexactly(frame_payload_len), timeout=_SESSION_KEY_NEG_TIMEOUT
+            )
             raw = header_bytes + rest_bytes
         except asyncio.IncompleteReadError as exc:
             raise TuyaCloudlessError(

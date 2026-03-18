@@ -248,3 +248,279 @@ def test_real_profiles_load() -> None:
     assert "Generic Light" in names
     assert "Smart Plug" in names
     assert "Roller Blind" in names
+
+
+# ── _get_spec_dp_ids ───────────────────────────────────────────────────────────
+
+
+def test_get_spec_dp_ids_switch() -> None:
+    """_get_spec_dp_ids returns the dp_power id for a switch spec."""
+    from tuya_cloudless.profiles import _get_spec_dp_ids
+
+    spec = EntitySpec(
+        platform="switch",
+        name="main",
+        dp_power=DPSpec(id="1", type="bool"),
+    )
+    ids = _get_spec_dp_ids(spec)
+    assert ids == {"1"}
+
+
+def test_get_spec_dp_ids_multiple_dps() -> None:
+    """_get_spec_dp_ids collects all dp_* DPSpec IDs."""
+    from tuya_cloudless.profiles import _get_spec_dp_ids
+
+    spec = EntitySpec(
+        platform="climate",
+        name="thermo",
+        dp_power=DPSpec(id="1", type="bool"),
+        dp_mode=DPSpec(id="2", type="enum"),
+        dp_temp_set=DPSpec(id="3", type="int"),
+        dp_temp_current=DPSpec(id="4", type="int"),
+    )
+    ids = _get_spec_dp_ids(spec)
+    assert ids == {"1", "2", "3", "4"}
+
+
+def test_get_spec_dp_ids_empty_spec() -> None:
+    """_get_spec_dp_ids returns empty set when no dp_* fields are set."""
+    from tuya_cloudless.profiles import _get_spec_dp_ids
+
+    spec = EntitySpec(platform="sensor", name="temp")
+    ids = _get_spec_dp_ids(spec)
+    assert ids == set()
+
+
+def test_get_spec_dp_ids_light_spec() -> None:
+    """_get_spec_dp_ids picks up brightness and color_temp DPSpec fields."""
+    from tuya_cloudless.profiles import _get_spec_dp_ids
+
+    spec = EntitySpec(
+        platform="light",
+        name="lamp",
+        dp_power=DPSpec(id="20", type="bool"),
+        dp_brightness=DPSpec(id="22", type="int"),
+        dp_color_temp=DPSpec(id="23", type="int"),
+    )
+    ids = _get_spec_dp_ids(spec)
+    assert ids == {"20", "22", "23"}
+
+
+# ── _detect_profile_from_dps_core ─────────────────────────────────────────────
+
+
+def test_detect_profile_from_dps_core_empty_dp_ids() -> None:
+    """Returns None when dp_ids is empty."""
+    from tuya_cloudless.profiles import DeviceProfile, _detect_profile_from_dps_core
+
+    profiles = [DeviceProfile(name="Switch", model="sw*", entities=[])]
+    result = _detect_profile_from_dps_core(set(), profiles)
+    assert result is None
+
+
+def test_detect_profile_from_dps_core_empty_profiles() -> None:
+    """Returns None when profiles list is empty."""
+    from tuya_cloudless.profiles import _detect_profile_from_dps_core
+
+    result = _detect_profile_from_dps_core({"1", "2"}, [])
+    assert result is None
+
+
+def test_detect_profile_from_dps_core_best_match() -> None:
+    """Selects the profile with the highest overlap fraction."""
+    from tuya_cloudless.profiles import (
+        DeviceProfile,
+        DPSpec,
+        EntitySpec,
+        _detect_profile_from_dps_core,
+    )
+
+    # Profile A expects DPs 1, 2 — 2/2 = 100% overlap with observed {1,2,3}
+    prof_a = DeviceProfile(
+        name="ProfileA",
+        model="pa*",
+        entities=[
+            EntitySpec(
+                platform="switch",
+                name="main",
+                dp_power=DPSpec(id="1", type="bool"),
+                dp_value=DPSpec(id="2", type="int"),
+            )
+        ],
+    )
+    # Profile B expects DPs 1, 2, 4, 5 — 2/4 = 50% overlap
+    prof_b = DeviceProfile(
+        name="ProfileB",
+        model="pb*",
+        entities=[
+            EntitySpec(
+                platform="sensor",
+                name="s",
+                dp_power=DPSpec(id="1", type="bool"),
+                dp_value=DPSpec(id="2", type="int"),
+                dp_brightness=DPSpec(id="4", type="int"),
+                dp_color_temp=DPSpec(id="5", type="int"),
+            )
+        ],
+    )
+
+    result = _detect_profile_from_dps_core({"1", "2", "3"}, [prof_a, prof_b])
+    assert result is not None
+    assert result.name == "ProfileA"
+
+
+def test_detect_profile_from_dps_core_wildcard_fallback() -> None:
+    """Falls back to wildcard '*' profile when no specific profile has any overlap."""
+    from tuya_cloudless.profiles import (
+        DeviceProfile,
+        DPSpec,
+        EntitySpec,
+        _detect_profile_from_dps_core,
+    )
+
+    wildcard = DeviceProfile(name="Generic", model="*", entities=[])
+    specific = DeviceProfile(
+        name="Specific",
+        model="sp*",
+        entities=[
+            EntitySpec(
+                platform="switch",
+                name="main",
+                dp_power=DPSpec(id="99", type="bool"),  # no overlap with {"1","2"}
+            )
+        ],
+    )
+
+    result = _detect_profile_from_dps_core({"1", "2"}, [wildcard, specific])
+    assert result is not None
+    assert result.name == "Generic"
+
+
+def test_detect_profile_from_dps_core_no_overlap_no_wildcard() -> None:
+    """Returns None when no profile overlaps and there's no wildcard fallback."""
+    from tuya_cloudless.profiles import (
+        DeviceProfile,
+        DPSpec,
+        EntitySpec,
+        _detect_profile_from_dps_core,
+    )
+
+    specific = DeviceProfile(
+        name="Specific",
+        model="sp*",
+        entities=[
+            EntitySpec(
+                platform="switch",
+                name="main",
+                dp_power=DPSpec(id="99", type="bool"),
+            )
+        ],
+    )
+
+    result = _detect_profile_from_dps_core({"1", "2"}, [specific])
+    # No wildcard fallback, no overlap — returns None
+    assert result is None
+
+
+def test_detect_profile_from_dps_core_profile_with_empty_expected() -> None:
+    """Profiles with no dp_* specs are skipped in scoring."""
+    from tuya_cloudless.profiles import DeviceProfile, EntitySpec, _detect_profile_from_dps_core
+
+    # Profile with entity but no DPSpec fields — expected will be empty → skipped
+    empty_dp_profile = DeviceProfile(
+        name="EmptyDP",
+        model="em*",
+        entities=[EntitySpec(platform="sensor", name="temp")],  # no dp_* set
+    )
+    wildcard = DeviceProfile(name="Fallback", model="*", entities=[])
+
+    result = _detect_profile_from_dps_core({"1"}, [empty_dp_profile, wildcard])
+    assert result is not None
+    assert result.name == "Fallback"
+
+
+# ── ProfileRegistry.detect_profile_from_dps ───────────────────────────────────
+
+
+def test_registry_detect_profile_from_dps(profiles_dir: Path) -> None:
+    """ProfileRegistry.detect_profile_from_dps finds best match from loaded profiles."""
+    from tuya_cloudless.profiles import ProfileRegistry
+
+    registry = ProfileRegistry()
+    registry.init(profiles_dir)
+
+    # Smart Plug has DP 1 (switch) + DP 19 (sensor) + DP 26 (binary_sensor)
+    result = registry.detect_profile_from_dps({"1", "19", "26"})
+    assert result is not None
+    assert result.name == "Smart Plug"
+
+
+def test_registry_detect_profile_from_dps_returns_none_empty() -> None:
+    """ProfileRegistry.detect_profile_from_dps returns None for empty dp_ids."""
+    from tuya_cloudless.profiles import ProfileRegistry
+
+    registry = ProfileRegistry()
+    result = registry.detect_profile_from_dps(set())
+    assert result is None
+
+
+# ── ProfileRegistry.find_profile_by_product_key ───────────────────────────────
+
+
+def test_registry_find_profile_by_product_key(profiles_dir: Path) -> None:
+    """ProfileRegistry.find_profile_by_product_key matches glob patterns."""
+    from tuya_cloudless.profiles import ProfileRegistry
+
+    registry = ProfileRegistry()
+    registry.init(profiles_dir)
+
+    result = registry.find_profile_by_product_key("sp_v3_xyz")
+    assert result is not None
+    assert result.name == "Smart Plug"
+
+
+def test_registry_find_profile_by_product_key_wildcard_fallback(profiles_dir: Path) -> None:
+    """ProfileRegistry.find_profile_by_product_key falls back to '*' profile."""
+    from tuya_cloudless.profiles import ProfileRegistry
+
+    registry = ProfileRegistry()
+    registry.init(profiles_dir)
+
+    result = registry.find_profile_by_product_key("totally_unknown_key")
+    assert result is not None
+    assert result.name == "Generic Switch"
+
+
+# ── Module-level compat detect_profile_from_dps ───────────────────────────────
+
+
+def test_compat_detect_profile_from_dps(profiles_dir: Path) -> None:
+    """Module-level detect_profile_from_dps uses the compat registry."""
+    from tuya_cloudless.profiles import detect_profile_from_dps
+
+    init_profiles(profiles_dir)
+    # Smart Plug has DP 19 which no other profile has
+    result = detect_profile_from_dps({"1", "19", "26"})
+    assert result is not None
+    assert result.name == "Smart Plug"
+
+
+def test_compat_detect_profile_from_dps_empty() -> None:
+    """Module-level detect_profile_from_dps returns None for empty dp_ids."""
+    from tuya_cloudless.profiles import detect_profile_from_dps
+
+    result = detect_profile_from_dps(set())
+    assert result is None
+
+
+# ── ProfileRegistry.__len__ ───────────────────────────────────────────────────
+
+
+def test_registry_len(profiles_dir: Path) -> None:
+    """ProfileRegistry.__len__ returns the number of loaded profiles."""
+    from tuya_cloudless.profiles import ProfileRegistry
+
+    registry = ProfileRegistry()
+    assert len(registry) == 0
+    registry.init(profiles_dir)
+    assert len(registry) == 2

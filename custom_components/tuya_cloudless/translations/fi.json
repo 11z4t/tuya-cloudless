@@ -16,7 +16,7 @@
         "description": "Parityökalu avautuu selaimessasi. Seuraa vaiheita yhdistääksesi laitteesi Bluetoothin kautta.\n\n**Vaatii Chromen tai Edgen** (työpöytä tai Android) ja **HTTPS:n** — katso [HTTPS-asennusopas](https://github.com/11z4t/tuya-cloudless/wiki/HTTPS-Setup) tarvittaessa."
       },
       "ble_confirm": {
-        "title": "Laite paritettu ✓",
+        "title": "Laite paritettu onnistuneesti",
         "description": "Laitteesi osoitteessa **{ip_address}** (tunnus: `{gw_id}`) parittiin onnistuneesti. Anna sille nimi ja valitse laitetyyppi.",
         "data": {
           "device_name": "Laitteen nimi",
@@ -127,7 +127,10 @@
       "invalid_ip": "Virheellinen IP-osoite — ei saa olla tyhjä",
       "auth_failed": "Yhteys hylätty — suojausavain saattaa olla väärä tai laite parittiin uudelleen Tuya-sovelluksella",
       "no_devices_found": "Tuya-laitteita ei löydy verkostasi. Varmista, että laite on käynnistetty ja samassa Wi-Fi-verkossa. Vaihda **Manuaaliseen** yllä kirjoittaaksesi tiedot käsin.",
-      "unknown": "Odottamaton virhe — tarkista Home Assistant -loki yksityiskohtia varten"
+      "unknown": "Odottamaton virhe — tarkista Home Assistant -loki yksityiskohtia varten",
+      "invalid_ha_url": "Anna kelvollinen osoite, esimerkiksi http://homeassistant.local:8123",
+      "invalid_local_key_chars": "Suojausavain sisältää virheellisiä merkkejä (täytyy olla tulostettavaa ASCII-merkistöä)",
+      "invalid_ip_address": "Virheellinen IP-osoitemuoto"
     },
     "abort": {
       "already_configured": "Tämä laite on jo määritetty",
@@ -135,7 +138,8 @@
       "pairing_server_unavailable": "BLE-paritupalvelinta ei voitu käynnistää portissa 8099 — portti saattaa olla käytössä. Yritä uudelleen tai käytä Haku / Manuaalinen asennus sen sijaan.",
       "https_required": "BLE-paritus vaatii HTTPS:n. Katso [HTTPS-asennusopas](https://github.com/11z4t/tuya-cloudless/wiki/HTTPS-Setup) varmenteen määrittämiseksi, ja yritä sitten uudelleen.",
       "reauth_successful": "Suojausavain päivitetty — laite on yhdistetty uudelleen",
-      "reconfigure_successful": "Asetukset päivitetty — laite latautuu uudelleen"
+      "reconfigure_successful": "Asetukset päivitetty — laite latautuu uudelleen",
+      "no_device_id": "Laitetta ei voitu tunnistaa — varmista, että se on käynnistetty ja yhteydessä verkkoon"
     }
   },
   "exceptions": {
@@ -196,7 +200,7 @@
         "step": {
           "confirm": {
             "title": "Päivitä yhteysasetukset",
-            "description": "Avaa laiteasetukset päivittääksesi IP-osoitteen."
+            "description": "Napsauta **Lähetä** avataksesi uudelleenmääritysvalintaikkunan, jossa voit päivittää IP-osoitteen ja paikallisen avaimen. Vaihtoehtoisesti siirry kohtaan **Asetukset → Laitteet ja palvelut → Tuya Cloudless → [laitteesi] → Määritä**."
           }
         }
       }

@@ -2,14 +2,39 @@
   "config": {
     "flow_title": "{name}",
     "step": {
+      "pair": {
+        "title": "配对工具",
+        "description": "设备详情已从Tuya Cloudless配对工具导入。请确认详情正确，然后点击**下一步**测试连接。",
+        "data": {
+          "gw_id": "设备ID",
+          "local_key": "安全密钥",
+          "ip_address": "IP地址"
+        }
+      },
+      "ble_pair": {
+        "title": "BLE配对",
+        "description": "配对工具应会在新浏览器标签页中自动打开。按照步骤通过蓝牙连接您的设备并获取本地密钥。\n\n如果标签页未打开，请点击下方按钮。\n\n**需要Chrome或Edge**（桌面或Android）及**HTTPS** — 如需要，请参阅[HTTPS设置指南](https://github.com/11z4t/tuya-cloudless/wiki/HTTPS-Setup)。"
+      },
+      "ble_confirm": {
+        "title": "设备配对成功",
+        "description": "**{ip_address}**处的设备（ID：`{gw_id}`）已成功配对。为其命名并选择设备类型。",
+        "data": {
+          "device_name": "设备名称",
+          "profile": "设备类型"
+        },
+        "data_description": {
+          "device_name": "在Home Assistant中显示的名称",
+          "profile": "选择最符合您设备的类型"
+        }
+      },
       "user": {
         "title": "添加Tuya设备",
-        "description": "选择添加设备的方式。**搜索**会自动扫描您的网络——请确保设备已开启并连接到与Home Assistant相同的Wi-Fi。",
+        "description": "选择添加设备的方式。",
         "data": {
           "setup_mode": "设置方式"
         },
         "data_description": {
-          "setup_mode": "搜索会自动找到设备。如果找不到设备，请选择手动。"
+          "setup_mode": "BLE配对推荐用于新设备。搜索会找到已在网络上的设备。手动输入允许您手动输入详情。"
         }
       },
       "select": {
@@ -21,26 +46,26 @@
       },
       "local_key": {
         "title": "输入安全密钥",
-        "description": "位于**{ip_address}**（固件{firmware}）的设备需要安全密钥才能进行本地通信。\n\n密钥在使用Tuya Cloudless配对时显示，仅存储在Home Assistant中。",
+        "description": "位于**{ip_address}**（固件{firmware}）的设备需要安全密钥才能进行本地通信。\n\n密钥在使用[Tuya Cloudless配对工具]({pairing_tool_url})配对设备时显示，仅存储在Home Assistant中——不会向云端发送任何内容。",
         "data": {
           "local_key": "安全密钥",
           "device_name": "设备名称",
           "profile": "设备类型"
         },
         "data_description": {
-          "local_key": "配对时获得的16位密钥",
+          "local_key": "配对工具中的16位密钥",
           "device_name": "在Home Assistant中显示的名称（留空则使用IP地址）",
           "profile": "选择最符合您设备的类型"
         }
       },
       "confirm": {
         "title": "准备连接",
-        "description": "`{ip_address}`上的**{device_name}**将添加到Home Assistant。\n\n点击**连接**测试连接。",
+        "description": "`{ip_address}`上的**{device_name}**将添加到Home Assistant。\n\n点击**连接**测试连接并完成设置。",
         "data": {}
       },
       "manual": {
         "title": "手动添加设备",
-        "description": "输入您的Tuya设备的详细信息。设备ID和安全密钥在Tuya Cloudless工具中显示。",
+        "description": "输入您的Tuya设备的详细信息。设备ID和安全密钥在[Tuya Cloudless配对工具]({pairing_tool_url})中显示。",
         "data": {
           "gw_id": "设备ID",
           "local_key": "安全密钥",
@@ -52,14 +77,14 @@
         "data_description": {
           "gw_id": "唯一设备标识符（例如abc123def456）",
           "local_key": "16位安全密钥",
-          "ip_address": "设备IP地址",
+          "ip_address": "设备IP地址（在路由器中设置固定地址以获得最佳稳定性）",
           "protocol_version": "3.3适用于2020年后的大多数设备",
           "profile": "选择最符合的类型"
         }
       },
       "discovery": {
         "title": "发现Tuya设备",
-        "description": "在**{ip_address}**（固件{firmware}）检测到设备。\n\n输入安全密钥以完成设置。",
+        "description": "在**{ip_address}**（固件{firmware}）检测到设备。\n\n输入[Tuya Cloudless配对工具]({pairing_tool_url})的安全密钥以完成设置。",
         "data": {
           "local_key": "安全密钥",
           "profile": "设备类型",
@@ -71,7 +96,7 @@
       },
       "reauth_confirm": {
         "title": "更新安全密钥",
-        "description": "**{device_name}**的安全密钥已失效。请输入新密钥以重新连接。",
+        "description": "**{device_name}**的安全密钥已失效。如果设备已恢复出厂设置或重新配对，则会发生此情况。\n\n从[Tuya Cloudless配对工具]({pairing_tool_url})获取新密钥并在下方输入以重新连接。",
         "data": {
           "local_key": "新安全密钥",
           "ip_address": "IP地址（如已更改）"
@@ -80,6 +105,18 @@
           "local_key": "最近配对时的16位密钥",
           "ip_address": "如果地址未更改请留空"
         }
+      },
+      "reconfigure": {
+        "title": "更新连接设置",
+        "description": "无需删除并重新添加设备即可更新**{device_name}**的IP地址或安全密钥。",
+        "data": {
+          "ip_address": "IP地址",
+          "local_key": "安全密钥"
+        },
+        "data_description": {
+          "ip_address": "设备在您网络上的当前IP地址",
+          "local_key": "16位安全密钥"
+        }
       }
     },
     "error": {
@@ -87,14 +124,39 @@
       "invalid_local_key": "安全密钥无效——必须是正好16个字符",
       "invalid_auth_key": "安全密钥不正确。请检查密钥并重试。",
       "invalid_gw_id": "设备ID无效——不能为空",
+      "invalid_ip": "IP地址无效——不能为空",
       "auth_failed": "连接被拒绝——密钥可能不正确，或设备已重新配对",
       "no_devices_found": "网络上未找到Tuya设备。请确保设备已开启且在同一Wi-Fi上。使用上方的**手动**。",
-      "unknown": "意外错误——请查看Home Assistant日志"
+      "unknown": "意外错误——请查看Home Assistant日志",
+      "invalid_ha_url": "请输入有效地址，例如 http://homeassistant.local:8123",
+      "invalid_local_key_chars": "安全密钥包含无效字符（必须是可打印的ASCII）",
+      "invalid_ip_address": "无效的IP地址格式"
     },
     "abort": {
       "already_configured": "此设备已配置",
       "not_tuya_device": "设备未按预期响应",
-      "reauth_successful": "安全密钥已更新——设备已重新连接"
+      "pairing_server_unavailable": "无法在端口8099上启动BLE配对服务器——该端口可能已被占用。请重试或使用搜索/手动设置。",
+      "https_required": "BLE配对需要HTTPS。请参阅[HTTPS设置指南](https://github.com/11z4t/tuya-cloudless/wiki/HTTPS-Setup)配置证书，然后重试。",
+      "reauth_successful": "安全密钥已更新——设备已重新连接",
+      "reconfigure_successful": "设置已更新——设备正在重新加载",
+      "no_device_id": "无法识别设备——请确保其已开启并连接到网络"
+    }
+  },
+  "exceptions": {
+    "device_unavailable": {
+      "message": "设备不可用——连接已断开"
+    },
+    "command_timeout": {
+      "message": "命令在超时时间内未到达设备——请重试"
+    },
+    "entry_not_found": {
+      "message": "找不到配置条目"
+    },
+    "entry_not_loaded": {
+      "message": "配置条目未加载"
+    },
+    "send_failed": {
+      "message": "向设备发送命令失败"
     }
   },
   "options": {
@@ -103,11 +165,43 @@
         "title": "设备设置",
         "data": {
           "ip_address": "IP地址",
-          "protocol_version": "设备型号"
+          "protocol_version": "设备型号",
+          "heartbeat_interval": "心跳间隔（秒）",
+          "command_timeout": "命令超时（秒）",
+          "reconnect_max_delay": "最大重连延迟（秒）"
         },
         "data_description": {
           "ip_address": "如果IP地址已更改请更新",
-          "protocol_version": "仅在固件更新后设备停止响应时更改"
+          "protocol_version": "仅在固件更新后设备停止响应时更改",
+          "heartbeat_interval": "发送心跳以保持连接活跃的频率（5–300秒，默认20）",
+          "command_timeout": "放弃之前等待命令响应的时间（1–30秒，默认5）",
+          "reconnect_max_delay": "重连尝试之间的最大等待时间（10–3600秒，默认300）"
+        }
+      }
+    }
+  },
+  "issues": {
+    "auth_failed": {
+      "title": "{device_name}的身份验证失败",
+      "description": "设备**{device_name}**正在拒绝连接。安全密钥可能不正确——当设备恢复出厂设置或使用Tuya应用重新配对时会发生此情况。\n\n点击**修复**输入新的安全密钥。",
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "更新安全密钥",
+            "description": "前往**设置 → 集成 → Tuya Cloudless → {device_name}**并选择**重新认证**。"
+          }
+        }
+      }
+    },
+    "connectivity": {
+      "title": "无法连接到{name}",
+      "description": "多次尝试后无法访问{ip_address}处的设备。设备可能已更改IP地址。\n\n点击**修复**更新连接设置。",
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "更新连接设置",
+            "description": "点击**提交**打开重新配置对话框，在那里您可以更新IP地址和本地密钥。也可以前往**设置 → 设备和服务 → Tuya Cloudless → [您的设备] → 配置**。"
+          }
         }
       }
     }
@@ -121,6 +215,9 @@
     "light": {
       "main_light": {
         "name": "灯"
+      },
+      "fan_light": {
+        "name": "风扇灯"
       }
     },
     "sensor": {
@@ -135,16 +232,78 @@
       },
       "current": {
         "name": "电流"
+      },
+      "battery": {
+        "name": "电池"
+      },
+      "co2": {
+        "name": "CO₂"
+      },
+      "temperature": {
+        "name": "温度"
+      },
+      "humidity": {
+        "name": "湿度"
+      },
+      "floor_temp": {
+        "name": "地板温度"
       }
     },
     "binary_sensor": {
       "overload": {
         "name": "过载保护"
+      },
+      "leak": {
+        "name": "水漏检测"
+      },
+      "motion": {
+        "name": "运动"
+      },
+      "smoke": {
+        "name": "烟雾"
+      },
+      "contact": {
+        "name": "门/窗"
+      },
+      "tamper": {
+        "name": "防拆"
       }
     },
     "cover": {
       "cover": {
         "name": "窗帘"
+      }
+    },
+    "number": {
+      "volume": {
+        "name": "音量"
+      }
+    },
+    "select": {
+      "siren_mode": {
+        "name": "警报模式"
+      }
+    },
+    "climate": {
+      "heater": {
+        "name": "加热器"
+      },
+      "thermostat": {
+        "name": "温控器"
+      },
+      "ac": {
+        "name": "空调"
+      },
+      "floor_heater": {
+        "name": "地暖"
+      },
+      "heat_pump": {
+        "name": "热泵"
+      }
+    },
+    "fan": {
+      "main_fan": {
+        "name": "风扇"
       }
     }
   }

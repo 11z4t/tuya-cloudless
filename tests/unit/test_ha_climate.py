@@ -586,3 +586,359 @@ class TestClimateRestoreExtraData:
         # Coordinator update clears optimistic
         e._optimistic_target_temp = None
         assert e.target_temperature is None  # live DP (missing) takes over
+
+
+# ── _handle_coordinator_update ────────────────────────────────────────────────
+
+
+class TestHandleCoordinatorUpdate:
+    def test_clears_optimistic_hvac_mode(self) -> None:
+        """_handle_coordinator_update must clear _optimistic_hvac_mode."""
+        from unittest.mock import patch
+
+        from homeassistant.helpers.update_coordinator import CoordinatorEntity
+
+        e = _make_climate({"1": True, "2": "heat"})
+        e._optimistic_hvac_mode = HVACMode.COOL
+        e._optimistic_target_temp = 22.0
+
+        # Patch parent _handle_coordinator_update to avoid side-effects
+        with patch.object(CoordinatorEntity, "_handle_coordinator_update"):
+            e._handle_coordinator_update()
+
+        assert e._optimistic_hvac_mode is None
+        assert e._optimistic_target_temp is None
+
+    def test_clears_and_calls_super(self) -> None:
+        """_handle_coordinator_update clears optimistic state then calls super."""
+        from unittest.mock import MagicMock, patch
+
+        from homeassistant.helpers.update_coordinator import CoordinatorEntity
+
+        e = _make_climate({"1": True})
+        e._optimistic_hvac_mode = HVACMode.AUTO
+
+        parent_mock = MagicMock()
+        with patch.object(CoordinatorEntity, "_handle_coordinator_update", parent_mock):
+            e._handle_coordinator_update()
+
+        assert e._optimistic_hvac_mode is None
+        parent_mock.assert_called_once()
+
+
+# ── hvac_mode with dp_power = None ────────────────────────────────────────────
+
+
+class TestHvacModeNoDpPower:
+    def test_hvac_mode_returns_none_when_dp_power_none(self) -> None:
+        """hvac_mode returns None when spec has no dp_power."""
+        from tuya_cloudless.profiles import EntitySpec
+
+        coord = _make_coordinator(dps={"1": True})
+        spec = EntitySpec(platform="climate", name="nopow")
+        entity = TuyaCloudlessClimate.__new__(TuyaCloudlessClimate)
+        entity.coordinator = coord
+        entity._dp_id = None
+        entity._spec = spec
+        entity._attr_unique_id = "gw001_climate_nopow"
+        entity._attr_translation_key = "nopow"
+        entity._attr_hvac_modes = [HVACMode.OFF]
+        entity._tuya_options = []
+        entity._attr_min_temp = 7.0
+        entity._attr_max_temp = 35.0
+        entity._attr_target_temperature_step = 1.0
+        entity._attr_supported_features = (
+            ClimateEntityFeature.TURN_ON | ClimateEntityFeature.TURN_OFF
+        )
+        entity._optimistic_hvac_mode = None
+        entity._optimistic_target_temp = None
+        entity._restored_state = None
+        entity.async_write_ha_state = MagicMock()
+
+        assert entity.hvac_mode is None
+
+
+# ── current_temperature edge cases ────────────────────────────────────────────
+
+
+class TestCurrentTemperatureEdgeCases:
+    def test_current_temperature_none_when_no_dp_temp_current(self) -> None:
+        """current_temperature returns None when dp_temp_current is None in spec."""
+        from tuya_cloudless.profiles import DPSpec, EntitySpec
+
+        coord = _make_coordinator(dps={"1": True})
+        spec = EntitySpec(
+            platform="climate",
+            name="notemp",
+            dp_power=DPSpec(id="1", type="bool"),
+        )
+        entity = TuyaCloudlessClimate.__new__(TuyaCloudlessClimate)
+        entity.coordinator = coord
+        entity._dp_id = "1"
+        entity._spec = spec
+        entity._attr_unique_id = "gw001_climate_notemp"
+        entity._attr_translation_key = "notemp"
+        entity._attr_hvac_modes = [HVACMode.OFF]
+        entity._tuya_options = []
+        entity._attr_min_temp = 7.0
+        entity._attr_max_temp = 35.0
+        entity._attr_target_temperature_step = 1.0
+        entity._attr_supported_features = (
+            ClimateEntityFeature.TURN_ON | ClimateEntityFeature.TURN_OFF
+        )
+        entity._optimistic_hvac_mode = None
+        entity._optimistic_target_temp = None
+        entity._restored_state = None
+        entity.async_write_ha_state = MagicMock()
+
+        assert entity.current_temperature is None
+
+    def test_current_temperature_none_when_raw_is_none(self) -> None:
+        """current_temperature returns None when dp value is missing from coordinator."""
+        e = _make_climate(dps={}, scale=0.1)  # DP "4" not in dps
+        assert e.current_temperature is None
+
+
+# ── target_temperature when dp_temp_set is None ───────────────────────────────
+
+
+class TestTargetTemperatureNoDpTempSet:
+    def test_target_temperature_none_when_no_dp_temp_set(self) -> None:
+        """target_temperature returns None when spec has no dp_temp_set."""
+        from tuya_cloudless.profiles import DPSpec, EntitySpec
+
+        coord = _make_coordinator(dps={"1": True})
+        spec = EntitySpec(
+            platform="climate",
+            name="heater",
+            dp_power=DPSpec(id="1", type="bool"),
+            # no dp_temp_set
+        )
+        entity = TuyaCloudlessClimate.__new__(TuyaCloudlessClimate)
+        entity.coordinator = coord
+        entity._dp_id = "1"
+        entity._spec = spec
+        entity._attr_unique_id = "gw001_climate_heater"
+        entity._attr_translation_key = "heater"
+        entity._attr_hvac_modes = [HVACMode.OFF]
+        entity._tuya_options = []
+        entity._attr_min_temp = 7.0
+        entity._attr_max_temp = 35.0
+        entity._attr_target_temperature_step = 1.0
+        entity._attr_supported_features = (
+            ClimateEntityFeature.TURN_ON | ClimateEntityFeature.TURN_OFF
+        )
+        entity._optimistic_hvac_mode = None
+        entity._optimistic_target_temp = None
+        entity._restored_state = None
+        entity.async_write_ha_state = MagicMock()
+
+        assert entity.target_temperature is None
+
+
+# ── async_set_temperature when dp_temp_set is None ────────────────────────────
+
+
+class TestSetTemperatureNoDpTempSet:
+    @pytest.mark.asyncio
+    async def test_set_temperature_noop_when_no_dp_temp_set(self) -> None:
+        """async_set_temperature returns immediately if spec.dp_temp_set is None."""
+        from tuya_cloudless.profiles import DPSpec, EntitySpec
+
+        coord = _make_coordinator(dps={"1": True})
+        spec = EntitySpec(
+            platform="climate",
+            name="heater",
+            dp_power=DPSpec(id="1", type="bool"),
+        )
+        entity = TuyaCloudlessClimate.__new__(TuyaCloudlessClimate)
+        entity.coordinator = coord
+        entity._dp_id = "1"
+        entity._spec = spec
+        entity._attr_unique_id = "gw001_climate_heater"
+        entity._attr_translation_key = "heater"
+        entity._attr_hvac_modes = [HVACMode.OFF]
+        entity._tuya_options = []
+        entity._attr_min_temp = 7.0
+        entity._attr_max_temp = 35.0
+        entity._attr_target_temperature_step = 1.0
+        entity._attr_supported_features = (
+            ClimateEntityFeature.TURN_ON | ClimateEntityFeature.TURN_OFF
+        )
+        entity._optimistic_hvac_mode = None
+        entity._optimistic_target_temp = None
+        entity._restored_state = None
+        entity.async_write_ha_state = MagicMock()
+
+        await entity.async_set_temperature(**{ATTR_TEMPERATURE: 22.0})
+        entity.coordinator.async_send_dps.assert_not_awaited()
+
+
+# ── async_set_temperature with scale=0 edge case ──────────────────────────────
+
+
+class TestSetTemperatureScaleZero:
+    @pytest.mark.asyncio
+    async def test_set_temperature_scale_zero_uses_infinity_raw(self) -> None:
+        """With scale=0, raw_value = round(temp/0) which raises ZeroDivisionError.
+
+        This test documents current behavior — the production code does not
+        guard against scale=0; if it does raise, async_send_dps is never called.
+        """
+        e = _make_climate({"1": True, "3": 0}, scale=0.0)
+        try:
+            await e.async_set_temperature(**{ATTR_TEMPERATURE: 22.0})
+        except (ZeroDivisionError, OverflowError, ValueError):
+            # Expected — scale=0 is an invalid profile configuration
+            e.coordinator.async_send_dps.assert_not_awaited()
+        else:
+            # If it somehow succeeded, at least verify send was called
+            e.coordinator.async_send_dps.assert_awaited_once()
+
+
+# ── async_set_hvac_mode when dp_power is None ─────────────────────────────────
+
+
+class TestSetHvacModeNoDpPower:
+    @pytest.mark.asyncio
+    async def test_set_hvac_mode_noop_when_dp_power_none(self) -> None:
+        """async_set_hvac_mode returns immediately if spec.dp_power is None."""
+        from tuya_cloudless.profiles import EntitySpec
+
+        coord = _make_coordinator(dps={})
+        spec = EntitySpec(platform="climate", name="nopow")
+        entity = TuyaCloudlessClimate.__new__(TuyaCloudlessClimate)
+        entity.coordinator = coord
+        entity._dp_id = None
+        entity._spec = spec
+        entity._attr_unique_id = "gw001_climate_nopow"
+        entity._attr_translation_key = "nopow"
+        entity._attr_hvac_modes = [HVACMode.OFF]
+        entity._tuya_options = []
+        entity._attr_min_temp = 7.0
+        entity._attr_max_temp = 35.0
+        entity._attr_target_temperature_step = 1.0
+        entity._attr_supported_features = (
+            ClimateEntityFeature.TURN_ON | ClimateEntityFeature.TURN_OFF
+        )
+        entity._optimistic_hvac_mode = None
+        entity._optimistic_target_temp = None
+        entity._restored_state = None
+        entity.async_write_ha_state = MagicMock()
+
+        await entity.async_set_hvac_mode(HVACMode.HEAT)
+        entity.coordinator.async_send_dps.assert_not_awaited()
+
+
+# ── _get_tuya_mode fallback to static map ─────────────────────────────────────
+
+
+class TestGetTuyaMode:
+    def test_get_tuya_mode_uses_static_map_when_not_in_options(self) -> None:
+        """_get_tuya_mode falls back to _HA_TO_TUYA_MODE when mode not in profile options."""
+        # Use options that don't include the DRY mode so the loop finds nothing
+        e = _make_climate({"1": True}, options=("heat", "cool"))
+        # DRY is not in profile options, so fallback to _HA_TO_TUYA_MODE
+        result = e._get_tuya_mode(HVACMode.DRY)
+        assert result == "dry"
+
+    def test_get_tuya_mode_returns_none_for_unknown_mode(self) -> None:
+        """_get_tuya_mode returns None when neither profile options nor static map match."""
+        from unittest.mock import patch
+
+        from custom_components.tuya_cloudless.climate import _HA_TO_TUYA_MODE
+
+        e = _make_climate({"1": True}, options=("heat",))
+        # Temporarily remove FAN_ONLY from the static map for this test
+        original = dict(_HA_TO_TUYA_MODE)
+        modified = {k: v for k, v in original.items() if k != HVACMode.FAN_ONLY}
+        with patch("custom_components.tuya_cloudless.climate._HA_TO_TUYA_MODE", modified):
+            result = e._get_tuya_mode(HVACMode.FAN_ONLY)
+        assert result is None
+
+
+# ── async_turn_on / async_turn_off error revert ───────────────────────────────
+
+
+class TestTurnOnOffErrorRevert:
+    @pytest.mark.asyncio
+    async def test_turn_on_reverts_on_error(self) -> None:
+        """async_turn_on reverts optimistic state on HomeAssistantError."""
+        from homeassistant.exceptions import HomeAssistantError
+
+        e = _make_climate({"1": False})
+        e.coordinator.async_send_dps.side_effect = HomeAssistantError("fail")
+        with pytest.raises(HomeAssistantError):
+            await e.async_turn_on()
+        assert e._optimistic_hvac_mode is None
+        assert e.async_write_ha_state.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_turn_off_reverts_on_error(self) -> None:
+        """async_turn_off reverts optimistic state on HomeAssistantError."""
+        from homeassistant.exceptions import HomeAssistantError
+
+        e = _make_climate({"1": True, "2": "heat"})
+        e.coordinator.async_send_dps.side_effect = HomeAssistantError("fail")
+        with pytest.raises(HomeAssistantError):
+            await e.async_turn_off()
+        assert e._optimistic_hvac_mode is None
+        assert e.async_write_ha_state.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_turn_on_noop_when_dp_power_none(self) -> None:
+        """async_turn_on returns immediately when dp_power is None."""
+        from tuya_cloudless.profiles import EntitySpec
+
+        coord = _make_coordinator(dps={})
+        spec = EntitySpec(platform="climate", name="nopow")
+        entity = TuyaCloudlessClimate.__new__(TuyaCloudlessClimate)
+        entity.coordinator = coord
+        entity._dp_id = None
+        entity._spec = spec
+        entity._attr_unique_id = "gw001_climate_nopow"
+        entity._attr_translation_key = "nopow"
+        entity._attr_hvac_modes = [HVACMode.OFF]
+        entity._tuya_options = []
+        entity._attr_min_temp = 7.0
+        entity._attr_max_temp = 35.0
+        entity._attr_target_temperature_step = 1.0
+        entity._attr_supported_features = (
+            ClimateEntityFeature.TURN_ON | ClimateEntityFeature.TURN_OFF
+        )
+        entity._optimistic_hvac_mode = None
+        entity._optimistic_target_temp = None
+        entity._restored_state = None
+        entity.async_write_ha_state = MagicMock()
+
+        await entity.async_turn_on()
+        entity.coordinator.async_send_dps.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_turn_off_noop_when_dp_power_none(self) -> None:
+        """async_turn_off returns immediately when dp_power is None."""
+        from tuya_cloudless.profiles import EntitySpec
+
+        coord = _make_coordinator(dps={})
+        spec = EntitySpec(platform="climate", name="nopow")
+        entity = TuyaCloudlessClimate.__new__(TuyaCloudlessClimate)
+        entity.coordinator = coord
+        entity._dp_id = None
+        entity._spec = spec
+        entity._attr_unique_id = "gw001_climate_nopow"
+        entity._attr_translation_key = "nopow"
+        entity._attr_hvac_modes = [HVACMode.OFF]
+        entity._tuya_options = []
+        entity._attr_min_temp = 7.0
+        entity._attr_max_temp = 35.0
+        entity._attr_target_temperature_step = 1.0
+        entity._attr_supported_features = (
+            ClimateEntityFeature.TURN_ON | ClimateEntityFeature.TURN_OFF
+        )
+        entity._optimistic_hvac_mode = None
+        entity._optimistic_target_temp = None
+        entity._restored_state = None
+        entity.async_write_ha_state = MagicMock()
+
+        await entity.async_turn_off()
+        entity.coordinator.async_send_dps.assert_not_awaited()

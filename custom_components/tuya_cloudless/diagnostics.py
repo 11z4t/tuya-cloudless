@@ -22,6 +22,31 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.redact import REDACTED, async_redact_data
 
 
+def _sanitize_dps(dps: dict[str, Any]) -> dict[str, Any]:
+    """Sanitize DPS dict before including in diagnostics output.
+
+    - String values longer than 64 chars are replaced with ``[REDACTED-LONG]``
+      to avoid leaking base64-encoded keys or large payloads.
+    - Bytes values are replaced with ``[REDACTED-BYTES:<length>]``.
+    - All other values (int, bool, float) pass through unchanged.
+
+    Args:
+        dps: Raw DPS dict from device state.
+
+    Returns:
+        A new dict with the same keys and sanitized values.
+    """
+    result: dict[str, Any] = {}
+    for k, v in dps.items():
+        if isinstance(v, bytes):
+            result[k] = f"[REDACTED-BYTES:{len(v)}]"
+        elif isinstance(v, str) and len(v) > 64:
+            result[k] = "[REDACTED-LONG]"
+        else:
+            result[k] = v
+    return result
+
+
 def _partial_gw_id(value: str) -> str:
     """Return first 4 chars of gw_id, rest replaced with REDACTED marker."""
     if len(value) <= 4:
@@ -84,7 +109,8 @@ async def async_get_config_entry_diagnostics(
             "last_seen": (coord.state.last_seen.isoformat() if coord.state.last_seen else None),
             "reconnect_count": coord.state.reconnect_count,
             "last_error": coord.state.last_error,
-            "dps": dict(coord.state.dps),
+            # NOTE: DPS values may contain sensitive device state. Review before sharing.
+            "dps": _sanitize_dps(dict(coord.state.dps)),
         },
         "connection": {
             "tcp_connected": coord.tcp_connected,

@@ -16,7 +16,7 @@
         "description": "Párovací nástroj se otevírá ve vašem prohlížeči. Postupujte podle kroků pro připojení zařízení přes Bluetooth.\n\n**Vyžaduje Chrome nebo Edge** (desktop nebo Android) a **HTTPS** — viz [průvodce nastavením HTTPS](https://github.com/11z4t/tuya-cloudless/wiki/HTTPS-Setup) v případě potřeby."
       },
       "ble_confirm": {
-        "title": "Zařízení spárováno ✓",
+        "title": "Zařízení úspěšně spárováno",
         "description": "Vaše zařízení na adrese **{ip_address}** (ID: `{gw_id}`) bylo úspěšně spárováno. Zadejte název a vyberte typ zařízení.",
         "data": {
           "device_name": "Název zařízení",
@@ -127,7 +127,10 @@
       "invalid_ip": "Neplatná IP adresa — nesmí být prázdná",
       "auth_failed": "Připojení odmítnuto — bezpečnostní klíč může být nesprávný nebo bylo zařízení znovu spárováno pomocí aplikace Tuya",
       "no_devices_found": "V síti nebyla nalezena žádná zařízení Tuya. Ujistěte se, že zařízení je zapnuté a ve stejné Wi-Fi síti. Přepněte na **Ruční** výše a zadejte podrobnosti ručně.",
-      "unknown": "Neočekávaná chyba — podrobnosti naleznete v protokolu Home Assistant"
+      "unknown": "Neočekávaná chyba — podrobnosti naleznete v protokolu Home Assistant",
+      "invalid_ha_url": "Zadejte platnou adresu, například http://homeassistant.local:8123",
+      "invalid_local_key_chars": "Bezpečnostní klíč obsahuje neplatné znaky (musí být tisknutelné ASCII)",
+      "invalid_ip_address": "Neplatný formát IP adresy"
     },
     "abort": {
       "already_configured": "Toto zařízení je již nastaveno",
@@ -135,7 +138,8 @@
       "pairing_server_unavailable": "Nepodařilo se spustit BLE párovací server na portu 8099 — port může být obsazen. Zkuste to znovu nebo použijte místo toho Vyhledávání / Ruční nastavení.",
       "https_required": "BLE párování vyžaduje HTTPS. Nakonfigurujte certifikát podle [průvodce nastavením HTTPS](https://github.com/11z4t/tuya-cloudless/wiki/HTTPS-Setup) a zkuste to znovu.",
       "reauth_successful": "Bezpečnostní klíč aktualizován — zařízení je opět připojeno",
-      "reconfigure_successful": "Nastavení aktualizováno — zařízení se znovu načítá"
+      "reconfigure_successful": "Nastavení aktualizováno — zařízení se znovu načítá",
+      "no_device_id": "Nepodařilo se identifikovat zařízení — ujistěte se, že je zapnuté a připojené k síti"
     }
   },
   "exceptions": {
@@ -196,7 +200,7 @@
         "step": {
           "confirm": {
             "title": "Aktualizovat nastavení připojení",
-            "description": "Otevřete nastavení zařízení a aktualizujte IP adresu."
+            "description": "Klikněte na **Odeslat** pro otevření dialogu rekonfigurace, kde můžete aktualizovat IP adresu a lokální klíč. Případně přejděte na **Nastavení → Zařízení a služby → Tuya Cloudless → [vaše zařízení] → Konfigurovat**."
           }
         }
       }

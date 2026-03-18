@@ -95,6 +95,9 @@ class TuyaCloudlessConnectivityRepairFlow(RepairsFlow):
             Form to show or completion result.
         """
         if user_input is not None:
+            entry = self.hass.config_entries.async_get_entry(self._entry_id)
+            if entry is not None and hasattr(entry, "async_start_reconfiguration"):
+                entry.async_start_reconfiguration(self.hass)
             return self.async_create_entry(data={})
 
         description_placeholders: dict[str, str] = {

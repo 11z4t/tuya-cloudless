@@ -34,6 +34,7 @@ for _lib_dir in (_BUNDLED_LIB, _DEV_LIB):
             _INSERTED_LIB_PATH = _lib_dir
         break
 
+import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
@@ -192,13 +193,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         )
 
     # Build DeviceInfo exactly once and pass it to the coordinator (PLAT-771).
-    protocol_version: str = entry.data.get(CONF_PROTOCOL_VERSION, "3.3")
+    # sw_version is intentionally omitted — the protocol version is exposed via
+    # the update entity (TuyaCloudlessUpdateEntity) which is the correct place
+    # for this information. Duplicating it in DeviceInfo would show misleading
+    # "Firmware: 3.3" in the device card.
     device_info = DeviceInfo(
         identifiers={(DOMAIN, entry.data[CONF_GW_ID])},
         name=entry.title,
         manufacturer="Tuya",
         model=profile_name or "Tuya Cloudless",
-        sw_version=protocol_version,
+        serial_number=entry.data[CONF_GW_ID],
         configuration_url=f"http://{entry.data.get(CONF_IP_ADDRESS, '')}",
     )
 
@@ -222,6 +226,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     _LOGGER.info("Tuya Cloudless entry set up: %s", entry.title)
     return True
+
+
+_SEND_RAW_DPS_SCHEMA = vol.Schema(
+    {
+        vol.Required("entry_id"): str,
+        vol.Required("dps"): {str: vol.Any(bool, int, str)},
+    }
+)
 
 
 def _register_services(hass: HomeAssistant) -> None:
@@ -264,7 +276,9 @@ def _register_services(hass: HomeAssistant) -> None:
                 translation_key="send_failed",
             ) from exc
 
-    hass.services.async_register(DOMAIN, "send_raw_dps", _handle_send_raw_dps)
+    hass.services.async_register(
+        DOMAIN, "send_raw_dps", _handle_send_raw_dps, schema=_SEND_RAW_DPS_SCHEMA
+    )
 
 
 async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None:

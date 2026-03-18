@@ -1,9 +1,9 @@
 #!/bin/bash
-# Full validation pipeline — ALL must pass before commit
-# Set RUN_UI_TESTS=0 to skip Node.js/Jest (Python-only workflow)
+# Python-only validation pipeline (subset of run-checks.sh)
+# Run this when working in a Python-only workflow without Node.js/Jest.
 set -euo pipefail
 
-echo "=== Tuya Cloudless — Pre-commit Checks ==="
+echo "=== Tuya Cloudless — Python Checks ==="
 
 echo ""
 echo "--- Ruff check ---"
@@ -40,11 +40,5 @@ echo ""
 echo "--- Pytest (unit + security) ---"
 python3 -m pytest tests/unit tests/security -v --tb=short --timeout=30
 
-if [ "${RUN_UI_TESTS:-1}" = "1" ]; then
-    echo ""
-    echo "--- Jest (pairing UI) ---"
-    npm test --silent
-fi
-
 echo ""
-echo "=== ALL CHECKS PASSED ==="
+echo "=== ALL PYTHON CHECKS PASSED ==="

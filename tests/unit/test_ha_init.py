@@ -410,3 +410,67 @@ class TestUpdateListener:
         entry = _make_entry()
         await _async_update_listener(hass, entry)
         hass.config_entries.async_reload.assert_awaited_once_with(entry.entry_id)
+
+
+# ── send_raw_dps schema validation (ROB-004 / PLAT-833) ────────────────────────
+
+
+class TestSendRawDpsSchema:
+    """Verify the voluptuous schema on send_raw_dps rejects invalid input."""
+
+    def test_schema_accepts_valid_dps(self) -> None:
+
+        from custom_components.tuya_cloudless import _SEND_RAW_DPS_SCHEMA
+
+        valid = {"entry_id": "abc123", "dps": {"1": True, "2": 100, "3": "on"}}
+        result = _SEND_RAW_DPS_SCHEMA(valid)
+        assert result["entry_id"] == "abc123"
+        assert result["dps"] == {"1": True, "2": 100, "3": "on"}
+
+    def test_schema_rejects_missing_entry_id(self) -> None:
+        import voluptuous as vol
+
+        from custom_components.tuya_cloudless import _SEND_RAW_DPS_SCHEMA
+
+        with pytest.raises(vol.Invalid):
+            _SEND_RAW_DPS_SCHEMA({"dps": {"1": True}})
+
+    def test_schema_rejects_missing_dps(self) -> None:
+        import voluptuous as vol
+
+        from custom_components.tuya_cloudless import _SEND_RAW_DPS_SCHEMA
+
+        with pytest.raises(vol.Invalid):
+            _SEND_RAW_DPS_SCHEMA({"entry_id": "abc"})
+
+    def test_schema_rejects_invalid_dps_value_type(self) -> None:
+        """DPS values must be bool, int, or str — floats and lists are rejected."""
+        import voluptuous as vol
+
+        from custom_components.tuya_cloudless import _SEND_RAW_DPS_SCHEMA
+
+        with pytest.raises(vol.Invalid):
+            _SEND_RAW_DPS_SCHEMA({"entry_id": "abc", "dps": {"1": 3.14}})
+
+    def test_schema_rejects_list_as_dps_value(self) -> None:
+        import voluptuous as vol
+
+        from custom_components.tuya_cloudless import _SEND_RAW_DPS_SCHEMA
+
+        with pytest.raises(vol.Invalid):
+            _SEND_RAW_DPS_SCHEMA({"entry_id": "abc", "dps": {"1": [1, 2, 3]}})
+
+    def test_schema_rejects_non_string_dps_key(self) -> None:
+        """DPS keys must be strings."""
+        import voluptuous as vol
+
+        from custom_components.tuya_cloudless import _SEND_RAW_DPS_SCHEMA
+
+        with pytest.raises((vol.Invalid, TypeError)):
+            _SEND_RAW_DPS_SCHEMA({"entry_id": "abc", "dps": {1: True}})
+
+    def test_schema_exported_from_module(self) -> None:
+        """_SEND_RAW_DPS_SCHEMA must be importable from the init module."""
+        import custom_components.tuya_cloudless as init_mod
+
+        assert hasattr(init_mod, "_SEND_RAW_DPS_SCHEMA")

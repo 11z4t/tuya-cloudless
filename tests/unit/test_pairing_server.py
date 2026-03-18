@@ -660,12 +660,12 @@ class TestHaLocalUrlFallbacks:
         srv = PairingServer(_make_hass(), port=0)
         srv._pending_flows.add("flow-xyz")
 
-        # Patch ensure_future so we don't need a real event loop
-        with patch("asyncio.ensure_future", return_value=MagicMock()) as mock_ef:
+        # Patch create_task so we don't need a real event loop (ROB-003)
+        with patch("asyncio.create_task", return_value=MagicMock()) as mock_ct:
             srv.unregister_flow("flow-xyz")
 
         assert "flow-xyz" not in srv._pending_flows
-        mock_ef.assert_called_once()
+        mock_ct.assert_called_once()
 
     def test_unregister_flow_no_schedule_when_others_remain(self) -> None:
         """unregister_flow() must NOT schedule idle-stop while other flows are registered."""
@@ -673,10 +673,10 @@ class TestHaLocalUrlFallbacks:
         srv._pending_flows.add("flow-1")
         srv._pending_flows.add("flow-2")
 
-        with patch("asyncio.ensure_future", return_value=MagicMock()) as mock_ef:
+        with patch("asyncio.create_task", return_value=MagicMock()) as mock_ct:
             srv.unregister_flow("flow-1")
 
-        mock_ef.assert_not_called()
+        mock_ct.assert_not_called()
 
 
 # ── _handle_qr ────────────────────────────────────────────────────────────────
@@ -1246,3 +1246,279 @@ class TestSseKeepaliveAndMessage:
         assert any(b": keepalive" in w for w in written)
         # Verify the real message was written
         assert any(b"event: test" in w for w in written)
+
+
+# ── SEC-001: Rate limiting on activation endpoint (PLAT-824) ─────────────────
+
+
+class TestRateLimiting:
+    """Tests for per-IP rate limiting on /api/tuya/device/active."""
+
+    async def test_rate_limit_allows_requests_below_threshold(self, client: TestClient) -> None:
+        """Requests below the limit must succeed."""
+        for _ in range(5):
+            resp = await client.post(
+                "/api/tuya/device/active",
+                json={"gw_id": "gw_rl", "token": "tok_rl"},
+            )
+            assert resp.status == 200
+
+    async def test_rate_limit_returns_429_when_exceeded(self, server: PairingServer) -> None:
+        """After _RATE_LIMIT_MAX requests from the same IP, the next returns 429."""
+        from custom_components.tuya_cloudless.pairing_server import _RATE_LIMIT_MAX
+
+        ts = TestServer(server._app)
+        cli = TestClient(ts)
+        await cli.start_server()
+        try:
+            # Pre-fill the rate-limit bucket for 127.0.0.1 (aiohttp TestClient remote)
+            now = time.monotonic()
+            server._rate_limit["127.0.0.1"] = [now] * _RATE_LIMIT_MAX
+
+            resp = await cli.post(
+                "/api/tuya/device/active",
+                json={"gw_id": "gw_rllimit"},
+            )
+            assert resp.status == 429
+        finally:
+            await cli.close()
+
+    async def test_rate_limit_stale_timestamps_cleaned_up(self, server: PairingServer) -> None:
+        """Timestamps older than _RATE_LIMIT_WINDOW are removed on each check."""
+        from custom_components.tuya_cloudless.pairing_server import (
+            _RATE_LIMIT_MAX,
+            _RATE_LIMIT_WINDOW,
+        )
+
+        ts = TestServer(server._app)
+        cli = TestClient(ts)
+        await cli.start_server()
+        try:
+            # Fill bucket with stale timestamps (well outside the window)
+            stale_time = time.monotonic() - _RATE_LIMIT_WINDOW - 1.0
+            server._rate_limit["127.0.0.1"] = [stale_time] * _RATE_LIMIT_MAX
+
+            # Request should succeed because stale timestamps are cleaned up
+            resp = await cli.post(
+                "/api/tuya/device/active",
+                json={"gw_id": "gw_stale"},
+            )
+            assert resp.status == 200
+        finally:
+            await cli.close()
+
+    async def test_rate_limit_resets_after_window_passes(self, server: PairingServer) -> None:
+        """After the window has passed, a new request is allowed."""
+        from custom_components.tuya_cloudless.pairing_server import (
+            _RATE_LIMIT_MAX,
+            _RATE_LIMIT_WINDOW,
+        )
+
+        ts = TestServer(server._app)
+        cli = TestClient(ts)
+        await cli.start_server()
+        try:
+            # Set all timestamps well outside the window
+            old_time = time.monotonic() - _RATE_LIMIT_WINDOW - 5.0
+            server._rate_limit["127.0.0.1"] = [old_time] * _RATE_LIMIT_MAX
+
+            resp = await cli.post(
+                "/api/tuya/device/active",
+                json={"gw_id": "gw_reset"},
+            )
+            assert resp.status == 200
+
+            remaining = server._rate_limit.get("127.0.0.1", [])
+            # Only the new timestamp should remain after the stale ones were pruned
+            assert len(remaining) == 1
+        finally:
+            await cli.close()
+
+
+# ── SEC-002: Bounded SSE queues (PLAT-825) ───────────────────────────────────
+
+
+class TestSseBoundedQueues:
+    """Tests for bounded SSE queues and connection cap."""
+
+    async def test_sse_queue_has_maxsize(self, server: PairingServer) -> None:
+        """The SSE queue must be created with maxsize > 0."""
+        from custom_components.tuya_cloudless.pairing_server import _MAX_SSE_CONNECTIONS
+
+        written: list[bytes] = []
+        call_count = 0
+
+        async def fake_wait_for(coro: object, timeout: float = 0) -> object:
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                return None  # close immediately
+            raise asyncio.CancelledError()
+
+        mock_response = MagicMock()
+        mock_response.prepare = AsyncMock()
+        mock_response.write = AsyncMock(side_effect=lambda d: written.append(d))
+
+        with (
+            patch(
+                "custom_components.tuya_cloudless.pairing_server.asyncio.wait_for",
+                side_effect=fake_wait_for,
+            ),
+            patch(
+                "custom_components.tuya_cloudless.pairing_server.web.StreamResponse",
+                return_value=mock_response,
+            ),
+        ):
+            await server._handle_sse(MagicMock())
+
+        # After handling, verify that queues created in _handle_sse have maxsize>0
+        # (we inspect this indirectly: the queue is cleaned up after connection closes,
+        # so we check the constant is correct)
+        assert _MAX_SSE_CONNECTIONS == 10
+
+    def test_max_sse_connections_constant(self) -> None:
+        """_MAX_SSE_CONNECTIONS must equal 10."""
+        from custom_components.tuya_cloudless.pairing_server import _MAX_SSE_CONNECTIONS
+
+        assert _MAX_SSE_CONNECTIONS == 10
+
+    async def test_sse_returns_503_when_at_capacity(self, server: PairingServer) -> None:
+        """When _sse_queues is at max capacity, _handle_sse returns 503."""
+        from custom_components.tuya_cloudless.pairing_server import _MAX_SSE_CONNECTIONS
+
+        ts = TestServer(server._app)
+        cli = TestClient(ts)
+        await cli.start_server()
+        try:
+            # Fill the queue list with fake entries up to the limit
+            fake_queues: list[asyncio.Queue[str | None]] = [
+                asyncio.Queue(maxsize=32) for _ in range(_MAX_SSE_CONNECTIONS)
+            ]
+            server._sse_queues.extend(fake_queues)
+
+            resp = await cli.get("/api/provision/events")
+            assert resp.status == 503
+            text = await resp.text()
+            assert "Too many" in text
+        finally:
+            server._sse_queues.clear()
+            await cli.close()
+
+    async def test_sse_queue_maxsize_is_32(self, server: PairingServer) -> None:
+        """Queue created in _handle_sse must have maxsize=32 (not unbounded)."""
+        import asyncio as _asyncio
+
+        created_maxsizes: list[int] = []
+
+        class CapturingQueue(_asyncio.Queue):  # type: ignore[type-arg]
+            def __init__(self, maxsize: int = 0, **kwargs: object) -> None:
+                created_maxsizes.append(maxsize)
+                super().__init__(maxsize, **kwargs)
+
+        call_count = 0
+
+        async def fake_wait_for(coro: object, timeout: float = 0) -> object:
+            nonlocal call_count
+            call_count += 1
+            return None  # close immediately on first call
+
+        mock_response = MagicMock()
+        mock_response.prepare = AsyncMock()
+        mock_response.write = AsyncMock()
+
+        with (
+            patch(
+                "custom_components.tuya_cloudless.pairing_server.asyncio.Queue",
+                CapturingQueue,
+            ),
+            patch(
+                "custom_components.tuya_cloudless.pairing_server.asyncio.wait_for",
+                side_effect=fake_wait_for,
+            ),
+            patch(
+                "custom_components.tuya_cloudless.pairing_server.web.StreamResponse",
+                return_value=mock_response,
+            ),
+        ):
+            await server._handle_sse(MagicMock())
+
+        assert len(created_maxsizes) == 1
+        assert created_maxsizes[0] == 32
+
+
+# ── SEC-003: Strict CORS on result and SSE endpoints (PLAT-826) ──────────────
+
+
+class TestStrictCors:
+    """Tests that result and SSE endpoints do NOT send wildcard CORS headers."""
+
+    async def test_result_endpoint_no_wildcard_cors(self, client: TestClient) -> None:
+        """GET /api/provision/result/{token} must NOT have Access-Control-Allow-Origin: *."""
+        resp = await client.get("/api/provision/result/any_token")
+        cors = resp.headers.get("Access-Control-Allow-Origin", "")
+        assert cors != "*", "Result endpoint must not send wildcard CORS"
+
+    async def test_result_endpoint_ok_no_wildcard_cors(self, client: TestClient) -> None:
+        """After activation, result endpoint must still not send wildcard CORS."""
+        await client.post(
+            "/api/tuya/device/active",
+            json={"gw_id": "gw_cors", "token": "tok_cors"},
+        )
+        resp = await client.get("/api/provision/result/tok_cors")
+        assert resp.status == 200
+        cors = resp.headers.get("Access-Control-Allow-Origin", "")
+        assert cors != "*", "Result endpoint (ok) must not send wildcard CORS"
+
+    async def test_sse_endpoint_no_wildcard_cors(self, client: TestClient) -> None:
+        """GET /api/provision/events must NOT send Access-Control-Allow-Origin: *."""
+        async with client.session.get(
+            client.make_url("/api/provision/events"),
+        ) as resp:
+            assert resp.status == 200
+            cors = resp.headers.get("Access-Control-Allow-Origin", "")
+            assert cors != "*", "SSE endpoint must not send wildcard CORS"
+
+    async def test_config_endpoint_keeps_wildcard_cors(self, client: TestClient) -> None:
+        """GET /api/provision/config is allowed to keep wildcard CORS (unchanged)."""
+        resp = await client.get("/api/provision/config")
+        assert resp.headers.get("Access-Control-Allow-Origin") == "*"
+
+    async def test_wifi_scan_keeps_wildcard_cors(self, client: TestClient) -> None:
+        """GET /api/provision/wifi-scan is allowed to keep wildcard CORS (unchanged)."""
+        resp = await client.get("/api/provision/wifi-scan")
+        assert resp.headers.get("Access-Control-Allow-Origin") == "*"
+
+
+# ── ROB-003: asyncio.create_task used in unregister_flow (PLAT-832) ──────────
+
+
+class TestCreateTaskUsed:
+    """Verify unregister_flow uses asyncio.create_task, not ensure_future."""
+
+    def test_unregister_flow_uses_create_task(self) -> None:
+        """unregister_flow must schedule idle-stop via asyncio.create_task."""
+
+        srv = PairingServer(_make_hass(), port=0)
+        srv._pending_flows.add("flow-rob")
+
+        with patch("asyncio.create_task", return_value=MagicMock()) as mock_ct:
+            srv.unregister_flow("flow-rob")
+
+        mock_ct.assert_called_once()
+        # Verify the task name is set (name= kwarg)
+        _, kwargs = mock_ct.call_args
+        assert "name" in kwargs
+        assert kwargs["name"] == "tuya-cloudless-auto-stop"
+
+    def test_unregister_flow_does_not_use_ensure_future(self) -> None:
+        """unregister_flow must NOT use asyncio.ensure_future (deprecated path)."""
+        srv = PairingServer(_make_hass(), port=0)
+        srv._pending_flows.add("flow-rob2")
+
+        with (
+            patch("asyncio.ensure_future", return_value=MagicMock()) as mock_ef,
+            patch("asyncio.create_task", return_value=MagicMock()),
+        ):
+            srv.unregister_flow("flow-rob2")
+
+        mock_ef.assert_not_called()

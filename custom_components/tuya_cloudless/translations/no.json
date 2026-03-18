@@ -16,7 +16,7 @@
         "description": "Paringsverktøyet åpnes i nettleseren din. Følg trinnene for å koble enheten din via Bluetooth.\n\n**Krever Chrome eller Edge** (stasjonær eller Android) og **HTTPS** — se [HTTPS-oppsettsguiden](https://github.com/11z4t/tuya-cloudless/wiki/HTTPS-Setup) om nødvendig."
       },
       "ble_confirm": {
-        "title": "Enhet paret ✓",
+        "title": "Enhet paret",
         "description": "Enheten din på **{ip_address}** (ID: `{gw_id}`) ble paret. Gi den et navn og velg enhetstype.",
         "data": {
           "device_name": "Enhetsnavn",
@@ -127,7 +127,10 @@
       "invalid_ip": "Ugyldig IP-adresse — må ikke være tom",
       "auth_failed": "Tilkobling avvist — sikkerhetsnøkkelen kan være feil, eller enheten ble paret på nytt med Tuya-appen",
       "no_devices_found": "Ingen Tuya-enheter funnet på nettverket ditt. Sørg for at enheten er slått på og på samme Wi-Fi. Bytt til **Manuell** ovenfor for å skrive inn detaljer for hånd.",
-      "unknown": "Uventet feil — sjekk Home Assistant-loggen for detaljer"
+      "unknown": "Uventet feil — sjekk Home Assistant-loggen for detaljer",
+      "invalid_ha_url": "Skriv inn en gyldig adresse, for eksempel http://homeassistant.local:8123",
+      "invalid_local_key_chars": "Sikkerhetsnøkkelen inneholder ugyldige tegn (må være utskrivbar ASCII)",
+      "invalid_ip_address": "Ugyldig IP-adresseformat"
     },
     "abort": {
       "already_configured": "Denne enheten er allerede konfigurert",
@@ -135,7 +138,8 @@
       "pairing_server_unavailable": "Kunne ikke starte BLE-Paringsserveren på port 8099 — porten kan være i bruk. Prøv igjen eller bruk Søk / Manuelt oppsett i stedet.",
       "https_required": "BLE-paring krever HTTPS. Se [HTTPS-oppsettsguiden](https://github.com/11z4t/tuya-cloudless/wiki/HTTPS-Setup) for å konfigurere et sertifikat, og prøv deretter på nytt.",
       "reauth_successful": "Sikkerhetsnøkkel oppdatert — enheten er tilkoblet igjen",
-      "reconfigure_successful": "Innstillinger oppdatert — enheten lastes på nytt"
+      "reconfigure_successful": "Innstillinger oppdatert — enheten lastes på nytt",
+      "no_device_id": "Kunne ikke identifisere enheten — sørg for at den er slått på og koblet til nettverket"
     }
   },
   "exceptions": {
@@ -196,7 +200,7 @@
         "step": {
           "confirm": {
             "title": "Oppdater tilkoblingsinnstillinger",
-            "description": "Åpne enhetsinnstillingene for å oppdatere IP-adressen."
+            "description": "Klikk **Send** for å åpne rekonfigurasjonsdialogens der du kan oppdatere IP-adressen og den lokale nøkkelen. Alternativt, gå til **Innstillinger → Enheter og tjenester → Tuya Cloudless → [din enhet] → Konfigurer**."
           }
         }
       }

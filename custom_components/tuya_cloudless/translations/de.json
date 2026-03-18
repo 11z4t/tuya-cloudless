@@ -2,14 +2,39 @@
   "config": {
     "flow_title": "{name}",
     "step": {
+      "pair": {
+        "title": "Kopplungswerkzeug",
+        "description": "Gerätedaten wurden aus dem Tuya Cloudless Kopplungswerkzeug importiert. Überprüfe die Angaben und klicke auf **Weiter**, um die Verbindung zu testen.",
+        "data": {
+          "gw_id": "Geräte-ID",
+          "local_key": "Sicherheitsschlüssel",
+          "ip_address": "IP-Adresse"
+        }
+      },
+      "ble_pair": {
+        "title": "BLE-Kopplung",
+        "description": "Das Kopplungswerkzeug öffnet sich automatisch in einem neuen Browser-Tab. Folge den Schritten, um dein Gerät über Bluetooth zu verbinden und den lokalen Schlüssel zu erhalten.\n\nWenn der Tab nicht geöffnet wurde, klicke auf die Schaltfläche unten.\n\n**Erfordert Chrome oder Edge** (Desktop oder Android) und **HTTPS** — siehe die [HTTPS-Einrichtungsanleitung](https://github.com/11z4t/tuya-cloudless/wiki/HTTPS-Setup) bei Bedarf."
+      },
+      "ble_confirm": {
+        "title": "Gerät erfolgreich gekoppelt",
+        "description": "Dein Gerät unter **{ip_address}** (ID: `{gw_id}`) wurde erfolgreich gekoppelt. Gib ihm einen Namen und wähle den Gerätetyp.",
+        "data": {
+          "device_name": "Gerätename",
+          "profile": "Gerätetyp"
+        },
+        "data_description": {
+          "device_name": "Ein eigener Name, der in Home Assistant angezeigt wird",
+          "profile": "Wähle den Typ, der am besten zu deinem Gerät passt"
+        }
+      },
       "user": {
         "title": "Tuya-Gerät hinzufügen",
-        "description": "Wähle, wie du dein Gerät hinzufügen möchtest. **Suchen** durchsucht dein Netzwerk automatisch — stelle sicher, dass das Gerät eingeschaltet und mit demselben WLAN wie Home Assistant verbunden ist.",
+        "description": "Wähle, wie du dein Gerät hinzufügen möchtest.",
         "data": {
           "setup_mode": "Einrichtungsmethode"
         },
         "data_description": {
-          "setup_mode": "Suchen findet Geräte automatisch. Wähle Manuell, wenn dein Gerät nicht gefunden wird."
+          "setup_mode": "BLE-Kopplung wird für neue Geräte empfohlen. Suchen findet Geräte automatisch. Wähle Manuell, wenn dein Gerät nicht gefunden wird."
         }
       },
       "select": {
@@ -21,26 +46,26 @@
       },
       "local_key": {
         "title": "Sicherheitsschlüssel eingeben",
-        "description": "Dein Gerät unter **{ip_address}** (Firmware {firmware}) benötigt einen Sicherheitsschlüssel.\n\nDer Schlüssel wird beim Einrichten des Geräts mit Tuya Cloudless angezeigt. Er wird nur in Home Assistant gespeichert.",
+        "description": "Dein Gerät unter **{ip_address}** (Firmware {firmware}) benötigt einen Sicherheitsschlüssel für die lokale Kommunikation.\n\nDer Schlüssel wird beim Einrichten des Geräts mit dem [Tuya Cloudless Kopplungswerkzeug]({pairing_tool_url}) angezeigt. Er wird nur in Home Assistant gespeichert — nichts wird in die Cloud gesendet.",
         "data": {
           "local_key": "Sicherheitsschlüssel",
           "device_name": "Gerätename",
           "profile": "Gerätetyp"
         },
         "data_description": {
-          "local_key": "16-stelliger Schlüssel aus der Einrichtung",
+          "local_key": "16-stelliger Schlüssel aus dem Kopplungswerkzeug",
           "device_name": "Ein eigener Name in Home Assistant (leer lassen für die IP-Adresse)",
           "profile": "Wähle den Typ, der am besten zu deinem Gerät passt"
         }
       },
       "confirm": {
         "title": "Bereit zum Verbinden",
-        "description": "**{device_name}** unter `{ip_address}` wird zu Home Assistant hinzugefügt.\n\nKlicke auf **Verbinden** um die Verbindung zu testen.",
+        "description": "**{device_name}** unter `{ip_address}` wird zu Home Assistant hinzugefügt.\n\nKlicke auf **Verbinden** um die Verbindung zu testen und die Einrichtung abzuschließen.",
         "data": {}
       },
       "manual": {
         "title": "Gerät manuell hinzufügen",
-        "description": "Gib die Daten deines Tuya-Geräts ein. Geräte-ID und Sicherheitsschlüssel werden im Tuya Cloudless-Tool angezeigt.",
+        "description": "Gib die Daten deines Tuya-Geräts ein. Geräte-ID und Sicherheitsschlüssel werden im [Tuya Cloudless Kopplungswerkzeug]({pairing_tool_url}) angezeigt.",
         "data": {
           "gw_id": "Geräte-ID",
           "local_key": "Sicherheitsschlüssel",
@@ -52,14 +77,14 @@
         "data_description": {
           "gw_id": "Eindeutige Geräte-ID (z.B. abc123def456)",
           "local_key": "16-stelliger Schlüssel aus der Einrichtung",
-          "ip_address": "IP-Adresse des Geräts",
+          "ip_address": "IP-Adresse des Geräts (lege eine feste Adresse im Router fest für beste Zuverlässigkeit)",
           "protocol_version": "Modell 3.3 funktioniert für die meisten Geräte ab 2020",
           "profile": "Wähle den Typ, der am besten zu deinem Gerät passt"
         }
       },
       "discovery": {
         "title": "Tuya-Gerät gefunden",
-        "description": "Ein Gerät wurde unter **{ip_address}** (Firmware {firmware}) erkannt.\n\nGib den Sicherheitsschlüssel ein, um die Einrichtung abzuschließen.",
+        "description": "Ein Gerät wurde unter **{ip_address}** (Firmware {firmware}) erkannt.\n\nGib den Sicherheitsschlüssel aus dem [Tuya Cloudless Kopplungswerkzeug]({pairing_tool_url}) ein, um die Einrichtung abzuschließen.",
         "data": {
           "local_key": "Sicherheitsschlüssel",
           "profile": "Gerätetyp",
@@ -71,7 +96,7 @@
       },
       "reauth_confirm": {
         "title": "Sicherheitsschlüssel aktualisieren",
-        "description": "Der Sicherheitsschlüssel für **{device_name}** funktioniert nicht mehr. Gib den neuen Schlüssel ein, um die Verbindung wiederherzustellen.",
+        "description": "Der Sicherheitsschlüssel für **{device_name}** funktioniert nicht mehr. Dies passiert, wenn das Gerät zurückgesetzt oder neu gekoppelt wurde.\n\nHole den neuen Schlüssel aus dem [Tuya Cloudless Kopplungswerkzeug]({pairing_tool_url}) und gib ihn unten ein, um die Verbindung wiederherzustellen.",
         "data": {
           "local_key": "Neuer Sicherheitsschlüssel",
           "ip_address": "IP-Adresse (falls geändert)"
@@ -80,6 +105,18 @@
           "local_key": "16-stelliger Schlüssel aus der letzten Einrichtung",
           "ip_address": "Leer lassen, wenn sich die Adresse nicht geändert hat"
         }
+      },
+      "reconfigure": {
+        "title": "Verbindungseinstellungen aktualisieren",
+        "description": "Aktualisiere die IP-Adresse oder den Sicherheitsschlüssel für **{device_name}** ohne das Gerät zu entfernen und erneut hinzuzufügen.",
+        "data": {
+          "ip_address": "IP-Adresse",
+          "local_key": "Sicherheitsschlüssel"
+        },
+        "data_description": {
+          "ip_address": "Aktuelle IP-Adresse des Geräts in deinem Netzwerk",
+          "local_key": "16-stelliger Sicherheitsschlüssel"
+        }
       }
     },
     "error": {
@@ -87,14 +124,39 @@
       "invalid_local_key": "Ungültiger Sicherheitsschlüssel — muss genau 16 Zeichen haben",
       "invalid_auth_key": "Der Sicherheitsschlüssel ist falsch. Schlüssel prüfen und erneut versuchen.",
       "invalid_gw_id": "Ungültige Geräte-ID — darf nicht leer sein",
+      "invalid_ip": "Ungültige IP-Adresse — darf nicht leer sein",
       "auth_failed": "Verbindung abgelehnt — der Schlüssel ist möglicherweise falsch oder das Gerät wurde neu eingerichtet",
       "no_devices_found": "Keine Tuya-Geräte gefunden. Stelle sicher, dass das Gerät eingeschaltet und im selben WLAN ist. Nutze **Manuell** oben.",
-      "unknown": "Unerwarteter Fehler — prüfe das Home Assistant-Protokoll"
+      "unknown": "Unerwarteter Fehler — prüfe das Home Assistant-Protokoll",
+      "invalid_ha_url": "Gib eine gültige Adresse ein, z.B. http://homeassistant.local:8123",
+      "invalid_local_key_chars": "Der Sicherheitsschlüssel enthält ungültige Zeichen (muss druckbares ASCII sein)",
+      "invalid_ip_address": "Ungültiges IP-Adressformat"
     },
     "abort": {
       "already_configured": "Dieses Gerät ist bereits eingerichtet",
       "not_tuya_device": "Das Gerät hat nicht wie erwartet geantwortet",
-      "reauth_successful": "Sicherheitsschlüssel aktualisiert — das Gerät ist wieder verbunden"
+      "pairing_server_unavailable": "Der BLE-Kopplungsserver konnte auf Port 8099 nicht gestartet werden — der Port ist möglicherweise belegt. Versuche es erneut oder nutze Suchen / Manuell.",
+      "https_required": "BLE-Kopplung erfordert HTTPS. Siehe die [HTTPS-Einrichtungsanleitung](https://github.com/11z4t/tuya-cloudless/wiki/HTTPS-Setup), um ein Zertifikat zu konfigurieren, und versuche es dann erneut.",
+      "reauth_successful": "Sicherheitsschlüssel aktualisiert — das Gerät ist wieder verbunden",
+      "reconfigure_successful": "Einstellungen aktualisiert — das Gerät wird neu geladen",
+      "no_device_id": "Das Gerät konnte nicht identifiziert werden — stelle sicher, dass es eingeschaltet und mit dem Netzwerk verbunden ist"
+    }
+  },
+  "exceptions": {
+    "device_unavailable": {
+      "message": "Das Gerät ist nicht verfügbar — die Verbindung ist unterbrochen"
+    },
+    "command_timeout": {
+      "message": "Der Befehl hat das Gerät innerhalb der Zeitüberschreitung nicht erreicht — bitte erneut versuchen"
+    },
+    "entry_not_found": {
+      "message": "Konfigurationseintrag nicht gefunden"
+    },
+    "entry_not_loaded": {
+      "message": "Konfigurationseintrag ist nicht geladen"
+    },
+    "send_failed": {
+      "message": "Befehl konnte nicht an das Gerät gesendet werden"
     }
   },
   "options": {
@@ -103,11 +165,43 @@
         "title": "Geräteeinstellungen",
         "data": {
           "ip_address": "IP-Adresse",
-          "protocol_version": "Gerätemodell"
+          "protocol_version": "Gerätemodell",
+          "heartbeat_interval": "Heartbeat-Intervall (Sekunden)",
+          "command_timeout": "Befehls-Timeout (Sekunden)",
+          "reconnect_max_delay": "Maximale Verbindungswiederholung (Sekunden)"
         },
         "data_description": {
           "ip_address": "Aktualisieren, wenn sich die IP-Adresse geändert hat",
-          "protocol_version": "Nur ändern, wenn das Gerät nach einem Firmware-Update nicht mehr antwortet"
+          "protocol_version": "Nur ändern, wenn das Gerät nach einem Firmware-Update nicht mehr antwortet",
+          "heartbeat_interval": "Wie oft ein Heartbeat gesendet wird, um die Verbindung aufrechtzuerhalten (5–300 s, Standard 20)",
+          "command_timeout": "Wie lange auf eine Befehlsantwort gewartet wird (1–30 s, Standard 5)",
+          "reconnect_max_delay": "Maximale Wartezeit zwischen Verbindungsversuchen (10–3600 s, Standard 300)"
+        }
+      }
+    }
+  },
+  "issues": {
+    "auth_failed": {
+      "title": "Authentifizierung fehlgeschlagen für {device_name}",
+      "description": "Das Gerät **{device_name}** lehnt die Verbindung ab. Der Sicherheitsschlüssel ist wahrscheinlich falsch — dies passiert, wenn das Gerät zurückgesetzt oder mit der Tuya-App neu gekoppelt wurde.\n\nKlicke auf **Beheben**, um einen neuen Sicherheitsschlüssel einzugeben.",
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "Sicherheitsschlüssel aktualisieren",
+            "description": "Gehe zu **Einstellungen → Integrationen → Tuya Cloudless → {device_name}** und wähle **Erneut authentifizieren**."
+          }
+        }
+      }
+    },
+    "connectivity": {
+      "title": "Keine Verbindung zu {name}",
+      "description": "Das Gerät unter {ip_address} ist nach mehreren Versuchen nicht erreichbar. Das Gerät hat möglicherweise die IP-Adresse geändert.\n\nKlicke auf **Beheben**, um die Verbindungseinstellungen zu aktualisieren.",
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "Verbindungseinstellungen aktualisieren",
+            "description": "Klicke auf **Absenden**, um den Konfigurationsdialog zu öffnen, in dem du die IP-Adresse und den Sicherheitsschlüssel aktualisieren kannst. Alternativ gehe zu **Einstellungen → Geräte & Dienste → Tuya Cloudless → [dein Gerät] → Konfigurieren**."
+          }
         }
       }
     }
@@ -121,6 +215,9 @@
     "light": {
       "main_light": {
         "name": "Licht"
+      },
+      "fan_light": {
+        "name": "Ventilatorsbeleuchtung"
       }
     },
     "sensor": {
@@ -135,16 +232,78 @@
       },
       "current": {
         "name": "Strom"
+      },
+      "battery": {
+        "name": "Akku"
+      },
+      "co2": {
+        "name": "CO₂"
+      },
+      "temperature": {
+        "name": "Temperatur"
+      },
+      "humidity": {
+        "name": "Luftfeuchtigkeit"
+      },
+      "floor_temp": {
+        "name": "Bodentemperatur"
       }
     },
     "binary_sensor": {
       "overload": {
         "name": "Überlastschutz"
+      },
+      "leak": {
+        "name": "Wasserleck"
+      },
+      "motion": {
+        "name": "Bewegung"
+      },
+      "smoke": {
+        "name": "Rauch"
+      },
+      "contact": {
+        "name": "Tür/Fenster"
+      },
+      "tamper": {
+        "name": "Manipulation"
       }
     },
     "cover": {
       "cover": {
         "name": "Rollladen"
+      }
+    },
+    "number": {
+      "volume": {
+        "name": "Lautstärke"
+      }
+    },
+    "select": {
+      "siren_mode": {
+        "name": "Sirenen-Modus"
+      }
+    },
+    "climate": {
+      "heater": {
+        "name": "Heizung"
+      },
+      "thermostat": {
+        "name": "Thermostat"
+      },
+      "ac": {
+        "name": "Klimaanlage"
+      },
+      "floor_heater": {
+        "name": "Fußbodenheizung"
+      },
+      "heat_pump": {
+        "name": "Wärmepumpe"
+      }
+    },
+    "fan": {
+      "main_fan": {
+        "name": "Ventilator"
       }
     }
   }

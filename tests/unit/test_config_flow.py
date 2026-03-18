@@ -2519,3 +2519,195 @@ class TestAutoDetectProfileBody:
             )
 
         assert result == "Generic Switch"
+
+
+# ── SEC-005: local_key character validation ───────────────────────────────────
+
+
+class TestLocalKeyCharValidation:
+    """SEC-005 (PLAT-828) — local_key must contain only printable ASCII."""
+
+    @pytest.mark.asyncio
+    async def test_null_byte_rejected_with_invalid_local_key_chars(self) -> None:
+        """A local_key with a null byte must be rejected with invalid_local_key_chars."""
+        from custom_components.tuya_cloudless.const import CONF_LOCAL_KEY
+
+        flow = _make_config_flow()
+        _restore_method(flow, "async_step_local_key")
+        # 15 printable ASCII chars + null byte = 16 chars total, correct length
+        bad_key = "0123456789abcde\x00"
+        await flow.async_step_local_key(user_input={CONF_LOCAL_KEY: bad_key})
+        flow.async_show_form.assert_called_once()
+        call_kwargs = flow.async_show_form.call_args[1]
+        assert call_kwargs.get("errors", {}).get(CONF_LOCAL_KEY) == "invalid_local_key_chars"
+
+    @pytest.mark.asyncio
+    async def test_non_ascii_rejected_with_invalid_local_key_chars(self) -> None:
+        """A local_key containing non-ASCII characters must be rejected."""
+        from custom_components.tuya_cloudless.const import CONF_LOCAL_KEY
+
+        flow = _make_config_flow()
+        _restore_method(flow, "async_step_local_key")
+        # '\xe9' is non-ASCII; 16 chars total
+        bad_key = "0123456789abcd\xe9f"
+        await flow.async_step_local_key(user_input={CONF_LOCAL_KEY: bad_key})
+        flow.async_show_form.assert_called_once()
+        call_kwargs = flow.async_show_form.call_args[1]
+        assert call_kwargs.get("errors", {}).get(CONF_LOCAL_KEY) == "invalid_local_key_chars"
+
+    @pytest.mark.asyncio
+    async def test_valid_printable_ascii_key_accepted(self) -> None:
+        """A 16-character printable ASCII key must pass character validation."""
+        from custom_components.tuya_cloudless.const import CONF_LOCAL_KEY, CONF_PROFILE
+
+        flow = _make_config_flow()
+        _restore_method(flow, "async_step_local_key")
+        good_key = "0123456789abcdef"  # 16 printable ASCII chars
+        await flow.async_step_local_key(
+            user_input={CONF_LOCAL_KEY: good_key, CONF_PROFILE: "Generic Switch"}
+        )
+        # Should advance to confirm, not show a form error
+        flow.async_step_confirm.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_manual_step_null_byte_rejected(self) -> None:
+        """async_step_manual must also reject null byte in local_key."""
+        from custom_components.tuya_cloudless.config_flow import TuyaCloudlessConfigFlow
+        from custom_components.tuya_cloudless.const import (
+            CONF_GW_ID,
+            CONF_IP_ADDRESS,
+            CONF_LOCAL_KEY,
+        )
+
+        flow = _make_config_flow()
+        flow.async_step_manual = TuyaCloudlessConfigFlow.async_step_manual.__get__(flow)
+        bad_key = "0123456789abcde\x00"
+        await flow.async_step_manual(
+            user_input={
+                CONF_GW_ID: "gw001",
+                CONF_LOCAL_KEY: bad_key,
+                CONF_IP_ADDRESS: "10.0.0.1",
+            }
+        )
+        flow.async_show_form.assert_called_once()
+        call_kwargs = flow.async_show_form.call_args[1]
+        assert call_kwargs.get("errors", {}).get(CONF_LOCAL_KEY) == "invalid_local_key_chars"
+
+
+# ── SEC-006: IP address format validation ─────────────────────────────────────
+
+
+class TestIpAddressValidation:
+    """SEC-006 (PLAT-829) — ip_address must be a valid IPv4 or IPv6 address."""
+
+    @pytest.mark.asyncio
+    async def test_bad_octets_rejected_in_manual_step(self) -> None:
+        """'999.999.999.999' must be rejected with invalid_ip_address."""
+        from custom_components.tuya_cloudless.config_flow import TuyaCloudlessConfigFlow
+        from custom_components.tuya_cloudless.const import (
+            CONF_GW_ID,
+            CONF_IP_ADDRESS,
+            CONF_LOCAL_KEY,
+        )
+
+        flow = _make_config_flow()
+        flow.async_step_manual = TuyaCloudlessConfigFlow.async_step_manual.__get__(flow)
+        await flow.async_step_manual(
+            user_input={
+                CONF_GW_ID: "gw001",
+                CONF_LOCAL_KEY: "0123456789abcdef",
+                CONF_IP_ADDRESS: "999.999.999.999",
+            }
+        )
+        flow.async_show_form.assert_called_once()
+        call_kwargs = flow.async_show_form.call_args[1]
+        assert call_kwargs.get("errors", {}).get(CONF_IP_ADDRESS) == "invalid_ip_address"
+
+    @pytest.mark.asyncio
+    async def test_non_ip_string_rejected_in_manual_step(self) -> None:
+        """'not an ip' must be rejected with invalid_ip_address."""
+        from custom_components.tuya_cloudless.config_flow import TuyaCloudlessConfigFlow
+        from custom_components.tuya_cloudless.const import (
+            CONF_GW_ID,
+            CONF_IP_ADDRESS,
+            CONF_LOCAL_KEY,
+        )
+
+        flow = _make_config_flow()
+        flow.async_step_manual = TuyaCloudlessConfigFlow.async_step_manual.__get__(flow)
+        await flow.async_step_manual(
+            user_input={
+                CONF_GW_ID: "gw001",
+                CONF_LOCAL_KEY: "0123456789abcdef",
+                CONF_IP_ADDRESS: "not an ip",
+            }
+        )
+        flow.async_show_form.assert_called_once()
+        call_kwargs = flow.async_show_form.call_args[1]
+        assert call_kwargs.get("errors", {}).get(CONF_IP_ADDRESS) == "invalid_ip_address"
+
+    @pytest.mark.asyncio
+    async def test_valid_ipv4_accepted_in_manual_step(self) -> None:
+        """'192.168.1.1' is a valid IPv4 address and must pass validation."""
+        from custom_components.tuya_cloudless.config_flow import TuyaCloudlessConfigFlow
+        from custom_components.tuya_cloudless.const import (
+            CONF_GW_ID,
+            CONF_IP_ADDRESS,
+            CONF_LOCAL_KEY,
+        )
+
+        flow = _make_config_flow()
+        flow.async_step_manual = TuyaCloudlessConfigFlow.async_step_manual.__get__(flow)
+        flow._check_connection = AsyncMock(return_value={})
+
+        await flow.async_step_manual(
+            user_input={
+                CONF_GW_ID: "gw001",
+                CONF_LOCAL_KEY: "0123456789abcdef",
+                CONF_IP_ADDRESS: "192.168.1.1",
+            }
+        )
+        # Should create entry, not show form errors about IP
+        flow.async_create_entry.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_invalid_ip_rejected_in_reconfigure_step(self) -> None:
+        """Reconfigure step must also reject invalid IP with invalid_ip_address."""
+        from custom_components.tuya_cloudless.const import CONF_IP_ADDRESS, CONF_LOCAL_KEY
+
+        flow = _make_config_flow()
+        _restore_method(flow, "async_step_reconfigure")
+
+        mock_entry = MagicMock()
+        mock_entry.data = {CONF_IP_ADDRESS: "10.0.0.1"}
+        mock_entry.title = "Test Device"
+        flow._get_reconfigure_entry = MagicMock(return_value=mock_entry)
+
+        await flow.async_step_reconfigure(
+            user_input={
+                CONF_LOCAL_KEY: "0123456789abcdef",
+                CONF_IP_ADDRESS: "not-an-ip",
+            }
+        )
+        flow.async_show_form.assert_called_once()
+        call_kwargs = flow.async_show_form.call_args[1]
+        assert call_kwargs.get("errors", {}).get(CONF_IP_ADDRESS) == "invalid_ip_address"
+
+
+# ── HA-004: MINOR_VERSION ─────────────────────────────────────────────────────
+
+
+class TestMinorVersion:
+    """HA-004 (PLAT-844) — MINOR_VERSION must be set on ConfigFlow and OptionsFlow."""
+
+    def test_config_flow_has_minor_version_1(self) -> None:
+        """TuyaCloudlessConfigFlow must have MINOR_VERSION = 1."""
+        from custom_components.tuya_cloudless.config_flow import TuyaCloudlessConfigFlow
+
+        assert TuyaCloudlessConfigFlow.MINOR_VERSION == 1
+
+    def test_options_flow_has_minor_version_1(self) -> None:
+        """TuyaCloudlessOptionsFlow must have MINOR_VERSION = 1."""
+        from custom_components.tuya_cloudless.config_flow import TuyaCloudlessOptionsFlow
+
+        assert TuyaCloudlessOptionsFlow.MINOR_VERSION == 1

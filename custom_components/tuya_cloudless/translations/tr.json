@@ -16,7 +16,7 @@
         "description": "Eşleştirme aracı tarayıcınızda açılıyor. Cihazınızı Bluetooth üzerinden bağlamak için adımları izleyin.\n\n**Chrome veya Edge gerektirir** (masaüstü veya Android) ve **HTTPS** — gerekirse [HTTPS kurulum kılavuzuna](https://github.com/11z4t/tuya-cloudless/wiki/HTTPS-Setup) bakın."
       },
       "ble_confirm": {
-        "title": "Cihaz Eşleştirildi ✓",
+        "title": "Cihaz Başarıyla Eşleştirildi",
         "description": "**{ip_address}** adresindeki cihazınız (Kimlik: `{gw_id}`) başarıyla eşleştirildi. Bir ad verin ve cihaz türünü seçin.",
         "data": {
           "device_name": "Cihaz Adı",
@@ -127,7 +127,10 @@
       "invalid_ip": "Geçersiz IP adresi — boş olamaz",
       "auth_failed": "Bağlantı reddedildi — güvenlik anahtarı yanlış olabilir veya cihaz Tuya uygulaması kullanılarak yeniden eşleştirilmiş olabilir",
       "no_devices_found": "Ağınızda Tuya cihazı bulunamadı. Cihazın açık ve aynı Wi-Fi'de olduğundan emin olun. Ayrıntıları elle girmek için yukarıdaki **Manuel**'e geçin.",
-      "unknown": "Beklenmedik hata — ayrıntılar için Home Assistant günlüğünü kontrol edin"
+      "unknown": "Beklenmedik hata — ayrıntılar için Home Assistant günlüğünü kontrol edin",
+      "invalid_ha_url": "Geçerli bir adres girin, örneğin http://homeassistant.local:8123",
+      "invalid_local_key_chars": "Güvenlik anahtarı geçersiz karakterler içeriyor (yazdırılabilir ASCII olmalıdır)",
+      "invalid_ip_address": "Geçersiz IP adresi biçimi"
     },
     "abort": {
       "already_configured": "Bu cihaz zaten kurulmuş",
@@ -135,7 +138,8 @@
       "pairing_server_unavailable": "BLE eşleştirme sunucusu 8099 numaralı portta başlatılamadı — port kullanımda olabilir. Tekrar deneyin veya bunun yerine Arama / Manuel kurulum kullanın.",
       "https_required": "BLE Eşleştirme HTTPS gerektirir. Bir sertifika yapılandırmak için [HTTPS kurulum kılavuzuna](https://github.com/11z4t/tuya-cloudless/wiki/HTTPS-Setup) bakın, ardından tekrar deneyin.",
       "reauth_successful": "Güvenlik anahtarı güncellendi — cihaz yeniden bağlandı",
-      "reconfigure_successful": "Ayarlar güncellendi — cihaz yeniden yükleniyor"
+      "reconfigure_successful": "Ayarlar güncellendi — cihaz yeniden yükleniyor",
+      "no_device_id": "Cihaz tanımlanamadı — açık olduğundan ve ağa bağlı olduğundan emin olun"
     }
   },
   "exceptions": {
@@ -196,7 +200,7 @@
         "step": {
           "confirm": {
             "title": "Bağlantı Ayarlarını Güncelle",
-            "description": "IP adresini güncellemek için cihaz ayarlarını açın."
+            "description": "IP adresini ve yerel anahtarı güncelleyebileceğiniz yeniden yapılandırma iletişim kutusunu açmak için **Gönder**'e tıklayın. Alternatif olarak **Ayarlar → Cihazlar ve Hizmetler → Tuya Cloudless → [cihazınız] → Yapılandır** bölümüne gidin."
           }
         }
       }

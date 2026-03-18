@@ -6,6 +6,7 @@ Tests cover error handling in send_dps, state management, and helper methods.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -349,6 +350,76 @@ class TestCoordinatorFromConfigEntry:
         coord = TuyaCloudlessCoordinator.from_config_entry(hass, entry, device_info=MagicMock())
         assert coord._heartbeat_interval == 30
         assert coord._gw_id == "gw001"
+
+
+class TestAsyncStart:
+    """Tests for async_start() — ROB-001 (PLAT-830) duplicate-call guard."""
+
+    @pytest.mark.asyncio
+    async def test_double_start_creates_single_task(self) -> None:
+        """Two rapid async_start() calls must result in exactly one active _connect_task."""
+        from custom_components.tuya_cloudless.coordinator import TuyaCloudlessCoordinator
+
+        # Arrange: a coordinator with a hass mock whose async_create_task
+        # creates real asyncio Tasks so that .done() behaves correctly.
+        hass = MagicMock()
+
+        created_tasks: list[asyncio.Task[None]] = []
+
+        def _create_task(coro: object, **kw: object) -> asyncio.Task[None]:
+            task: asyncio.Task[None] = asyncio.get_event_loop().create_task(coro)  # type: ignore[arg-type]
+            created_tasks.append(task)
+            return task
+
+        hass.async_create_task = MagicMock(side_effect=_create_task)
+
+        coord = TuyaCloudlessCoordinator(
+            hass=hass,
+            entry_id="test_rob001",
+            gw_id="gw_rob001",
+            ip_address="127.0.0.1",
+            local_key="0123456789abcdef",
+            version="3.3",
+            device_info=MagicMock(),
+        )
+
+        # Patch _connection_loop with an AsyncMock that never returns, so the
+        # task stays alive and the guard in async_start() can detect it.
+        loop = asyncio.get_event_loop()
+        never_done: asyncio.Future[None] = loop.create_future()
+
+        async def _infinite_loop(self: object) -> None:
+            await never_done
+
+        with patch.object(TuyaCloudlessCoordinator, "_connection_loop", _infinite_loop):
+            await coord.async_start()
+            first_task = coord._connect_task
+
+            # Give the event loop a chance to schedule the task (not strictly
+            # necessary here but makes the test more realistic).
+            await asyncio.sleep(0)
+
+            await coord.async_start()  # second call — must be a no-op
+            second_task = coord._connect_task
+
+        # Assert: still exactly one task, it's the same object, and it is not done.
+        assert first_task is not None, "_connect_task should not be None after async_start()"
+        assert first_task is second_task, (
+            "Second async_start() must not replace the existing task — "
+            "only one connection loop should be running"
+        )
+        assert not first_task.done(), "The single connect task must still be running"
+        # Confirm async_create_task was called exactly once (not twice)
+        assert hass.async_create_task.call_count == 1, (
+            f"Expected async_create_task to be called once, got {hass.async_create_task.call_count}"
+        )
+
+        # Clean up: cancel the lingering task so the event loop doesn't warn.
+        first_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await first_task
+        if not never_done.done():
+            never_done.cancel()
 
 
 class TestCoordinatorInit:

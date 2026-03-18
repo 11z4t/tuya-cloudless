@@ -24,6 +24,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import functools
+import ipaddress
 import logging
 from typing import TYPE_CHECKING, Any
 from urllib.parse import urlparse
@@ -73,6 +74,15 @@ _KEY_VALIDATION_TIMEOUT = 4.0
 
 #: Sentinel profile name meaning "detect automatically from device DP_QUERY response"
 _PROFILE_AUTO = "__auto_detect__"
+
+
+def _validate_ip(ip: str) -> bool:
+    """Return True if *ip* is a valid IPv4 or IPv6 address, False otherwise."""
+    try:
+        ipaddress.ip_address(ip)
+        return True
+    except ValueError:
+        return False
 
 
 def _get_profile_options() -> list[SelectOptionDict]:
@@ -146,6 +156,7 @@ class TuyaCloudlessConfigFlow(ConfigFlow, domain=DOMAIN):
     """
 
     VERSION = CONFIG_ENTRY_VERSION
+    MINOR_VERSION = 1
 
     def __init__(self) -> None:
         """Initialize the config flow."""
@@ -175,7 +186,13 @@ class TuyaCloudlessConfigFlow(ConfigFlow, domain=DOMAIN):
             local_key = str(user_input.get(CONF_LOCAL_KEY, "")).strip()
             ip_address = str(user_input.get(CONF_IP_ADDRESS, "")).strip()
 
-            if gw_id and len(local_key) == _LOCAL_KEY_LENGTH and ip_address:
+            if (
+                gw_id
+                and len(local_key) == _LOCAL_KEY_LENGTH
+                and local_key.isascii()
+                and local_key.isprintable()
+                and _validate_ip(ip_address)
+            ):
                 self._device = {
                     CONF_GW_ID: gw_id,
                     CONF_LOCAL_KEY: local_key,
@@ -424,6 +441,8 @@ class TuyaCloudlessConfigFlow(ConfigFlow, domain=DOMAIN):
             local_key = user_input[CONF_LOCAL_KEY].strip()
             if len(local_key) != _LOCAL_KEY_LENGTH:
                 errors[CONF_LOCAL_KEY] = "invalid_local_key"
+            elif not (local_key.isascii() and local_key.isprintable()):
+                errors[CONF_LOCAL_KEY] = "invalid_local_key_chars"
             else:
                 name = (user_input.get(CONF_DEVICE_NAME) or "").strip()
                 self._device.update(
@@ -552,8 +571,10 @@ class TuyaCloudlessConfigFlow(ConfigFlow, domain=DOMAIN):
                 errors[CONF_GW_ID] = "invalid_gw_id"
             if len(local_key) != _LOCAL_KEY_LENGTH:
                 errors[CONF_LOCAL_KEY] = "invalid_local_key"
-            if not ip_address:
-                errors[CONF_IP_ADDRESS] = "cannot_connect"
+            elif not (local_key.isascii() and local_key.isprintable()):
+                errors[CONF_LOCAL_KEY] = "invalid_local_key_chars"
+            if not _validate_ip(ip_address):
+                errors[CONF_IP_ADDRESS] = "invalid_ip_address"
 
             if not errors:
                 manual_version = user_input.get(CONF_PROTOCOL_VERSION, DEFAULT_PROTOCOL_VERSION)
@@ -633,6 +654,8 @@ class TuyaCloudlessConfigFlow(ConfigFlow, domain=DOMAIN):
             local_key = user_input[CONF_LOCAL_KEY].strip()
             if len(local_key) != _LOCAL_KEY_LENGTH:
                 errors[CONF_LOCAL_KEY] = "invalid_local_key"
+            elif not (local_key.isascii() and local_key.isprintable()):
+                errors[CONF_LOCAL_KEY] = "invalid_local_key_chars"
             else:
                 name = (user_input.get(CONF_DEVICE_NAME) or "").strip()
                 self._device.update(
@@ -791,6 +814,8 @@ class TuyaCloudlessConfigFlow(ConfigFlow, domain=DOMAIN):
             local_key = user_input[CONF_LOCAL_KEY].strip()
             if len(local_key) != _LOCAL_KEY_LENGTH:
                 errors[CONF_LOCAL_KEY] = "invalid_local_key"
+            elif not (local_key.isascii() and local_key.isprintable()):
+                errors[CONF_LOCAL_KEY] = "invalid_local_key_chars"
             else:
                 ip_address = user_input.get(CONF_IP_ADDRESS, "").strip() or reauth_entry.data.get(
                     CONF_IP_ADDRESS, ""
@@ -858,8 +883,10 @@ class TuyaCloudlessConfigFlow(ConfigFlow, domain=DOMAIN):
 
             if len(local_key) != _LOCAL_KEY_LENGTH:
                 errors[CONF_LOCAL_KEY] = "invalid_local_key"
-            elif not ip_address:
-                errors[CONF_IP_ADDRESS] = "invalid_ip"
+            elif not (local_key.isascii() and local_key.isprintable()):
+                errors[CONF_LOCAL_KEY] = "invalid_local_key_chars"
+            elif not _validate_ip(ip_address):
+                errors[CONF_IP_ADDRESS] = "invalid_ip_address"
             else:
                 reconfig_version = reconfigure_entry.data.get(
                     CONF_PROTOCOL_VERSION, DEFAULT_PROTOCOL_VERSION
@@ -1247,6 +1274,8 @@ class TuyaCloudlessOptionsFlow(OptionsFlow):
     ``ip_address`` and ``protocol_version`` belong to ``entry.data`` and are
     changed via the *Reconfigure* flow. They must NOT appear here (PLAT-715).
     """
+
+    MINOR_VERSION = 1
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """Show the options form.

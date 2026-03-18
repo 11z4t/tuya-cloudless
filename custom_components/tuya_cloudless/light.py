@@ -127,6 +127,11 @@ async def async_setup_entry(
     entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
+    """Set up Tuya Cloudless light entities for a config entry.
+
+    Reads entity specs from runtime data and creates a TuyaCloudlessLight
+    instance for each spec whose platform is "light".
+    """
     from . import TuyaCloudlessRuntimeData
 
     runtime: TuyaCloudlessRuntimeData = entry.runtime_data
@@ -138,6 +143,15 @@ async def async_setup_entry(
 
 
 class TuyaCloudlessLight(RestoreStateMixin, TuyaCloudlessEntity, LightEntity):
+    """Tuya Cloudless light entity supporting brightness, color temperature, and HS color modes.
+
+    Mode is selected based on profile dp_color, dp_color_temp, and dp_brightness capabilities:
+    - HS color mode: enabled when dp_colour_data or both dp_hs_hue and dp_hs_saturation are set.
+    - COLOR_TEMP mode: enabled when dp_color_temp is set.
+    - BRIGHTNESS mode: fallback when neither color mode is available but dp_brightness is set.
+    - ONOFF mode: final fallback when no brightness or color DPs are configured.
+    """
+
     _attr_assumed_state: bool = False
 
     def __init__(
@@ -301,6 +315,18 @@ class TuyaCloudlessLight(RestoreStateMixin, TuyaCloudlessEntity, LightEntity):
         return str(raw)
 
     async def async_turn_on(self, **kwargs: Any) -> None:
+        """Turn on the light and apply any color, color temperature, brightness, or effect.
+
+        Three branches handle color mode selection:
+        1. HS color (ATTR_HS_COLOR present): encodes hue+saturation into either a compound
+           colour_data DP (12-char hex HHHHSSSSBBBB, folding in brightness) or separate
+           dp_hs_hue / dp_hs_saturation DPs, then sets dp_color_mode to "colour".
+        2. Color temperature (ATTR_COLOR_TEMP_KELVIN present, no HS): maps the Kelvin value
+           to the device raw range and sets dp_color_mode to "white".
+        3. Brightness only (ATTR_BRIGHTNESS present, no HS or CT change): if in colour mode
+           with a colour_data DP, updates the V component; otherwise writes dp_brightness.
+        Additionally handles ATTR_EFFECT for scene/effect DPs when supported.
+        """
         self._optimistic_state = True
         self.async_write_ha_state()
         try:

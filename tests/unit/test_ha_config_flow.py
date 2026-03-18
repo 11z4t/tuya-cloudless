@@ -306,7 +306,7 @@ class TestStepManual:
             }
         )
         call_kwargs = flow.async_show_form.call_args[1]
-        assert call_kwargs["errors"][CONF_IP_ADDRESS] == "cannot_connect"
+        assert call_kwargs["errors"][CONF_IP_ADDRESS] == "invalid_ip_address"
 
     @pytest.mark.asyncio
     async def test_connection_fail(self) -> None:

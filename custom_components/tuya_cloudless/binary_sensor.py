@@ -65,7 +65,7 @@ class TuyaCloudlessBinarySensor(TuyaCloudlessEntity, BinarySensorEntity):
             coordinator: The device coordinator.
             spec: Entity specification from the device profile.
         """
-        dp_id = spec.dp_power.id if spec.dp_power else None
+        dp_id = spec.dp_value.id if spec.dp_value else (spec.dp_power.id if spec.dp_power else None)
         super().__init__(coordinator, dp_id=dp_id, spec=spec)
 
         if spec.device_class:

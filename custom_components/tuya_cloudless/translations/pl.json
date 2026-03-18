@@ -2,14 +2,39 @@
   "config": {
     "flow_title": "{name}",
     "step": {
+      "pair": {
+        "title": "Narzędzie parowania",
+        "description": "Dane urządzenia zostały zaimportowane z narzędzia parowania Tuya Cloudless. Sprawdź poprawność danych i kliknij **Dalej**, aby przetestować połączenie.",
+        "data": {
+          "gw_id": "ID urządzenia",
+          "local_key": "Klucz bezpieczeństwa",
+          "ip_address": "Adres IP"
+        }
+      },
+      "ble_pair": {
+        "title": "Parowanie BLE",
+        "description": "Narzędzie parowania powinno otworzyć się automatycznie w nowej karcie przeglądarki. Postępuj zgodnie z krokami, aby połączyć urządzenie przez Bluetooth i uzyskać klucz lokalny.\n\nJeśli karta się nie otworzyła, kliknij przycisk poniżej.\n\n**Wymaga Chrome lub Edge** (komputer lub Android) i **HTTPS** — zapoznaj się z [przewodnikiem konfiguracji HTTPS](https://github.com/11z4t/tuya-cloudless/wiki/HTTPS-Setup) w razie potrzeby."
+      },
+      "ble_confirm": {
+        "title": "Urządzenie sparowane pomyślnie",
+        "description": "Twoje urządzenie pod adresem **{ip_address}** (ID: `{gw_id}`) zostało sparowane. Nadaj mu nazwę i wybierz typ urządzenia.",
+        "data": {
+          "device_name": "Nazwa urządzenia",
+          "profile": "Typ urządzenia"
+        },
+        "data_description": {
+          "device_name": "Nazwa wyświetlana w Home Assistant",
+          "profile": "Wybierz typ najlepiej pasujący do Twojego urządzenia"
+        }
+      },
       "user": {
         "title": "Dodaj urządzenie Tuya",
-        "description": "Wybierz, jak chcesz dodać urządzenie. **Szukaj** automatycznie skanuje sieć — upewnij się, że urządzenie jest włączone i podłączone do tej samej sieci Wi-Fi co Home Assistant.",
+        "description": "Wybierz, jak chcesz dodać urządzenie.",
         "data": {
           "setup_mode": "Metoda konfiguracji"
         },
         "data_description": {
-          "setup_mode": "Szukaj znajduje urządzenia automatycznie. Wybierz Ręczne, jeśli urządzenie nie zostanie znalezione."
+          "setup_mode": "Parowanie BLE jest zalecane dla nowych urządzeń. Szukaj znajduje urządzenia już w sieci. Ręczne dodawanie umożliwia wpisanie danych ręcznie."
         }
       },
       "select": {
@@ -21,26 +46,26 @@
       },
       "local_key": {
         "title": "Wprowadź klucz bezpieczeństwa",
-        "description": "Twoje urządzenie pod adresem **{ip_address}** (firmware {firmware}) potrzebuje klucza bezpieczeństwa.\n\nKlucz jest wyświetlany podczas parowania z Tuya Cloudless. Jest przechowywany tylko w Home Assistant.",
+        "description": "Twoje urządzenie pod adresem **{ip_address}** (firmware {firmware}) potrzebuje klucza bezpieczeństwa do lokalnej komunikacji.\n\nKlucz jest wyświetlany podczas parowania z [narzędziem parowania Tuya Cloudless]({pairing_tool_url}). Jest przechowywany tylko w Home Assistant — nic nie jest wysyłane do chmury.",
         "data": {
           "local_key": "Klucz bezpieczeństwa",
           "device_name": "Nazwa urządzenia",
           "profile": "Typ urządzenia"
         },
         "data_description": {
-          "local_key": "Klucz 16-znakowy z parowania",
+          "local_key": "Klucz 16-znakowy z narzędzia parowania",
           "device_name": "Własna nazwa w Home Assistant (zostaw puste, aby użyć adresu IP)",
           "profile": "Wybierz typ najlepiej pasujący do Twojego urządzenia"
         }
       },
       "confirm": {
         "title": "Gotowe do połączenia",
-        "description": "**{device_name}** pod adresem `{ip_address}` zostanie dodane do Home Assistant.\n\nKliknij **Połącz**, aby przetestować połączenie.",
+        "description": "**{device_name}** pod adresem `{ip_address}` zostanie dodane do Home Assistant.\n\nKliknij **Połącz**, aby przetestować połączenie i zakończyć konfigurację.",
         "data": {}
       },
       "manual": {
         "title": "Dodaj urządzenie ręcznie",
-        "description": "Wprowadź dane urządzenia Tuya. ID urządzenia i klucz bezpieczeństwa są wyświetlane w narzędziu Tuya Cloudless.",
+        "description": "Wprowadź dane urządzenia Tuya. ID urządzenia i klucz bezpieczeństwa są wyświetlane w [narzędziu parowania Tuya Cloudless]({pairing_tool_url}).",
         "data": {
           "gw_id": "ID urządzenia",
           "local_key": "Klucz bezpieczeństwa",
@@ -52,14 +77,14 @@
         "data_description": {
           "gw_id": "Unikalny identyfikator urządzenia (np. abc123def456)",
           "local_key": "Klucz 16-znakowy",
-          "ip_address": "Adres IP urządzenia",
+          "ip_address": "Adres IP urządzenia (ustaw stały adres w routerze dla najlepszej niezawodności)",
           "protocol_version": "Model 3.3 działa dla większości urządzeń od 2020 roku",
           "profile": "Wybierz najlepiej pasujący typ"
         }
       },
       "discovery": {
         "title": "Znaleziono urządzenie Tuya",
-        "description": "Wykryto urządzenie pod adresem **{ip_address}** (firmware {firmware}).\n\nWprowadź klucz bezpieczeństwa, aby zakończyć konfigurację.",
+        "description": "Wykryto urządzenie pod adresem **{ip_address}** (firmware {firmware}).\n\nWprowadź klucz bezpieczeństwa z [narzędzia parowania Tuya Cloudless]({pairing_tool_url}), aby zakończyć konfigurację.",
         "data": {
           "local_key": "Klucz bezpieczeństwa",
           "profile": "Typ urządzenia",
@@ -71,7 +96,7 @@
       },
       "reauth_confirm": {
         "title": "Zaktualizuj klucz bezpieczeństwa",
-        "description": "Klucz bezpieczeństwa dla **{device_name}** przestał działać. Wprowadź nowy klucz, aby ponownie się połączyć.",
+        "description": "Klucz bezpieczeństwa dla **{device_name}** przestał działać. Dzieje się tak, jeśli urządzenie zostało zresetowane lub ponownie sparowane.\n\nUzyskaj nowy klucz z [narzędzia parowania Tuya Cloudless]({pairing_tool_url}) i wprowadź go poniżej, aby ponownie się połączyć.",
         "data": {
           "local_key": "Nowy klucz bezpieczeństwa",
           "ip_address": "Adres IP (jeśli się zmienił)"
@@ -80,6 +105,18 @@
           "local_key": "Klucz 16-znakowy z ostatniego parowania",
           "ip_address": "Zostaw puste, jeśli adres się nie zmienił"
         }
+      },
+      "reconfigure": {
+        "title": "Zaktualizuj ustawienia połączenia",
+        "description": "Zaktualizuj adres IP lub klucz bezpieczeństwa dla **{device_name}** bez usuwania i ponownego dodawania urządzenia.",
+        "data": {
+          "ip_address": "Adres IP",
+          "local_key": "Klucz bezpieczeństwa"
+        },
+        "data_description": {
+          "ip_address": "Aktualny adres IP urządzenia w Twojej sieci",
+          "local_key": "16-znakowy klucz bezpieczeństwa"
+        }
       }
     },
     "error": {
@@ -87,14 +124,39 @@
       "invalid_local_key": "Nieprawidłowy klucz bezpieczeństwa — musi mieć dokładnie 16 znaków",
       "invalid_auth_key": "Klucz bezpieczeństwa jest nieprawidłowy. Sprawdź klucz i spróbuj ponownie.",
       "invalid_gw_id": "Nieprawidłowe ID urządzenia — nie może być puste",
+      "invalid_ip": "Nieprawidłowy adres IP — nie może być pusty",
       "auth_failed": "Połączenie odrzucone — klucz może być nieprawidłowy lub urządzenie zostało sparowane ponownie",
       "no_devices_found": "Nie znaleziono urządzeń Tuya. Upewnij się, że urządzenie jest włączone i w tej samej sieci Wi-Fi. Użyj **Ręczne** powyżej.",
-      "unknown": "Nieoczekiwany błąd — sprawdź dziennik Home Assistant"
+      "unknown": "Nieoczekiwany błąd — sprawdź dziennik Home Assistant",
+      "invalid_ha_url": "Wprowadź prawidłowy adres, na przykład http://homeassistant.local:8123",
+      "invalid_local_key_chars": "Klucz bezpieczeństwa zawiera nieprawidłowe znaki (musi być drukowalnym ASCII)",
+      "invalid_ip_address": "Nieprawidłowy format adresu IP"
     },
     "abort": {
       "already_configured": "To urządzenie jest już skonfigurowane",
       "not_tuya_device": "Urządzenie nie odpowiedziało zgodnie z oczekiwaniami",
-      "reauth_successful": "Klucz bezpieczeństwa zaktualizowany — urządzenie jest ponownie połączone"
+      "pairing_server_unavailable": "Nie można uruchomić serwera parowania BLE na porcie 8099 — port może być zajęty. Spróbuj ponownie lub użyj Szukaj / Konfiguracja ręczna.",
+      "https_required": "Parowanie BLE wymaga HTTPS. Zapoznaj się z [przewodnikiem konfiguracji HTTPS](https://github.com/11z4t/tuya-cloudless/wiki/HTTPS-Setup), aby skonfigurować certyfikat, a następnie spróbuj ponownie.",
+      "reauth_successful": "Klucz bezpieczeństwa zaktualizowany — urządzenie jest ponownie połączone",
+      "reconfigure_successful": "Ustawienia zaktualizowane — urządzenie jest ponownie ładowane",
+      "no_device_id": "Nie można zidentyfikować urządzenia — upewnij się, że jest włączone i podłączone do sieci"
+    }
+  },
+  "exceptions": {
+    "device_unavailable": {
+      "message": "Urządzenie jest niedostępne — połączenie jest przerwane"
+    },
+    "command_timeout": {
+      "message": "Polecenie nie dotarło do urządzenia w czasie limitu — spróbuj ponownie"
+    },
+    "entry_not_found": {
+      "message": "Wpis konfiguracji nie został znaleziony"
+    },
+    "entry_not_loaded": {
+      "message": "Wpis konfiguracji nie jest załadowany"
+    },
+    "send_failed": {
+      "message": "Nie udało się wysłać polecenia do urządzenia"
     }
   },
   "options": {
@@ -103,11 +165,43 @@
         "title": "Ustawienia urządzenia",
         "data": {
           "ip_address": "Adres IP",
-          "protocol_version": "Model urządzenia"
+          "protocol_version": "Model urządzenia",
+          "heartbeat_interval": "Interwał heartbeat (sekundy)",
+          "command_timeout": "Limit czasu polecenia (sekundy)",
+          "reconnect_max_delay": "Maksymalne opóźnienie ponownego połączenia (sekundy)"
         },
         "data_description": {
           "ip_address": "Zaktualizuj, jeśli adres IP się zmienił",
-          "protocol_version": "Zmień tylko, jeśli urządzenie przestało odpowiadać po aktualizacji"
+          "protocol_version": "Zmień tylko, jeśli urządzenie przestało odpowiadać po aktualizacji",
+          "heartbeat_interval": "Jak często wysyłany jest heartbeat, aby utrzymać aktywne połączenie (5–300 s, domyślnie 20)",
+          "command_timeout": "Jak długo czekać na odpowiedź polecenia przed rezygnacją (1–30 s, domyślnie 5)",
+          "reconnect_max_delay": "Maksymalne oczekiwanie między próbami ponownego połączenia (10–3600 s, domyślnie 300)"
+        }
+      }
+    }
+  },
+  "issues": {
+    "auth_failed": {
+      "title": "Błąd uwierzytelniania dla {device_name}",
+      "description": "Urządzenie **{device_name}** odrzuca połączenie. Klucz bezpieczeństwa jest prawdopodobnie nieprawidłowy — dzieje się tak, gdy urządzenie zostaje przywrócone do ustawień fabrycznych lub ponownie sparowane z aplikacją Tuya.\n\nKliknij **Napraw**, aby wprowadzić nowy klucz bezpieczeństwa.",
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "Zaktualizuj klucz bezpieczeństwa",
+            "description": "Przejdź do **Ustawienia → Integracje → Tuya Cloudless → {device_name}** i wybierz **Ponownie uwierzytelnij**."
+          }
+        }
+      }
+    },
+    "connectivity": {
+      "title": "Nie można połączyć z {name}",
+      "description": "Nie można dotrzeć do urządzenia pod adresem {ip_address} po wielu próbach. Urządzenie mogło zmienić adres IP.\n\nKliknij **Napraw**, aby zaktualizować ustawienia połączenia.",
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "Zaktualizuj ustawienia połączenia",
+            "description": "Kliknij **Prześlij**, aby otworzyć okno dialogowe rekonfiguracji, gdzie możesz zaktualizować adres IP i klucz lokalny. Alternatywnie przejdź do **Ustawienia → Urządzenia i usługi → Tuya Cloudless → [Twoje urządzenie] → Konfiguruj**."
+          }
         }
       }
     }
@@ -121,6 +215,9 @@
     "light": {
       "main_light": {
         "name": "Światło"
+      },
+      "fan_light": {
+        "name": "Światło wentylatora"
       }
     },
     "sensor": {
@@ -135,16 +232,78 @@
       },
       "current": {
         "name": "Prąd"
+      },
+      "battery": {
+        "name": "Bateria"
+      },
+      "co2": {
+        "name": "CO₂"
+      },
+      "temperature": {
+        "name": "Temperatura"
+      },
+      "humidity": {
+        "name": "Wilgotność"
+      },
+      "floor_temp": {
+        "name": "Temperatura podłogi"
       }
     },
     "binary_sensor": {
       "overload": {
         "name": "Przeciążenie"
+      },
+      "leak": {
+        "name": "Wyciek wody"
+      },
+      "motion": {
+        "name": "Ruch"
+      },
+      "smoke": {
+        "name": "Dym"
+      },
+      "contact": {
+        "name": "Drzwi/Okno"
+      },
+      "tamper": {
+        "name": "Sabotaż"
       }
     },
     "cover": {
       "cover": {
         "name": "Roleta"
+      }
+    },
+    "number": {
+      "volume": {
+        "name": "Głośność"
+      }
+    },
+    "select": {
+      "siren_mode": {
+        "name": "Tryb syreny"
+      }
+    },
+    "climate": {
+      "heater": {
+        "name": "Grzejnik"
+      },
+      "thermostat": {
+        "name": "Termostat"
+      },
+      "ac": {
+        "name": "Klimatyzacja"
+      },
+      "floor_heater": {
+        "name": "Ogrzewanie podłogowe"
+      },
+      "heat_pump": {
+        "name": "Pompa ciepła"
+      }
+    },
+    "fan": {
+      "main_fan": {
+        "name": "Wentylator"
       }
     }
   }

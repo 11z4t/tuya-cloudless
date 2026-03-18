@@ -69,6 +69,19 @@ _BRAND_DIR: Final[Path] = Path(__file__).parent / "brand"
 #: local_key length in bytes (Tuya standard: 16 bytes → 16 ASCII chars)
 _LOCAL_KEY_BYTES: Final[int] = 16
 
+# ── Rate limiting constants ─────────────────────────────────────────────────
+
+#: Maximum activation requests per IP per window (SEC-001 / PLAT-824)
+_RATE_LIMIT_MAX: Final[int] = 10
+
+#: Rate-limit sliding window in seconds (SEC-001 / PLAT-824)
+_RATE_LIMIT_WINDOW: Final[float] = 60.0
+
+# ── SSE connection constants ────────────────────────────────────────────────
+
+#: Maximum concurrent SSE connections (SEC-002 / PLAT-825)
+_MAX_SSE_CONNECTIONS: Final[int] = 10
+
 # ── Security constants ─────────────────────────────────────────────────────
 
 #: Security headers added to every response from the pairing UI (PLAT-725).
@@ -152,6 +165,8 @@ class PairingServer:
         self._pending_flows: set[str] = set()
         # Auto-stop task (stops server 60s after last flow unregisters)
         self._auto_stop_task: asyncio.Task[None] | None = None
+        # Per-IP rate limit: maps IP → list of request timestamps (SEC-001)
+        self._rate_limit: dict[str, list[float]] = {}
 
     # ── Lifecycle ──────────────────────────────────────────────────────────
 
@@ -271,7 +286,9 @@ class PairingServer:
         """
         self._pending_flows.discard(flow_id)
         if not self._pending_flows and self._auto_stop_task is None:
-            self._auto_stop_task = asyncio.ensure_future(self._auto_stop_after_idle())
+            self._auto_stop_task = asyncio.create_task(
+                self._auto_stop_after_idle(), name="tuya-cloudless-auto-stop"
+            )
 
     # ── Route handlers ─────────────────────────────────────────────────────
 
@@ -447,6 +464,22 @@ class PairingServer:
             return web.Response(status=415, text="Content-Type must be application/json")
 
         client_ip = request.remote or "unknown"
+
+        # Per-IP rate limiting (SEC-001 / PLAT-824)
+        now = time.monotonic()
+        timestamps = self._rate_limit.get(client_ip, [])
+        # Evict timestamps outside the sliding window
+        timestamps = [ts for ts in timestamps if now - ts < _RATE_LIMIT_WINDOW]
+        if len(timestamps) >= _RATE_LIMIT_MAX:
+            _LOGGER.warning(
+                "Rate limit exceeded for activation endpoint: ip=%s requests=%d",
+                client_ip,
+                len(timestamps),
+            )
+            return web.Response(status=429, text="Too Many Requests")
+        timestamps.append(now)
+        self._rate_limit[client_ip] = timestamps
+
         _LOGGER.debug("Activation request from %s", client_ip)
 
         try:
@@ -560,15 +593,21 @@ class PairingServer:
         Returns:
             SSE stream response (kept open until client disconnects).
         """
-        queue: asyncio.Queue[str | None] = asyncio.Queue()
+        # Enforce connection cap before allocating resources (SEC-002 / PLAT-825)
+        if len(self._sse_queues) >= _MAX_SSE_CONNECTIONS:
+            return web.Response(status=503, text="Too many concurrent SSE connections")
+
+        # Bounded queue prevents unbounded memory growth (SEC-002 / PLAT-825)
+        queue: asyncio.Queue[str | None] = asyncio.Queue(maxsize=32)
         self._sse_queues.append(queue)
 
+        # No wildcard CORS on SSE — only same-origin browser pages need this
+        # (SEC-003 / PLAT-826)
         response = web.StreamResponse(
             headers={
                 "Content-Type": "text/event-stream",
                 "Cache-Control": "no-cache",
                 "X-Accel-Buffering": "no",
-                "Access-Control-Allow-Origin": "*",
             }
         )
         await response.prepare(request)

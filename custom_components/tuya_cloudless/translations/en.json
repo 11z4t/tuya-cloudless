@@ -16,7 +16,7 @@
         "description": "The pairing tool should open automatically in a new browser tab. Follow the steps there to connect your device over Bluetooth and get your local key.\n\nIf the tab did not open, click the button below.\n\n**Requires Chrome or Edge** (desktop or Android) and **HTTPS** — see the [HTTPS setup guide](https://github.com/11z4t/tuya-cloudless/wiki/HTTPS-Setup) if needed."
       },
       "ble_confirm": {
-        "title": "Device paired ✓",
+        "title": "Device paired successfully",
         "description": "Your device at **{ip_address}** (ID: `{gw_id}`) was paired successfully. Give it a name and select the device type.",
         "data": {
           "device_name": "Device name",
@@ -128,7 +128,9 @@
       "auth_failed": "Connection refused — the security key may be wrong, or the device was paired again using the Tuya app",
       "no_devices_found": "No Tuya devices found on your network. Make sure the device is powered on and on the same Wi-Fi. Switch to **Manual** above to enter details by hand.",
       "unknown": "Unexpected error — check the Home Assistant log for details",
-      "invalid_ha_url": "Enter a valid address, for example http://homeassistant.local:8123"
+      "invalid_ha_url": "Enter a valid address, for example http://homeassistant.local:8123",
+      "invalid_local_key_chars": "Local key contains invalid characters (must be printable ASCII)",
+      "invalid_ip_address": "Invalid IP address format"
     },
     "abort": {
       "already_configured": "This device is already set up",
@@ -198,7 +200,7 @@
         "step": {
           "confirm": {
             "title": "Update connection settings",
-            "description": "Open the device settings to update the IP address."
+            "description": "Click **Submit** to open the reconfigure dialog where you can update the IP address and local key. Alternatively, go to **Settings → Devices & Services → Tuya Cloudless → [your device] → Configure**."
           }
         }
       }

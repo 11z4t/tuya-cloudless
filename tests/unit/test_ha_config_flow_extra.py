@@ -230,7 +230,7 @@ class TestStepReconfigure:
             }
         )
         call_kwargs = flow.async_show_form.call_args[1]
-        assert call_kwargs["errors"][CONF_IP_ADDRESS] == "invalid_ip"
+        assert call_kwargs["errors"][CONF_IP_ADDRESS] == "invalid_ip_address"
 
     @pytest.mark.asyncio
     async def test_connection_failure_shows_error(self) -> None:

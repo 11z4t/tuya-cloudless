@@ -2,14 +2,39 @@
   "config": {
     "flow_title": "{name}",
     "step": {
+      "pair": {
+        "title": "ペアリングツール",
+        "description": "デバイスの詳細がTuya Cloudlessペアリングツールからインポートされました。詳細が正しいことを確認し、**次へ**をクリックして接続をテストしてください。",
+        "data": {
+          "gw_id": "デバイスID",
+          "local_key": "セキュリティキー",
+          "ip_address": "IPアドレス"
+        }
+      },
+      "ble_pair": {
+        "title": "BLEペアリング",
+        "description": "ペアリングツールが新しいブラウザタブで自動的に開くはずです。手順に従ってBluetoothでデバイスを接続し、ローカルキーを取得してください。\n\nタブが開かなかった場合は、下のボタンをクリックしてください。\n\n**ChromeまたはEdgeが必要です**（デスクトップまたはAndroid）と**HTTPS** — 必要に応じて[HTTPS設定ガイド](https://github.com/11z4t/tuya-cloudless/wiki/HTTPS-Setup)を参照してください。"
+      },
+      "ble_confirm": {
+        "title": "デバイスが正常にペアリングされました",
+        "description": "**{ip_address}**のデバイス（ID：`{gw_id}`）がペアリングされました。名前を付けてデバイスの種類を選択してください。",
+        "data": {
+          "device_name": "デバイス名",
+          "profile": "デバイスの種類"
+        },
+        "data_description": {
+          "device_name": "Home Assistantに表示される名前",
+          "profile": "デバイスに最も適したタイプを選択"
+        }
+      },
       "user": {
         "title": "Tuyaデバイスを追加",
-        "description": "デバイスの追加方法を選択してください。**検索**はネットワークを自動的にスキャンします — デバイスがオンになっており、Home Assistantと同じWi-Fiに接続されていることを確認してください。",
+        "description": "デバイスの追加方法を選択してください。",
         "data": {
           "setup_mode": "設定方法"
         },
         "data_description": {
-          "setup_mode": "検索はデバイスを自動的に見つけます。デバイスが見つからない場合は手動を選択してください。"
+          "setup_mode": "BLEペアリングは新しいデバイスに推奨されます。検索はすでにネットワーク上にあるデバイスを見つけます。手動入力を使用すると詳細を手動で入力できます。"
         }
       },
       "select": {
@@ -21,26 +46,26 @@
       },
       "local_key": {
         "title": "セキュリティキーを入力",
-        "description": "**{ip_address}**のデバイス（ファームウェア{firmware}）はローカル通信にセキュリティキーが必要です。\n\nキーはTuya Cloudlessでデバイスをペアリングするときに表示されます。Home Assistantにのみ保存されます。",
+        "description": "**{ip_address}**のデバイス（ファームウェア{firmware}）はローカル通信にセキュリティキーが必要です。\n\nキーは[Tuya Cloudlessペアリングツール]({pairing_tool_url})を使用してデバイスをペアリングするときに表示されます。Home Assistantにのみ保存されます — クラウドには何も送信されません。",
         "data": {
           "local_key": "セキュリティキー",
           "device_name": "デバイス名",
           "profile": "デバイスの種類"
         },
         "data_description": {
-          "local_key": "ペアリング時の16文字のキー",
+          "local_key": "ペアリングツールからの16文字のキー",
           "device_name": "Home Assistantで表示する名前（空白の場合はIPアドレスを使用）",
           "profile": "デバイスに最も適したタイプを選択"
         }
       },
       "confirm": {
         "title": "接続の準備完了",
-        "description": "`{ip_address}`の**{device_name}**をHome Assistantに追加します。\n\n**接続**をクリックして接続をテストしてください。",
+        "description": "`{ip_address}`の**{device_name}**をHome Assistantに追加します。\n\n**接続**をクリックして接続をテストし、設定を完了してください。",
         "data": {}
       },
       "manual": {
         "title": "デバイスを手動で追加",
-        "description": "Tuyaデバイスの詳細を入力してください。デバイスIDとセキュリティキーはTuya Cloudlessツールで表示されます。",
+        "description": "Tuyaデバイスの詳細を入力してください。デバイスIDとセキュリティキーは[Tuya Cloudlessペアリングツール]({pairing_tool_url})で表示されます。",
         "data": {
           "gw_id": "デバイスID",
           "local_key": "セキュリティキー",
@@ -52,14 +77,14 @@
         "data_description": {
           "gw_id": "一意のデバイス識別子（例：abc123def456）",
           "local_key": "16文字のセキュリティキー",
-          "ip_address": "デバイスのIPアドレス",
+          "ip_address": "デバイスのIPアドレス（最高の信頼性のためにルーターに固定アドレスを設定）",
           "protocol_version": "モデル3.3は2020年以降のほとんどのデバイスで動作します",
           "profile": "最も適したタイプを選択"
         }
       },
       "discovery": {
         "title": "Tuyaデバイスが見つかりました",
-        "description": "**{ip_address}**（ファームウェア{firmware}）でデバイスが検出されました。\n\nセットアップを完了するためにセキュリティキーを入力してください。",
+        "description": "**{ip_address}**（ファームウェア{firmware}）でデバイスが検出されました。\n\n[Tuya Cloudlessペアリングツール]({pairing_tool_url})のセキュリティキーを入力してセットアップを完了してください。",
         "data": {
           "local_key": "セキュリティキー",
           "profile": "デバイスの種類",
@@ -71,7 +96,7 @@
       },
       "reauth_confirm": {
         "title": "セキュリティキーを更新",
-        "description": "**{device_name}**のセキュリティキーが動作しなくなりました。新しいキーを入力して再接続してください。",
+        "description": "**{device_name}**のセキュリティキーが動作しなくなりました。デバイスがリセットまたは再ペアリングされた場合に発生します。\n\n[Tuya Cloudlessペアリングツール]({pairing_tool_url})から新しいキーを取得し、以下に入力して再接続してください。",
         "data": {
           "local_key": "新しいセキュリティキー",
           "ip_address": "IPアドレス（変更された場合）"
@@ -80,6 +105,18 @@
           "local_key": "最後のペアリング時の16文字のキー",
           "ip_address": "アドレスが変更されていない場合は空白のままにしてください"
         }
+      },
+      "reconfigure": {
+        "title": "接続設定を更新",
+        "description": "デバイスを削除して再追加せずに**{device_name}**のIPアドレスまたはセキュリティキーを更新します。",
+        "data": {
+          "ip_address": "IPアドレス",
+          "local_key": "セキュリティキー"
+        },
+        "data_description": {
+          "ip_address": "ネットワーク上のデバイスの現在のIPアドレス",
+          "local_key": "16文字のセキュリティキー"
+        }
       }
     },
     "error": {
@@ -87,14 +124,39 @@
       "invalid_local_key": "無効なセキュリティキー — 正確に16文字でなければなりません",
       "invalid_auth_key": "セキュリティキーが間違っています。キーを確認してもう一度お試しください。",
       "invalid_gw_id": "無効なデバイスID — 空にできません",
+      "invalid_ip": "無効なIPアドレス — 空にできません",
       "auth_failed": "接続が拒否されました — キーが間違っているか、デバイスが再ペアリングされた可能性があります",
       "no_devices_found": "Tuyaデバイスが見つかりません。デバイスがオンになっており、同じWi-Fiにあることを確認してください。上の**手動**を使用してください。",
-      "unknown": "予期しないエラー — Home Assistantのログを確認してください"
+      "unknown": "予期しないエラー — Home Assistantのログを確認してください",
+      "invalid_ha_url": "有効なアドレスを入力してください、例：http://homeassistant.local:8123",
+      "invalid_local_key_chars": "セキュリティキーに無効な文字が含まれています（印刷可能なASCIIである必要があります）",
+      "invalid_ip_address": "無効なIPアドレス形式"
     },
     "abort": {
       "already_configured": "このデバイスはすでに設定されています",
       "not_tuya_device": "デバイスが期待通りに応答しませんでした",
-      "reauth_successful": "セキュリティキーが更新されました — デバイスが再接続されました"
+      "pairing_server_unavailable": "ポート8099でBLEペアリングサーバーを起動できませんでした — ポートが使用中の可能性があります。再試行するか、検索/手動設定を使用してください。",
+      "https_required": "BLEペアリングはHTTPSが必要です。証明書を設定するには[HTTPS設定ガイド](https://github.com/11z4t/tuya-cloudless/wiki/HTTPS-Setup)を参照し、再試行してください。",
+      "reauth_successful": "セキュリティキーが更新されました — デバイスが再接続されました",
+      "reconfigure_successful": "設定が更新されました — デバイスが再読み込みされています",
+      "no_device_id": "デバイスを識別できませんでした — 電源が入っていてネットワークに接続されていることを確認してください"
+    }
+  },
+  "exceptions": {
+    "device_unavailable": {
+      "message": "デバイスは利用できません — 接続が切断されています"
+    },
+    "command_timeout": {
+      "message": "コマンドがタイムアウト内にデバイスに届きませんでした — もう一度お試しください"
+    },
+    "entry_not_found": {
+      "message": "設定エントリが見つかりません"
+    },
+    "entry_not_loaded": {
+      "message": "設定エントリが読み込まれていません"
+    },
+    "send_failed": {
+      "message": "デバイスへのコマンド送信に失敗しました"
     }
   },
   "options": {
@@ -103,11 +165,43 @@
         "title": "デバイス設定",
         "data": {
           "ip_address": "IPアドレス",
-          "protocol_version": "デバイスモデル"
+          "protocol_version": "デバイスモデル",
+          "heartbeat_interval": "ハートビート間隔（秒）",
+          "command_timeout": "コマンドタイムアウト（秒）",
+          "reconnect_max_delay": "最大再接続遅延（秒）"
         },
         "data_description": {
           "ip_address": "IPアドレスが変更された場合は更新",
-          "protocol_version": "ファームウェア更新後にデバイスが応答しなくなった場合のみ変更"
+          "protocol_version": "ファームウェア更新後にデバイスが応答しなくなった場合のみ変更",
+          "heartbeat_interval": "接続を維持するためにハートビートを送信する頻度（5〜300秒、デフォルト20）",
+          "command_timeout": "コマンド応答を待つ時間（1〜30秒、デフォルト5）",
+          "reconnect_max_delay": "再接続試行間の最大待機時間（10〜3600秒、デフォルト300）"
+        }
+      }
+    }
+  },
+  "issues": {
+    "auth_failed": {
+      "title": "{device_name}の認証に失敗しました",
+      "description": "デバイス**{device_name}**が接続を拒否しています。セキュリティキーが間違っている可能性があります — デバイスが工場出荷時の設定にリセットされるか、Tuyaアプリを使用して再ペアリングされたときに発生します。\n\n新しいセキュリティキーを入力するには**修正**をクリックしてください。",
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "セキュリティキーを更新",
+            "description": "**設定 → 統合 → Tuya Cloudless → {device_name}**に移動し、**再認証**を選択してください。"
+          }
+        }
+      }
+    },
+    "connectivity": {
+      "title": "{name}に接続できません",
+      "description": "複数回の試行後、{ip_address}のデバイスに到達できません。デバイスのIPアドレスが変更された可能性があります。\n\n接続設定を更新するには**修正**をクリックしてください。",
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "接続設定を更新",
+            "description": "**送信**をクリックしてIPアドレスとローカルキーを更新できる再設定ダイアログを開いてください。または**設定 → デバイスとサービス → Tuya Cloudless → [お使いのデバイス] → 設定**に移動してください。"
+          }
         }
       }
     }
@@ -121,6 +215,9 @@
     "light": {
       "main_light": {
         "name": "ライト"
+      },
+      "fan_light": {
+        "name": "ファンライト"
       }
     },
     "sensor": {
@@ -135,16 +232,78 @@
       },
       "current": {
         "name": "電流"
+      },
+      "battery": {
+        "name": "バッテリー"
+      },
+      "co2": {
+        "name": "CO₂"
+      },
+      "temperature": {
+        "name": "温度"
+      },
+      "humidity": {
+        "name": "湿度"
+      },
+      "floor_temp": {
+        "name": "床温度"
       }
     },
     "binary_sensor": {
       "overload": {
         "name": "過負荷保護"
+      },
+      "leak": {
+        "name": "水漏れ"
+      },
+      "motion": {
+        "name": "動き"
+      },
+      "smoke": {
+        "name": "煙"
+      },
+      "contact": {
+        "name": "ドア/窓"
+      },
+      "tamper": {
+        "name": "改ざん"
       }
     },
     "cover": {
       "cover": {
         "name": "ブラインド"
+      }
+    },
+    "number": {
+      "volume": {
+        "name": "音量"
+      }
+    },
+    "select": {
+      "siren_mode": {
+        "name": "サイレンモード"
+      }
+    },
+    "climate": {
+      "heater": {
+        "name": "ヒーター"
+      },
+      "thermostat": {
+        "name": "サーモスタット"
+      },
+      "ac": {
+        "name": "エアコン"
+      },
+      "floor_heater": {
+        "name": "床暖房"
+      },
+      "heat_pump": {
+        "name": "ヒートポンプ"
+      }
+    },
+    "fan": {
+      "main_fan": {
+        "name": "ファン"
       }
     }
   }
