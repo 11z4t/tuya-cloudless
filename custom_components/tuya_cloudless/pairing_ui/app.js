@@ -96,7 +96,8 @@ function t(key, vars) {
   }
   if (vars) {
     for (const [k, v] of Object.entries(vars)) {
-      s = s.replaceAll("{" + k + "}", v);
+      // Escape interpolated values so translated strings cannot be XSS vectors
+      s = s.replaceAll("{" + k + "}", esc(String(v)));
     }
   }
   return s;
@@ -415,7 +416,7 @@ async function autoDetectDevices() {
       }
       if (statusLive) statusLive.textContent = t("no_devices_auto_found");
     } else {
-      for (const ap of aps) showDeviceCard(ap.ssid);
+      for (const ap of aps) { if (ap.ssid) showDeviceCard(ap.ssid); }
       dbg("Found " + aps.length + " Tuya AP(s)");
       if (statusLive) statusLive.textContent = aps.length + " " + t("pair_via_wifi_ap");
     }
@@ -507,6 +508,12 @@ function goToCredentials() {
   document.getElementById("panel-wifi").classList.remove("hidden");
   updateStepCounter(2);
   dbg("Step 2: WiFi credentials");
+  // Clear stale error state from a previous visit to this panel
+  const errEl = document.getElementById("s1-error");
+  if (errEl) { errEl.className = "status-box hidden"; errEl.removeAttribute("tabindex"); }
+  // Clear stale WiFi AP status from a previous pairing attempt
+  const apStatus = document.getElementById("wifi-ap-status");
+  if (apStatus) apStatus.className = "status-box hidden";
   // Move focus to SSID input so user can start typing immediately
   const ssidEl = document.getElementById("ssid");
   if (ssidEl) ssidEl.focus();
@@ -544,6 +551,14 @@ function goToStep2() {
   }
 
   if (_pairMethod === PAIR_METHOD.WIFI_AP) {
+    // Guard: should not happen, but protect against manual navigation without device selection
+    if (!_selectedApSsid) {
+      errEl.className = "status-box status-warn";
+      errEl.textContent = t("warn_no_device_selected") || "No device selected. Go back and select a device.";
+      errEl.setAttribute("tabindex", "-1");
+      errEl.focus();
+      return;
+    }
     // WiFi AP: pair inline — stay on panel-wifi, show status below the button
     startPairing();
     return;
@@ -727,6 +742,7 @@ function randomToken() {
 // ── UI helpers ────────────────────────────────────────────────────────────────
 function setPairStatus(cls, html) {
   const el = document.getElementById("pair-status");
+  if (!el) return;
   el.className = "status-box " + cls;
   el.innerHTML = html;
 }
