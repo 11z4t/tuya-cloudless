@@ -354,6 +354,11 @@ function selectDeviceWifiAp(ssid) {
   _selectedApSsid = ssid;
   dbg("Selected WiFi AP device: " + ssid);
   goToCredentials();
+  // Update button label and step hint for WiFi AP flow
+  const btnLabel = document.getElementById("btn-next-label");
+  if (btnLabel) btnLabel.textContent = t("btn_pair_wifi_ap") || "Pair device →";
+  const desc = document.getElementById("step1-desc");
+  if (desc) desc.textContent = t("step1_desc_wifiap") || t("step1_desc");
 }
 
 function selectDeviceBle() {
@@ -361,6 +366,11 @@ function selectDeviceBle() {
   _selectedApSsid = null;
   dbg("Selected BLE pairing");
   goToCredentials();
+  // Restore BLE button label
+  const btnLabel = document.getElementById("btn-next-label");
+  if (btnLabel) btnLabel.textContent = t("btn_next");
+  const desc = document.getElementById("step1-desc");
+  if (desc) desc.textContent = t("step1_desc");
 }
 
 // Close dropdown when clicking outside
@@ -394,7 +404,7 @@ function goToCredentials() {
   dbg("Step 2: WiFi credentials");
 }
 
-// Legacy alias used by btn-next listener
+// Called by btn-next — branches on _pairMethod
 function goToStep2() {
   _ssid = document.getElementById("ssid").value.trim();
   const errEl = document.getElementById("s1-error");
@@ -406,10 +416,17 @@ function goToStep2() {
   errEl.className = "status-box hidden";
   _pwd = document.getElementById("password").value;
 
+  if (_pairMethod === "wifi_ap") {
+    // WiFi AP: pair inline — stay on panel-wifi, show status below the button
+    startPairing();
+    return;
+  }
+
+  // BLE: navigate to BLE scan panel
   document.getElementById("panel-wifi").classList.add("hidden");
   document.getElementById("panel-ble").classList.remove("hidden");
   updateStepCounter(3);
-  dbg("Step 3: pairing (" + (_pairMethod || "ble") + ")");
+  dbg("Step 3: BLE pairing");
 }
 
 function showDone(gw_id, local_key, ip_address) {
@@ -583,17 +600,29 @@ function listenForActivation(token) {
   return es;
 }
 
+// ── WiFi AP inline status helper ──────────────────────────────────────────────
+function setWifiApStatus(cls, html) {
+  const el = document.getElementById("wifi-ap-status");
+  if (!el) return;
+  el.className = "status-box " + cls;
+  el.innerHTML = html;
+}
+
+function showWifiApSpinner(msg) {
+  setWifiApStatus("status-info",
+    "<span style=\"display:flex;align-items:center;gap:8px\">" +
+    "<span class=\"spinner\"></span>" + esc(msg) + "</span>");
+}
+
 // ── WiFi AP pairing flow ───────────────────────────────────────────────────────
 async function pairViaWifiAp() {
-  const btn = document.getElementById("btn-pair");
+  const btn = document.getElementById("btn-next");
   btn.disabled = true;
 
-  _ssid = document.getElementById("ssid").value.trim();
-  _pwd  = document.getElementById("password").value;
+  showWifiApSpinner(t("wifi_ap_connecting"));
+  dbg("WiFi AP pair: POST /wifi-ap-pair for " + _selectedApSsid);
 
   try {
-    showSpinner(t("wifi_ap_connecting"));
-    dbg("WiFi AP pair: POST /wifi-ap-pair for " + _selectedApSsid);
     const r = await fetch(_PROVISION_BASE + "/wifi-ap-pair", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -607,26 +636,40 @@ async function pairViaWifiAp() {
     const data = await r.json();
     const token = data.token;
 
-    // Wire up SSE listener — server will fire "activated" when device joins home WiFi
-    const es = listenForActivation(token);
-    // Also listen for errors from the background task
+    // Wire up SSE listener — server fires "activated" when device joins home WiFi
+    const es = new EventSource(EVENTS_URL);
+    es.addEventListener("activated", (e) => {
+      try {
+        const d = JSON.parse(e.data);
+        if (!token || d.token === token || !d.token) {
+          es.close();
+          if (_ssid) saveLastSsid(_ssid);
+          setWifiApStatus("status-success", t("success_activated"));
+          dbg("Device activated: " + d.gw_id + " \u2713");
+          showDone(d.gw_id, d.local_key, d.ip_address);
+          btn.disabled = false;
+        }
+      } catch (_) {}
+    });
     es.addEventListener("wifi_ap_error", (e) => {
       try {
         const d = JSON.parse(e.data);
         if (!token || d.token === token) {
           es.close();
-          setPairStatus("status-error", "\u274C " + esc(t("wifi_ap_error")));
+          setWifiApStatus("status-error", "\u274C " + esc(t("wifi_ap_error")));
           dbg("WiFi AP error: " + (d.error || "unknown"));
           btn.disabled = false;
         }
       } catch (_) {}
     });
+    es.onerror = () => es.close();
+    setTimeout(() => es.close(), 120000);
 
-    showSpinner(t("spin_waiting"));
+    showWifiApSpinner(t("wifi_ap_waiting"));
     dbg("WiFi AP pair: waiting for activation SSE\u2026");
     if (_ssid) saveLastSsid(_ssid);
   } catch (err) {
-    setPairStatus("status-error", "\u274C " + esc(err.message));
+    setWifiApStatus("status-error", "\u274C " + esc(err.message));
     dbg("WiFi AP pair error: " + err.message);
     btn.disabled = false;
   }

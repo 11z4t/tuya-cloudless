@@ -60,5 +60,8 @@
   "pair_via_wifi_ap": "WiFi AP",
   "pair_via_ble": "Sök via Bluetooth",
   "wifi_ap_connecting": "Ansluter till enhetens AP…",
-  "wifi_ap_error": "WiFi AP-parkoppling misslyckades. Kontrollera att enheten är i parkopplingsläge och försök igen."
+  "wifi_ap_error": "WiFi AP-parkoppling misslyckades. Kontrollera att enheten är i parkopplingsläge och försök igen.",
+  "wifi_ap_waiting": "Inloggningsuppgifter skickade — väntar på att enheten ska ansluta till ditt nätverk…",
+  "btn_pair_wifi_ap": "Parkoppla enhet →",
+  "step1_desc_wifiap": "Din enhet ansluter till detta nätverk. Ange lösenordet och klicka Parkoppla."
 }

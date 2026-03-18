@@ -56,5 +56,8 @@
   "pair_via_wifi_ap": "WiFi AP",
   "pair_via_ble": "Scan via Bluetooth",
   "wifi_ap_connecting": "Connecting to device AP…",
-  "wifi_ap_error": "WiFi AP pairing failed. Check that the device is in pairing mode and try again."
+  "wifi_ap_error": "WiFi AP pairing failed. Check that the device is in pairing mode and try again.",
+  "wifi_ap_waiting": "Credentials sent — waiting for device to join your network…",
+  "btn_pair_wifi_ap": "Pair device →",
+  "step1_desc_wifiap": "Your device will connect to this network. Enter the password and click Pair."
 }

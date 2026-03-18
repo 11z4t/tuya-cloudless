@@ -24,9 +24,11 @@ for _p in [str(_REPO / "lib"), str(_REPO)]:
         sys.path.insert(0, _p)
 
 from custom_components.tuya_cloudless.pairing_server import (  # noqa: E402
+    _TUYA_AP_PREFIXES,
     ActivationResult,
     PairingRedirectView,
     PairingServer,
+    _is_tuya_ap,
     ensure_pairing_server,
     get_pairing_server,
     register_redirect_view,
@@ -450,6 +452,85 @@ class TestWifiScan:
         # non-Tuya SSIDs must not appear in tuya_aps
         assert "HomeNet" not in ssids_in_aps
         assert "OfficeWifi" not in ssids_in_aps
+
+
+# ── _is_tuya_ap / _TUYA_AP_PREFIXES ──────────────────────────────────────────
+
+
+class TestIsTuyaAp:
+    """Unit tests for the :func:`_is_tuya_ap` helper and :const:`_TUYA_AP_PREFIXES`."""
+
+    # --- positive cases: all five prefixes ---------------------------------
+
+    def test_smartlife_prefix(self) -> None:
+        assert _is_tuya_ap("SmartLife_AB12") is True
+
+    def test_smartlife_lowercase(self) -> None:
+        assert _is_tuya_ap("smartlife_xy99") is True
+
+    def test_sl_prefix(self) -> None:
+        assert _is_tuya_ap("SL_Device01") is True
+
+    def test_az_prefix(self) -> None:
+        assert _is_tuya_ap("AZ_Outlet") is True
+
+    def test_tuya_prefix(self) -> None:
+        assert _is_tuya_ap("Tuya_Lamp") is True
+
+    def test_wifi_prefix(self) -> None:
+        assert _is_tuya_ap("WiFi_Plug") is True
+
+    def test_all_prefixes_covered(self) -> None:
+        """Every entry in _TUYA_AP_PREFIXES must be matched by _is_tuya_ap."""
+        for prefix in _TUYA_AP_PREFIXES:
+            ssid = prefix + "XXXX"
+            assert _is_tuya_ap(ssid), f"prefix {prefix!r} not matched"
+
+    # --- negative cases: non-Tuya SSIDs -----------------------------------
+
+    def test_home_network_rejected(self) -> None:
+        assert _is_tuya_ap("HomeNetwork") is False
+
+    def test_corporate_ssid_rejected(self) -> None:
+        assert _is_tuya_ap("CorporateWiFi") is False
+
+    def test_empty_string_rejected(self) -> None:
+        assert _is_tuya_ap("") is False
+
+    def test_dash_separator_rejected(self) -> None:
+        # Prefix must be followed by _ — "smartlifehome" shouldn't match
+        # but "smartlife_" would. Check near-miss without underscore.
+        # Note: prefix "smartlife_" requires the underscore to be part of prefix
+        assert _is_tuya_ap("smartlifehome") is False
+
+    def test_trailing_spaces_stripped(self) -> None:
+        """Leading/trailing spaces are stripped before comparison."""
+        assert _is_tuya_ap("  SmartLife_AB12  ") is True
+
+    def test_dashes_not_matched(self) -> None:
+        assert _is_tuya_ap("TP-Link_Home") is False
+
+    def test_partial_prefix_not_matched(self) -> None:
+        # "smart" alone is not a valid prefix
+        assert _is_tuya_ap("smart_device") is False
+
+    # --- edge cases --------------------------------------------------------
+
+    def test_only_prefix_is_valid(self) -> None:
+        # Prefix alone (e.g. "smartlife_") still matches since it starts with prefix
+        assert _is_tuya_ap("smartlife_") is True
+
+    def test_prefix_in_middle_not_matched(self) -> None:
+        # Prefix must be at the start, not middle
+        assert _is_tuya_ap("MY_SmartLife_Device") is False
+
+    def test_unicode_ignored(self) -> None:
+        # Non-ASCII SSIDs that don't start with a Tuya prefix
+        assert _is_tuya_ap("家庭WiFi") is False
+
+    def test_case_insensitive_mixed(self) -> None:
+        assert _is_tuya_ap("SMARTLIFE_XX") is True
+        assert _is_tuya_ap("sMarTlIfE_yy") is True
 
 
 # ── /api/provision/quick-scan ─────────────────────────────────────────────────

@@ -199,6 +199,8 @@ class PairingServer:
         self._rate_limit: dict[str, list[float]] = {}
         # Guard: only register HA views once per server instance
         self._ha_views_registered: bool = False
+        # Strong references to background tasks so GC doesn't cancel them (RUF006)
+        self._background_tasks: set[asyncio.Task[None]] = set()
 
     # ── Lifecycle ──────────────────────────────────────────────────────────
 
@@ -856,10 +858,12 @@ class PairingServer:
         token = secrets.token_hex(_LOCAL_KEY_BYTES)
         activator_url = self.ha_local_url()
 
-        asyncio.get_event_loop().create_task(
+        task = asyncio.create_task(
             self._wifi_ap_pair_task(ap_ssid, home_ssid, home_password, token, activator_url),
-            # Task name helps with debugging
+            name="tuya-cloudless-wifi-ap-pair",
         )
+        self._background_tasks.add(task)
+        task.add_done_callback(self._background_tasks.discard)
 
         return web.json_response(
             {"token": token, "events_url": "/api/provision/events"},
