@@ -1131,6 +1131,50 @@ test.describe("Device discovery panel", () => {
     await expect(page.locator("#panel-devices")).toBeVisible();
     await expect(page.locator("#panel-wifi")).toBeHidden();
   });
+
+  test("Back button from BLE step returns to credentials panel", async ({ page }) => {
+    await setupRoutes(page);
+    await loadPage(page);
+    await navigateToCredentials(page);
+
+    // Enter credentials and advance to BLE panel
+    await page.locator("#ssid").click();
+    await page.locator("#ssid").fill("HomeNet");
+    await page.locator("#btn-ble-scan").click();
+    await page.locator("#btn-next").click();
+    await expect(page.locator("#panel-ble")).toBeVisible();
+
+    // Click Back from BLE panel
+    await page.locator("#btn-back-ble").click();
+    await expect(page.locator("#panel-wifi")).toBeVisible();
+    await expect(page.locator("#panel-ble")).toBeHidden();
+  });
+
+  test("BLE pair-status is cleared when re-navigating to BLE panel", async ({ page }) => {
+    await setupRoutes(page);
+    await loadPage(page);
+    await navigateToCredentials(page);
+    await page.locator("#ssid").click();
+    await page.locator("#ssid").fill("HomeNet");
+    await page.locator("#btn-ble-scan").click();
+    await page.locator("#btn-next").click();
+    await expect(page.locator("#panel-ble")).toBeVisible();
+
+    // Inject a stale error into pair-status
+    await page.evaluate(() => {
+      const el = document.getElementById("pair-status");
+      el.className = "status-box status-error";
+      el.textContent = "Previous error";
+    });
+
+    // Go back then forward again to BLE panel
+    await page.locator("#btn-back-ble").click();
+    await page.locator("#btn-next").click();
+    await expect(page.locator("#panel-ble")).toBeVisible();
+
+    // pair-status should be cleared
+    await expect(page.locator("#pair-status")).toHaveClass(/hidden/);
+  });
 });
 
 // ── Tests: Password visibility reset ─────────────────────────────────────────

@@ -438,6 +438,9 @@
   <!-- Step counter (hidden on done screen) -->
   <div id="step-counter" class="step-counter" role="status" aria-live="polite" aria-label="Progress"></div>
 
+  <!-- Visually hidden live region — announces language changes to screen readers -->
+  <div id="lang-announce" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
+
   <!-- Browser unsupported error (PLAT-810) — shown when browser lacks Web Bluetooth AND is unsupported -->
   <div id="err-browser-unsupported" class="status-box status-error hidden">
     <strong id="err-browser-unsupported-title">Unsupported browser</strong><br>
@@ -579,14 +582,20 @@
       </div>
     </div>
 
-    <button id="btn-pair" class="btn btn-primary" type="button">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-        <path d="M5 8.5A6.5 6.5 0 0 1 18.5 12M19 15.5A6.5 6.5 0 0 1 5.5 12"
-              stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-        <circle cx="12" cy="12" r="2" fill="currentColor"/>
-      </svg>
-      <span id="btn-pair-label">Scan &amp; Pair</span>
-    </button>
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <button id="btn-pair" class="btn btn-primary" type="button">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M5 8.5A6.5 6.5 0 0 1 18.5 12M19 15.5A6.5 6.5 0 0 1 5.5 12"
+                stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          <circle cx="12" cy="12" r="2" fill="currentColor"/>
+        </svg>
+        <span id="btn-pair-label">Scan &amp; Pair</span>
+      </button>
+      <button class="btn btn-sm" id="btn-back-ble" type="button"
+              style="background:var(--surface-2);color:var(--text)">
+        <span id="btn-back-ble-label">← Back</span>
+      </button>
+    </div>
 
     <div id="pair-status" class="status-box hidden" role="status" aria-live="polite"></div>
 

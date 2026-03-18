@@ -145,6 +145,9 @@ function applyStrings() {
   if (el("devices-scanning-label")) el("devices-scanning-label").textContent = t("looking_for_devices");
   if (el("btn-ble-scan-label"))    el("btn-ble-scan-label").textContent    = t("pair_via_ble");
   if (el("btn-refresh-scan-label")) el("btn-refresh-scan-label").textContent = t("scan_refresh") || "Refresh";
+  if (el("btn-back-label"))        el("btn-back-label").textContent        = t("btn_back");
+  if (el("btn-back-ble-label"))    el("btn-back-ble-label").textContent    = t("btn_back");
+  if (el("btn-pair-another-label")) el("btn-pair-another-label").textContent = t("btn_pair_another");
   // Re-apply btn-pwd-toggle aria-label in the current show/hide state
   const pwdToggle = document.getElementById("btn-pwd-toggle");
   if (pwdToggle) {
@@ -174,7 +177,14 @@ function applyStrings() {
 
 function changeLang(lang) {
   localStorage.setItem("tc-lang", lang);
-  loadLang(lang).then(applyStrings);
+  loadLang(lang).then(() => {
+    applyStrings();
+    // Announce language change to screen readers via the hidden live region
+    const announcer = document.getElementById("lang-announce");
+    if (announcer) {
+      announcer.textContent = t("lang_picker_label") + ": " + lang.toUpperCase();
+    }
+  });
   document.documentElement.lang = lang;
 }
 
@@ -616,6 +626,11 @@ function goToStep2() {
 
   // BLE: close any stale SSE connection from a previous WiFi AP attempt, then navigate
   if (_currentEventSource) { _currentEventSource.close(); _currentEventSource = null; }
+  // Clear any status message from a previous BLE pairing attempt
+  const pairStatusEl = document.getElementById("pair-status");
+  if (pairStatusEl) pairStatusEl.className = "status-box hidden";
+  const bleBackBtn = document.getElementById("btn-back-ble");
+  if (bleBackBtn) bleBackBtn.disabled = false;
   document.getElementById("panel-wifi").classList.add("hidden");
   document.getElementById("panel-ble").classList.remove("hidden");
   updateStepCounter(3);
@@ -1001,6 +1016,8 @@ async function startPairing() {
 
   const btn = document.getElementById("btn-pair");
   btn.disabled = true;
+  const backBtn = document.getElementById("btn-back-ble");
+  if (backBtn) backBtn.disabled = true;
 
   const token = randomToken();
   const activator = ACTIVATOR_URL;
@@ -1084,6 +1101,7 @@ async function startPairing() {
       dbg("BLE error: " + err.message);
     }
     btn.disabled = false;
+    if (backBtn) backBtn.disabled = false;
   }
 }
 
@@ -1117,6 +1135,7 @@ function copyShareUrl() {
   document.getElementById("btn-wifi-scan").addEventListener("click", scanWifi);
   document.getElementById("btn-next").addEventListener("click", goToStep2);
   document.getElementById("btn-back").addEventListener("click", goToDevices);
+  document.getElementById("btn-back-ble").addEventListener("click", goToCredentials);
   document.getElementById("btn-pair").addEventListener("click", startPairing);
   document.getElementById("btn-copy").addEventListener("click", copyShareUrl);
   document.getElementById("btn-ble-scan").addEventListener("click", selectDeviceBle);
