@@ -78,9 +78,14 @@ async function setupRoutes(page, opts = {}) {
     route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(config) })
   );
 
-  // Mock /api/provision/wifi-scan
+  // Mock /api/provision/wifi-scan — tuya_aps allows testing the dropdown filter
+  const wifiScanTuyaAps = opts.wifi_scan_tuya_aps ?? [];
   await page.route(BASE + "/api/provision/wifi-scan", (route) =>
-    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ssids }) })
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ ssids, tuya_aps: wifiScanTuyaAps, current_ssid: null }),
+    })
   );
 
   // Mock QR endpoint
@@ -354,6 +359,23 @@ test.describe("WiFi scan dropdown", () => {
     // Click somewhere outside the dropdown
     await page.locator("footer").click();
     await expect(page.locator("#wifi-dropdown")).toBeHidden();
+  });
+
+  test("Tuya AP SSIDs are filtered out of WiFi dropdown", async ({ page }) => {
+    await setupRoutes(page, {
+      ssids: ["HomeNet", "SmartLife_AB12", "GuestNet"],
+      wifi_scan_tuya_aps: [{ ssid: "SmartLife_AB12" }],
+    });
+    await loadPage(page);
+    await navigateToCredentials(page);
+
+    await page.locator("#btn-wifi-scan").click();
+    await expect(page.locator("#wifi-dropdown")).toBeVisible();
+
+    const options = page.locator(".wifi-option");
+    // SmartLife_AB12 should NOT appear in the home network dropdown
+    await expect(options).toHaveCount(2);  // HomeNet + GuestNet only
+    await expect(page.locator("#wifi-dropdown")).not.toContainText("SmartLife_AB12");
   });
 });
 
@@ -1313,5 +1335,39 @@ test.describe("WiFi AP pairing flow", () => {
 
     await expect(page.locator(".device-card")).toHaveCount(1);
     await expect(page.locator(".device-card").first()).toContainText("SmartLife_CC33");
+  });
+
+  test("refresh button is re-enabled after scan completes", async ({ page }) => {
+    await setupRoutes(page);
+    await loadPage(page);
+
+    // Click refresh and wait for scan to finish (no-devices message appears)
+    await page.locator("#btn-refresh-scan").click();
+    await page.waitForSelector("#no-devices-msg:not(.hidden)");
+
+    // Button should be re-enabled after scan
+    await expect(page.locator("#btn-refresh-scan")).toBeEnabled();
+  });
+
+  test("wifi-ap-status is cleared when re-navigating to credentials panel", async ({ page }) => {
+    await setupRoutes(page, { tuya_aps: [{ ssid: "SmartLife_AB12" }] });
+    await mockWifiApRoute(page, { postStatus: 500, sseEvent: null });
+    await loadPage(page);
+
+    // First attempt — trigger an error
+    await pairViaWifiApUi(page);
+    await expect(page.locator("#wifi-ap-status")).toBeVisible({ timeout: 3000 });
+    await expect(page.locator("#wifi-ap-status")).toHaveClass(/status-error/);
+
+    // Navigate back to device panel
+    await page.locator("#btn-back").click();
+    await page.waitForSelector("#panel-devices:not(.hidden)");
+
+    // Re-select the device → credentials panel
+    await page.locator(".device-card").first().click();
+    await page.waitForSelector("#panel-wifi:not(.hidden)");
+
+    // wifi-ap-status should be cleared (not showing the previous error)
+    await expect(page.locator("#wifi-ap-status")).toHaveClass(/hidden/);
   });
 });

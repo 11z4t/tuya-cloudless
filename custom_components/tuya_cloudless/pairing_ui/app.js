@@ -300,9 +300,12 @@ async function scanWifi() {
     const r = await fetch(_PROVISION_BASE + "/wifi-scan");
     if (!r.ok) throw new Error("scan HTTP " + r.status);
     const data = await r.json();
-    const ssids = data.ssids || [];
+    // Filter Tuya provisioning APs out of the home-network dropdown — they are
+    // not connectable home networks and selecting one would silently break pairing.
+    const tuyaApSsids = new Set((data.tuya_aps || []).map(ap => ap.ssid));
+    const ssids = (data.ssids || []).filter(s => !tuyaApSsids.has(s));
     const current = data.current_ssid || null;
-    dbg("WiFi scan: " + ssids.length + " networks found");
+    dbg("WiFi scan: " + ssids.length + " home networks (" + tuyaApSsids.size + " Tuya APs filtered)");
     showWifiDropdown(ssids, current);
   } catch (err) {
     dbg("WiFi scan error: " + err.message);
@@ -405,9 +408,16 @@ function showDeviceCard(ssid) {
   list.appendChild(item);
 }
 
+let _scanInProgress = false;  // guard against concurrent autoDetectDevices() calls
+
 async function autoDetectDevices() {
-  const scanEl = document.getElementById("devices-scanning");
-  const noDevEl = document.getElementById("no-devices-msg");
+  if (_scanInProgress) return;
+  _scanInProgress = true;
+
+  const scanEl   = document.getElementById("devices-scanning");
+  const noDevEl  = document.getElementById("no-devices-msg");
+  const refreshBtn = document.getElementById("btn-refresh-scan");
+  if (refreshBtn) refreshBtn.disabled = true;
 
   // Clear any previously rendered device cards so a refresh starts clean
   const list = document.getElementById("device-list");
@@ -443,6 +453,9 @@ async function autoDetectDevices() {
       noDevEl.textContent = t("no_devices_auto_found");
       noDevEl.className = "status-box status-info";
     }
+  } finally {
+    _scanInProgress = false;
+    if (refreshBtn) refreshBtn.disabled = false;
   }
 }
 
