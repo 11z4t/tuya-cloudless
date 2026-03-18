@@ -12,6 +12,15 @@ const CMD_PAIR_FAIL   = 0x05;
 const WIKI_URL        = "https://github.com/11z4t/tuya-cloudless/wiki/HTTPS-Setup";
 const SUPPORTED_LANGS = ["en","sv","de","fr","es","nl","no","da","fi","pl","it","pt","cs","ru","tr","zh","ja","ko","uk","kl","se"];
 
+// ── Browser compatibility helpers (PLAT-810) ──────────────────────────────────
+function isSupportedBrowser() {
+  const ua = navigator.userAgent;
+  return /Chrome\//.test(ua) || /Edg\//.test(ua) || /Safari\//.test(ua);
+}
+function hasWebBluetooth() {
+  return typeof navigator.bluetooth !== "undefined";
+}
+
 // ── Debug log ─────────────────────────────────────────────────────────────────
 function dbg(msg) {
   const ts = new Date().toLocaleTimeString();
@@ -98,6 +107,8 @@ function applyStrings() {
   el("err-https-link").textContent   = t("error_https_link") + " \u2192";
   el("err-browser-title").textContent = t("error_browser_title");
   el("err-browser-body").textContent  = t("error_browser_body");
+  el("err-browser-unsupported-title").textContent = t("error_browser_unsupported_title");
+  el("err-browser-unsupported-body").textContent  = t("error_browser_unsupported_body");
   el("help-text-1").textContent    = t("help_text");
   el("help-link-1").textContent    = t("help_link_label");
   el("help-text-2").textContent    = t("help_text");
@@ -144,6 +155,29 @@ function updateStepCounter(step) {
   el.textContent = t("step_x_of_y", { x: step, y: _TOTAL_STEPS }).toUpperCase();
 }
 
+// ── SSID persistence (PLAT-811) ───────────────────────────────────────────────
+const SSID_STORAGE_KEY = "tuya_cloudless_last_ssid";
+const SSID_TTL_MS = 90 * 24 * 60 * 60 * 1000; // 90 days
+
+function saveLastSsid(ssid) {
+  try {
+    localStorage.setItem(SSID_STORAGE_KEY, JSON.stringify({ ssid, saved_at: Date.now() }));
+  } catch (_) {}
+}
+
+function loadLastSsid() {
+  try {
+    const raw = localStorage.getItem(SSID_STORAGE_KEY);
+    if (!raw) return null;
+    const { ssid, saved_at } = JSON.parse(raw);
+    if (Date.now() - saved_at > SSID_TTL_MS) {
+      localStorage.removeItem(SSID_STORAGE_KEY);
+      return null;
+    }
+    return ssid;
+  } catch (_) { return null; }
+}
+
 // ── Server config ─────────────────────────────────────────────────────────────
 let ACTIVATOR_URL = window.location.origin;
 let EVENTS_URL    = ACTIVATOR_URL + "/api/provision/events";
@@ -160,11 +194,23 @@ async function loadServerConfig() {
       if (cfg.events_url)    EVENTS_URL    = cfg.events_url;
       dbg("Server: " + ACTIVATOR_URL + " \u2713");
       if (cfg.default_ssid) {
+        // Server-provided SSID takes highest priority (HA knows the active network)
         const ssidEl = document.getElementById("ssid");
         if (ssidEl && !ssidEl.value) {
           ssidEl.removeAttribute("readonly"); // readonly trick — field already has value
           ssidEl.value = cfg.default_ssid;
           dbg("Auto-filled SSID: " + cfg.default_ssid + " \u2713");
+        }
+      } else {
+        // Fall back to last successfully paired SSID from localStorage (PLAT-811)
+        const lastSsid = loadLastSsid();
+        if (lastSsid) {
+          const ssidEl = document.getElementById("ssid");
+          if (ssidEl && !ssidEl.value) {
+            ssidEl.removeAttribute("readonly");
+            ssidEl.value = lastSsid;
+            dbg("Restored SSID from storage: " + lastSsid + " \u2713");
+          }
         }
       }
     }
@@ -406,6 +452,8 @@ function listenForActivation(token) {
         es.close();
         setPairStatus("status-success", t("success_activated"));
         dbg("Device activated: " + d.gw_id + " \u2713");
+        // PLAT-811: Persist the SSID used for successful activation (with 90-day TTL)
+        if (_ssid) { saveLastSsid(_ssid); }
         showDone(d.gw_id, d.local_key, d.ip_address);
         document.getElementById("btn-pair").disabled = false;
       }
@@ -544,17 +592,30 @@ function copyShareUrl() {
   applyStrings();
   updateStepCounter(1);
 
-  // 2. Load server config (activator URL + default SSID)
+  // 2. PLAT-810: Browser compatibility check — must run after strings are loaded
+  // so the error panel shows the correct i18n text.
+  // Show a hard error if the browser has no Web Bluetooth AND is not a
+  // supported browser (Chrome, Edge, or Safari). This catches Firefox and
+  // other browsers that will never support Web Bluetooth.
+  if (!hasWebBluetooth() && !isSupportedBrowser()) {
+    dbg("ERROR: Browser does not support Web Bluetooth and is not a supported browser.");
+    document.getElementById("err-browser-unsupported").classList.remove("hidden");
+    document.getElementById("panel-wifi").classList.add("hidden");
+    // No point loading server config or continuing init for an unsupported browser
+    return;
+  }
+
+  // 3. Load server config (activator URL + default SSID)
   await loadServerConfig();
 
-  // 3. Secure context check — show warning in BLE panel but keep WiFi form working
+  // 4. Secure context check — show warning in BLE panel but keep WiFi form working
   if (!window.isSecureContext) {
     dbg("WARNING: Not a secure context (HTTP). BLE requires HTTPS.");
     document.getElementById("warn-https").classList.remove("hidden");
     document.getElementById("btn-pair").disabled = true;
   }
 
-  // 4. Web Bluetooth availability check
+  // 5. Web Bluetooth availability check
   if (!navigator.bluetooth) {
     dbg("WARNING: Web Bluetooth not available in this browser.");
     document.getElementById("warn-browser").classList.remove("hidden");

@@ -46,5 +46,7 @@
   "help_text": "ヘルプが必要ですか？",
   "help_link_label": "ガイドを開く →",
   "wifi_scan_none": "ネットワークが見つかりません",
-  "debug_title": "デバッグログ"
+  "debug_title": "デバッグログ",
+  "error_browser_unsupported_title": "サポートされていないブラウザ",
+  "error_browser_unsupported_body": "Web BluetoothはChromeまたはEdge（デスクトップまたはAndroid）が必要です。ChromeまたはEdgeでこのページを開いてください。"
 }

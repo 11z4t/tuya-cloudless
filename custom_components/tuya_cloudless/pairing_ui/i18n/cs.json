@@ -46,5 +46,7 @@
   "help_text": "Potřebujete pomoc?",
   "help_link_label": "Otevřít průvodce →",
   "wifi_scan_none": "Žádné sítě nenalezeny",
-  "debug_title": "Ladicí protokol"
+  "debug_title": "Ladicí protokol",
+  "error_browser_unsupported_title": "Nepodporovaný prohlížeč",
+  "error_browser_unsupported_body": "Web Bluetooth vyžaduje Chrome nebo Edge (počítač nebo Android). Otevřete tuto stránku v Chrome nebo Edge."
 }

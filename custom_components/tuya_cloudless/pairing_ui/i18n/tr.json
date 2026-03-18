@@ -46,5 +46,7 @@
   "help_text": "Yardıma mı ihtiyacınız var?",
   "help_link_label": "Kılavuzu aç →",
   "wifi_scan_none": "Ağ bulunamadı",
-  "debug_title": "Hata ayıklama günlüğü"
+  "debug_title": "Hata ayıklama günlüğü",
+  "error_browser_unsupported_title": "Desteklenmeyen tarayıcı",
+  "error_browser_unsupported_body": "Web Bluetooth, Chrome veya Edge (masaüstü veya Android) gerektirir. Lütfen bu sayfayı Chrome veya Edge'de açın."
 }

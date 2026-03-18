@@ -1160,3 +1160,135 @@ class TestSuggestProfile:
         ):
             result = _suggest_profile("somekey")
         assert result == "__auto_detect__"
+
+
+# ── PLAT-809: async_step_ble_pair HTTPS check ─────────────────────────────────
+
+
+class TestBlePairHttpsCheck:
+    """PLAT-809 — async_step_ble_pair must abort when HA URL is not HTTPS."""
+
+    def _make_ble_flow(self) -> Any:
+        """Return a TuyaCloudlessConfigFlow configured for BLE pair testing."""
+        from custom_components.tuya_cloudless.config_flow import TuyaCloudlessConfigFlow
+
+        flow = TuyaCloudlessConfigFlow.__new__(TuyaCloudlessConfigFlow)
+        flow._discovered = []
+        flow._device = {}
+        flow.hass = MagicMock()
+        flow.flow_id = "test-flow-id"
+        flow.async_abort = MagicMock(return_value={"type": "abort"})
+        flow.async_external_step = MagicMock(return_value={"type": "external"})
+        flow.async_external_step_done = MagicMock(return_value={"type": "create_entry"})
+        flow.async_show_form = MagicMock(return_value={"type": "form"})
+        return flow
+
+    @pytest.mark.asyncio
+    async def test_aborts_when_internal_url_is_http(self) -> None:
+        """If HA's internal URL is HTTP and host is not localhost, abort with https_required."""
+        flow = self._make_ble_flow()
+
+        mock_server = MagicMock()
+        mock_server.ha_local_url.return_value = "http://192.168.1.100:8099"
+
+        with (
+            patch(
+                "custom_components.tuya_cloudless.pairing_server.ensure_pairing_server",
+                new_callable=AsyncMock,
+                return_value=mock_server,
+            ),
+            patch(
+                "homeassistant.helpers.network.get_url",
+                return_value="http://homeassistant.local:8123",
+            ),
+        ):
+            result = await flow.async_step_ble_pair(user_input=None)
+
+        flow.async_abort.assert_called_once_with(reason="https_required")
+        assert result["type"] == "abort"
+
+    @pytest.mark.asyncio
+    async def test_aborts_when_no_url_available(self) -> None:
+        """If get_url raises NoURLAvailableError, abort with https_required."""
+        from homeassistant.helpers.network import NoURLAvailableError
+
+        flow = self._make_ble_flow()
+
+        mock_server = MagicMock()
+        mock_server.ha_local_url.return_value = "http://192.168.1.100:8099"
+
+        with (
+            patch(
+                "custom_components.tuya_cloudless.pairing_server.ensure_pairing_server",
+                new_callable=AsyncMock,
+                return_value=mock_server,
+            ),
+            patch(
+                "homeassistant.helpers.network.get_url",
+                side_effect=NoURLAvailableError,
+            ),
+        ):
+            result = await flow.async_step_ble_pair(user_input=None)
+
+        flow.async_abort.assert_called_once_with(reason="https_required")
+        assert result["type"] == "abort"
+
+    @pytest.mark.asyncio
+    async def test_proceeds_when_internal_url_is_https(self) -> None:
+        """If HA's internal URL is HTTPS, the flow must not abort."""
+        flow = self._make_ble_flow()
+
+        mock_server = MagicMock()
+        mock_server.ha_local_url.return_value = "http://192.168.1.100:8099"
+
+        with (
+            patch(
+                "custom_components.tuya_cloudless.pairing_server.ensure_pairing_server",
+                new_callable=AsyncMock,
+                return_value=mock_server,
+            ),
+            patch(
+                "homeassistant.helpers.network.get_url",
+                return_value="https://homeassistant.local:8123",
+            ),
+        ):
+            await flow.async_step_ble_pair(user_input=None)
+
+        flow.async_abort.assert_not_called()
+        flow.async_external_step.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_proceeds_for_localhost(self) -> None:
+        """localhost is treated as a secure context and must not abort."""
+        flow = self._make_ble_flow()
+
+        mock_server = MagicMock()
+        mock_server.ha_local_url.return_value = "http://localhost:8099"
+
+        with patch(
+            "custom_components.tuya_cloudless.pairing_server.ensure_pairing_server",
+            new_callable=AsyncMock,
+            return_value=mock_server,
+        ):
+            await flow.async_step_ble_pair(user_input=None)
+
+        flow.async_abort.assert_not_called()
+        flow.async_external_step.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_proceeds_for_127_0_0_1(self) -> None:
+        """127.0.0.1 is treated as a secure context and must not abort."""
+        flow = self._make_ble_flow()
+
+        mock_server = MagicMock()
+        mock_server.ha_local_url.return_value = "http://127.0.0.1:8099"
+
+        with patch(
+            "custom_components.tuya_cloudless.pairing_server.ensure_pairing_server",
+            new_callable=AsyncMock,
+            return_value=mock_server,
+        ):
+            await flow.async_step_ble_pair(user_input=None)
+
+        flow.async_abort.assert_not_called()
+        flow.async_external_step.assert_called_once()

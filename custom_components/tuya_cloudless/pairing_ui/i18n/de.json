@@ -46,5 +46,7 @@
   "help_text": "Hilfe benötigt?",
   "help_link_label": "Anleitung öffnen →",
   "wifi_scan_none": "Keine Netzwerke gefunden",
-  "debug_title": "Debug-Protokoll"
+  "debug_title": "Debug-Protokoll",
+  "error_browser_unsupported_title": "Browser nicht unterstützt",
+  "error_browser_unsupported_body": "Web Bluetooth erfordert Chrome oder Edge (Desktop oder Android). Bitte öffnen Sie diese Seite in Chrome oder Edge."
 }

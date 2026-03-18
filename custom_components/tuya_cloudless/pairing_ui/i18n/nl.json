@@ -46,5 +46,7 @@
   "help_text": "Hulp nodig?",
   "help_link_label": "Gids openen →",
   "wifi_scan_none": "Geen netwerken gevonden",
-  "debug_title": "Foutopsporingslogboek"
+  "debug_title": "Foutopsporingslogboek",
+  "error_browser_unsupported_title": "Browser niet ondersteund",
+  "error_browser_unsupported_body": "Web Bluetooth vereist Chrome of Edge (desktop of Android). Open deze pagina in Chrome of Edge."
 }

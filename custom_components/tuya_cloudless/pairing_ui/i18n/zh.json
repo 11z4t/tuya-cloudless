@@ -46,5 +46,7 @@
   "help_text": "需要帮助？",
   "help_link_label": "打开指南 →",
   "wifi_scan_none": "未找到网络",
-  "debug_title": "调试日志"
+  "debug_title": "调试日志",
+  "error_browser_unsupported_title": "不支持的浏览器",
+  "error_browser_unsupported_body": "Web Bluetooth 需要 Chrome 或 Edge（桌面或 Android）。请在 Chrome 或 Edge 中打开此页面。"
 }

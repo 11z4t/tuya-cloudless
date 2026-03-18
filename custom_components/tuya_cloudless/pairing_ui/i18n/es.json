@@ -46,5 +46,7 @@
   "help_text": "¿Necesita ayuda?",
   "help_link_label": "Abrir guía →",
   "wifi_scan_none": "No se encontraron redes",
-  "debug_title": "Registro de depuración"
+  "debug_title": "Registro de depuración",
+  "error_browser_unsupported_title": "Navegador no compatible",
+  "error_browser_unsupported_body": "Web Bluetooth requiere Chrome o Edge (escritorio o Android). Abra esta página en Chrome o Edge."
 }

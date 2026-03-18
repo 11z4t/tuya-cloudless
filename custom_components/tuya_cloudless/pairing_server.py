@@ -600,6 +600,10 @@ class PairingServer:
     async def _handle_wifi_scan(self, request: web.Request) -> web.Response:
         """Return nearby WiFi SSIDs via nmcli. Returns empty list if unavailable.
 
+        Passes ``--rescan yes`` so nmcli performs a real over-the-air scan
+        instead of returning cached (often empty) results.  The timeout is
+        raised to 15 s to accommodate the longer scan time.
+
         Args:
             request: Incoming HTTP request.
 
@@ -616,10 +620,12 @@ class PairingServer:
                 "device",
                 "wifi",
                 "list",
+                "--rescan",
+                "yes",
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.DEVNULL,
             )
-            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=8.0)
+            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=15.0)
             seen: set[str] = set()
             for line in stdout.decode(errors="replace").splitlines():
                 ssid = line.strip()

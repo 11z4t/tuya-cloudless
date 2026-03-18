@@ -46,5 +46,7 @@
   "help_text": "Потрібна допомога?",
   "help_link_label": "Відкрити посібник →",
   "wifi_scan_none": "Мереж не знайдено",
-  "debug_title": "Журнал відлагодження"
+  "debug_title": "Журнал відлагодження",
+  "error_browser_unsupported_title": "Браузер не підтримується",
+  "error_browser_unsupported_body": "Web Bluetooth потребує Chrome або Edge (комп'ютер або Android). Будь ласка, відкрийте цю сторінку в Chrome або Edge."
 }

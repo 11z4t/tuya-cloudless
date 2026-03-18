@@ -337,6 +337,43 @@ class TestWifiScan:
         data = await resp.json()
         assert data["ssids"] == []
 
+    async def test_uses_rescan_yes_flag(self, client: TestClient) -> None:
+        """nmcli command must include --rescan yes to force a real scan."""
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        mock_proc = MagicMock()
+        mock_proc.communicate = AsyncMock(return_value=(b"HomeNet\nOfficeWifi\n", b""))
+        captured_calls: list[tuple[object, ...]] = []
+
+        async def fake_exec(*args: object, **kwargs: object) -> MagicMock:
+            captured_calls.append(args)
+            return mock_proc
+
+        with patch("asyncio.create_subprocess_exec", side_effect=fake_exec):
+            resp = await client.get("/api/provision/wifi-scan")
+
+        assert resp.status == 200
+        assert len(captured_calls) == 1
+        args = captured_calls[0]
+        assert "--rescan" in args
+        assert "yes" in args
+
+    async def test_rescan_returns_ssids(self, client: TestClient) -> None:
+        """With a successful nmcli --rescan yes call, SSIDs are returned."""
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        mock_proc = MagicMock()
+        mock_proc.communicate = AsyncMock(return_value=(b"HomeNet\nOfficeWifi\n--\n", b""))
+
+        with patch("asyncio.create_subprocess_exec", return_value=mock_proc):
+            resp = await client.get("/api/provision/wifi-scan")
+
+        data = await resp.json()
+        assert "HomeNet" in data["ssids"]
+        assert "OfficeWifi" in data["ssids"]
+        # "--" placeholder must be filtered out
+        assert "--" not in data["ssids"]
+
 
 # ── /api/provision/config ─────────────────────────────────────────────────────
 

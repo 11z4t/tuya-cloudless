@@ -382,6 +382,12 @@
   <!-- Step counter (hidden on done screen) -->
   <div id="step-counter" class="step-counter"></div>
 
+  <!-- Browser unsupported error (PLAT-810) — shown when browser lacks Web Bluetooth AND is unsupported -->
+  <div id="err-browser-unsupported" class="status-box status-error hidden">
+    <strong id="err-browser-unsupported-title">Unsupported browser</strong><br>
+    <span id="err-browser-unsupported-body">Web Bluetooth requires Chrome or Edge (desktop or Android). Please open this page in Chrome or Edge.</span>
+  </div>
+
   <!-- Step 1 — WiFi credentials -->
   <div id="panel-wifi" class="step-panel">
     <div class="step-title" id="step1-title">WiFi credentials</div>

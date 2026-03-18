@@ -231,13 +231,30 @@ class TuyaCloudlessConfigFlow(ConfigFlow, domain=DOMAIN):
             _LOGGER.warning("Could not start pairing server: %s", exc)
             return self.async_abort(reason="pairing_server_unavailable")
 
+        # PLAT-809: Require HTTPS for non-localhost URLs so that the browser
+        # can use Web Bluetooth (which requires a secure context).
+        from homeassistant.helpers.network import NoURLAvailableError, get_url
+
+        pairing_url = server.ha_local_url()
+        _parsed_pairing = urlparse(pairing_url)
+        _hostname = _parsed_pairing.hostname or ""
+        _is_localhost = _hostname in ("localhost", "127.0.0.1")
+
+        if not _is_localhost:
+            try:
+                internal_url = get_url(self.hass, allow_internal=True, allow_external=False)
+                if not internal_url.startswith("https://"):
+                    return self.async_abort(reason="https_required")
+            except NoURLAvailableError:
+                return self.async_abort(reason="https_required")
+
         server.register_flow(self.flow_id)
 
         # Point the external step directly at the pairing server.
         # ha_local_url() resolves the best available hostname with three
         # fallbacks and always returns a non-empty string, so no additional
         # URL-resolution step is needed.
-        url = f"{server.ha_local_url()}/?flow_id={self.flow_id}"
+        url = f"{pairing_url}/?flow_id={self.flow_id}"
         return self.async_external_step(
             step_id="ble_pair",
             url=url,

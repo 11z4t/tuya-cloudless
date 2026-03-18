@@ -46,5 +46,7 @@
   "help_text": "Besoin d'aide ?",
   "help_link_label": "Ouvrir le guide →",
   "wifi_scan_none": "Aucun réseau trouvé",
-  "debug_title": "Journal de débogage"
+  "debug_title": "Journal de débogage",
+  "error_browser_unsupported_title": "Navigateur non pris en charge",
+  "error_browser_unsupported_body": "Web Bluetooth nécessite Chrome ou Edge (bureau ou Android). Ouvrez cette page dans Chrome ou Edge."
 }
