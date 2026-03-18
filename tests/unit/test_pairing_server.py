@@ -336,3 +336,133 @@ class TestWifiScan:
         assert resp.status == 200
         data = await resp.json()
         assert data["ssids"] == []
+
+
+# ── /api/provision/config ─────────────────────────────────────────────────────
+
+
+class TestConfigEndpoint:
+    """Tests for GET /api/provision/config."""
+
+    async def test_returns_200(self, client: TestClient) -> None:
+        resp = await client.get("/api/provision/config")
+        assert resp.status == 200
+
+    async def test_contains_activator_url(self, client: TestClient) -> None:
+        resp = await client.get("/api/provision/config")
+        data = await resp.json()
+        assert "activator_url" in data
+        assert data["activator_url"].startswith("http")
+
+    async def test_contains_events_url(self, client: TestClient) -> None:
+        resp = await client.get("/api/provision/config")
+        data = await resp.json()
+        assert "events_url" in data
+        assert "/api/provision/events" in data["events_url"]
+
+    async def test_contains_default_ssid_field(self, client: TestClient) -> None:
+        """default_ssid key must always be present; value may be None."""
+        resp = await client.get("/api/provision/config")
+        data = await resp.json()
+        assert "default_ssid" in data
+        assert data["default_ssid"] is None or isinstance(data["default_ssid"], str)
+
+    async def test_default_ssid_none_when_nmcli_missing(self, client: TestClient) -> None:
+        from unittest.mock import patch
+
+        with patch("asyncio.create_subprocess_exec", side_effect=FileNotFoundError):
+            resp = await client.get("/api/provision/config")
+        data = await resp.json()
+        assert data["default_ssid"] is None
+
+    async def test_default_ssid_from_active_network(self, client: TestClient) -> None:
+        """When nmcli reports an active connection, default_ssid is populated."""
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        mock_proc = MagicMock()
+        mock_proc.communicate = AsyncMock(return_value=(b"yes:MyHomeWifi\nno:NeighborNet\n", b""))
+        with patch("asyncio.create_subprocess_exec", return_value=mock_proc):
+            resp = await client.get("/api/provision/config")
+        data = await resp.json()
+        assert data["default_ssid"] == "MyHomeWifi"
+
+    async def test_default_ssid_skips_inactive_networks(self, client: TestClient) -> None:
+        """Only the yes: line is returned as default_ssid."""
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        mock_proc = MagicMock()
+        mock_proc.communicate = AsyncMock(return_value=(b"no:SomeOtherNet\nno:AnotherNet\n", b""))
+        with patch("asyncio.create_subprocess_exec", return_value=mock_proc):
+            resp = await client.get("/api/provision/config")
+        data = await resp.json()
+        assert data["default_ssid"] is None
+
+    async def test_cors_header_present(self, client: TestClient) -> None:
+        resp = await client.get("/api/provision/config")
+        assert resp.headers.get("Access-Control-Allow-Origin") == "*"
+
+
+# ── /static/icon.png ──────────────────────────────────────────────────────────
+
+
+class TestIconEndpoint:
+    """Tests for GET /static/icon.png."""
+
+    async def test_returns_200_or_404(self, client: TestClient) -> None:
+        """Icon route must respond — 200 if brand/icon.png exists, else 404."""
+        resp = await client.get("/static/icon.png")
+        assert resp.status in (200, 404)
+
+    async def test_returns_png_when_file_exists(self, tmp_path: Path) -> None:
+        """When brand/icon.png is present, response has image/png content type."""
+        from unittest.mock import patch
+
+        import custom_components.tuya_cloudless.pairing_server as ps_mod
+
+        brand_dir = tmp_path / "brand"
+        brand_dir.mkdir()
+        # Minimal valid 1x1 PNG (67 bytes)
+        png_bytes = (
+            b"\x89PNG\r\n\x1a\n"  # signature
+            b"\x00\x00\x00\rIHDR\x00\x00\x00\x01"  # IHDR
+            b"\x00\x00\x00\x01\x08\x02\x00\x00\x00"
+            b"\x90wS\xde"
+            b"\x00\x00\x00\x0cIDATx\x9cc\xf8\x0f\x00"  # IDAT
+            b"\x00\x01\x01\x00\x18\xdd\x8d\xb4"
+            b"\x00\x00\x00\x00IEND\xaeB`\x82"  # IEND
+        )
+        (brand_dir / "icon.png").write_bytes(png_bytes)
+
+        with patch.object(ps_mod, "_BRAND_DIR", brand_dir):
+            srv = PairingServer(_make_hass(), port=0)
+            ts = TestServer(srv._app)
+            cli = TestClient(ts)
+            await cli.start_server()
+            try:
+                resp = await cli.get("/static/icon.png")
+                assert resp.status == 200
+                assert resp.content_type == "image/png"
+                body = await resp.read()
+                assert body == png_bytes
+            finally:
+                await cli.close()
+
+    async def test_returns_404_when_file_missing(self, tmp_path: Path) -> None:
+        """Empty brand dir → 404, no crash."""
+        from unittest.mock import patch
+
+        import custom_components.tuya_cloudless.pairing_server as ps_mod
+
+        empty_brand = tmp_path / "brand"
+        empty_brand.mkdir()
+
+        with patch.object(ps_mod, "_BRAND_DIR", empty_brand):
+            srv = PairingServer(_make_hass(), port=0)
+            ts = TestServer(srv._app)
+            cli = TestClient(ts)
+            await cli.start_server()
+            try:
+                resp = await cli.get("/static/icon.png")
+                assert resp.status == 404
+            finally:
+                await cli.close()
