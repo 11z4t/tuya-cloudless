@@ -10,6 +10,7 @@ Creates two kinds of sensors:
 from __future__ import annotations
 
 import logging
+import math
 
 from homeassistant.components.sensor import SensorDeviceClass, SensorEntity, SensorStateClass
 from homeassistant.config_entries import ConfigEntry
@@ -120,9 +121,15 @@ class TuyaCloudlessSensor(TuyaCloudlessEntity, SensorEntity):
         scale = self._spec.dp_value.scale
         if isinstance(raw, str):
             return raw
-        if scale == 1.0:
-            return float(raw)
-        return round(float(raw) * scale, 3)
+        result = float(raw) if scale == 1.0 else round(float(raw) * scale, 3)
+        if math.isnan(result) or math.isinf(result):
+            _LOGGER.warning(
+                "[%s] Sensor DP %s returned non-finite value — skipping",
+                self.coordinator.gw_id,
+                self._spec.dp_value.id if self._spec.dp_value else "?",
+            )
+            return None
+        return result
 
 
 # ── Diagnostic sensors ────────────────────────────────────────────────────────

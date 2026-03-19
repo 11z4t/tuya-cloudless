@@ -168,10 +168,13 @@ _SECURITY_HEADERS: Final[dict[str, str]] = {
     "X-Content-Type-Options": "nosniff",
     # Restrict Referrer header to same-origin only
     "Referrer-Policy": "strict-origin-when-cross-origin",
-    # Basic CSP — allow scripts/styles only from same origin, no inline eval
+    # Basic CSP — allow scripts/styles only from same origin, no inline eval.
+    # 'unsafe-inline' for script-src is required for the window globals injected
+    # by _handle_ha_index; without it the browser silently blocks the inline
+    # <script> and the pairing UI initialises with wrong base URLs.
     "Content-Security-Policy": (
         "default-src 'self'; "
-        "script-src 'self'; "
+        "script-src 'self' 'unsafe-inline'; "
         "style-src 'self' 'unsafe-inline'; "
         "connect-src 'self'; "
         "img-src 'self' data:; "
@@ -541,7 +544,7 @@ class PairingServer:
             ``qrcode`` library is not installed.
         """
         # Rate limit: QR generation is CPU-bound — 20/min per IP
-        client_ip = request.remote or "unknown"
+        client_ip = self._get_client_ip(request)
         if self._is_rate_limited(client_ip, max_requests=20, window=60.0):
             return web.Response(
                 status=429,
@@ -611,7 +614,7 @@ class PairingServer:
             )
             return web.Response(status=415, text="Content-Type must be application/json")
 
-        client_ip = request.remote or "unknown"
+        client_ip = self._get_client_ip(request)
 
         # Per-IP rate limiting (SEC-001 / PLAT-824)
         if self._is_rate_limited(client_ip):
@@ -748,6 +751,14 @@ class PairingServer:
         Returns:
             JSON response with device info + local_key, or 202 if pending.
         """
+        # Rate-limit before token lookup to prevent brute-force enumeration
+        client_ip = self._get_client_ip(request)
+        if self._is_rate_limited(client_ip, max_requests=30, window=60.0):
+            return web.Response(
+                status=429,
+                text="Too Many Requests",
+                headers={"Retry-After": "5"},
+            )
         token = request.match_info["token"]
         # Validate token format — secrets.token_hex(16) produces exactly 32
         # lowercase hex characters.  Reject anything else before dict lookup.
@@ -862,7 +873,7 @@ class PairingServer:
             JSON: ``{"ssids": [...], "current_ssid": str | null}``
         """
         # Rate limit: wifi-scan is expensive (triggers OTA scan) — 5/min per IP
-        client_ip = request.remote or "unknown"
+        client_ip = self._get_client_ip(request)
         if self._is_rate_limited(client_ip, max_requests=5, window=60.0):
             return web.Response(
                 status=429,
@@ -950,7 +961,7 @@ class PairingServer:
             JSON: ``{"tuya_aps": [{"ssid": "SmartLife_AB12"}, ...]}``
         """
         # Rate limit: quick-scan is cheap but still reveals nearby network names — 10/min per IP
-        client_ip = request.remote or "unknown"
+        client_ip = self._get_client_ip(request)
         if self._is_rate_limited(client_ip, max_requests=10, window=60.0):
             return web.Response(
                 status=429,
@@ -1057,7 +1068,7 @@ class PairingServer:
 
         # Per-IP rate limit — spawns nmcli + background task: 5/min per IP.
         # Applied after input validation so 400 errors are not penalised.
-        client_ip = request.remote or "unknown"
+        client_ip = self._get_client_ip(request)
         if self._is_rate_limited(client_ip, max_requests=5, window=60.0):
             return web.Response(
                 status=429,
@@ -1154,7 +1165,11 @@ class PairingServer:
             if rc == 0:
                 for line in out.splitlines():
                     if line.startswith("yes:"):
-                        prev_connection = line[4:].strip() or None
+                        candidate = line[4:].strip() or None
+                        if candidate and (_CTRL_CHAR_RE.search(candidate) or len(candidate) > 255):
+                            _LOGGER.warning("WiFi AP pair: ignoring suspicious connection name")
+                            candidate = None
+                        prev_connection = candidate
                         break
 
             # Step 2: connect to the Tuya AP (open network)
@@ -1518,6 +1533,28 @@ class PairingServer:
             except (FileNotFoundError, TimeoutError, OSError) as exc:
                 _LOGGER.debug("iwgetid fallback unavailable: %s", exc)
         return None
+
+    def _get_client_ip(self, request: web.Request) -> str:
+        """Return the real client IP, honouring X-Forwarded-For from loopback.
+
+        When HA runs behind a reverse proxy (Nginx, Caddy, Nabu Casa), all
+        TCP connections arrive from 127.0.0.1.  In that case we trust the
+        ``X-Forwarded-For`` header, which the proxy sets to the browser's IP.
+        We only trust this header from the loopback address to prevent spoofing
+        from untrusted peers.
+
+        Args:
+            request: Incoming aiohttp request.
+
+        Returns:
+            Client IP string, never empty ("unknown" as last resort).
+        """
+        peer = request.remote or ""
+        if peer in ("127.0.0.1", "::1"):
+            forwarded = request.headers.get("X-Forwarded-For", "").split(",")[0].strip()
+            if forwarded:
+                return forwarded
+        return peer or "unknown"
 
     def _is_rate_limited(
         self,

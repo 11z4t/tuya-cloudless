@@ -732,12 +732,12 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             local_key=self._local_key,
             session_key=None,
         )
-        device_pubkey = resp_frame.payload[:32]
-        if len(device_pubkey) < 32:
+        if len(resp_frame.payload) < 32:
             raise TuyaCloudlessError(
-                f"Session key negotiation: device public key too short "
-                f"({len(device_pubkey)} bytes, expected 32)"
+                f"Session key negotiation: device response payload too short "
+                f"({len(resp_frame.payload)} bytes, expected at least 32)"
             )
+        device_pubkey = resp_frame.payload[:32]
 
         # Step 3 — derive session key
         session_key = derive_session_key(keypair.private_key, device_pubkey, self._local_key)
@@ -771,6 +771,17 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         Args:
             new_ip: The newly discovered IPv4 address of the device.
         """
+        import ipaddress
+
+        try:
+            ipaddress.ip_address(new_ip)
+        except ValueError:
+            _LOGGER.warning(
+                "[%s] UDP rediscovery returned invalid IP %r — ignoring update",
+                self._gw_id,
+                new_ip[:64],
+            )
+            return
         old_ip = self._ip
         self._ip = new_ip
         _LOGGER.info(

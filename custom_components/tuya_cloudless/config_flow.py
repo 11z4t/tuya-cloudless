@@ -136,6 +136,10 @@ def _suggest_profile(product_key: str | None) -> str:
     Returns:
         Profile name string to use as the form default.
     """
+    # Reject oversized or non-ASCII keys from untrusted UDP discovery to prevent
+    # LRU cache pollution with attacker-controlled strings.
+    if product_key and (len(product_key) > 64 or not product_key.isascii()):
+        product_key = None
     if product_key:
         try:
             from tuya_cloudless.profiles import find_profile_by_product_key

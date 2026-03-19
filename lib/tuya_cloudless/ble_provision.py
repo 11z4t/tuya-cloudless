@@ -209,7 +209,11 @@ class BleFrame:
         received_crc = struct.unpack_from("<H", data, frame_end)[0]
         computed_crc = crc16_modbus(data[:frame_end])
 
-        if received_crc != computed_crc:
+        import hmac as _hmac_mod
+
+        if not _hmac_mod.compare_digest(
+            struct.pack("<H", received_crc), struct.pack("<H", computed_crc)
+        ):
             raise PairingError(
                 f"BLE frame CRC mismatch: expected 0x{computed_crc:04X}, got 0x{received_crc:04X}"
             )
