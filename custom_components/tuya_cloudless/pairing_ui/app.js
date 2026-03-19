@@ -110,6 +110,7 @@ function t(key, vars) {
       // Credential step
       step1_title:       "WiFi credentials",
       step1_desc:        "Your device will connect to this network after pairing.",
+      step1_desc_wifiap: "Your device will connect to this network. Enter the password and click Pair.",
       ssid_label:        "Network name (SSID)",
       ssid_placeholder:  "My Home WiFi",
       password_label:    "Password",           // pragma: allowlist secret

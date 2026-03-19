@@ -784,8 +784,12 @@ class PairingServer:
                 try:
                     message = await asyncio.wait_for(queue.get(), timeout=25.0)
                 except TimeoutError:
-                    # Send SSE keep-alive comment (prevents proxy timeouts)
-                    await response.write(b": keepalive\n\n")
+                    # Send SSE keep-alive comment (prevents proxy timeouts).
+                    # If the write fails the client has disconnected; exit cleanly.
+                    try:
+                        await response.write(b": keepalive\n\n")
+                    except (ConnectionResetError, BrokenPipeError):
+                        break
                     continue
 
                 if message is None:

@@ -3237,6 +3237,48 @@ class TestSseBoundedQueues:
         assert len(created_maxsizes) == 1
         assert created_maxsizes[0] == 32
 
+    async def test_keepalive_write_failure_exits_cleanly(self, server: PairingServer) -> None:
+        """If response.write() raises ConnectionResetError during keep-alive, the SSE
+        handler must exit cleanly without propagating the exception."""
+        call_count = 0
+
+        async def fake_wait_for(coro: object, timeout: float = 0) -> object:
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                # First call: simulate timeout (triggers keep-alive send)
+                raise TimeoutError
+            # Second call: block forever so the handler stops via the write failure
+            raise asyncio.CancelledError()
+
+        write_count = 0
+
+        async def failing_write(data: bytes) -> None:
+            nonlocal write_count
+            write_count += 1
+            if data == b": keepalive\n\n":
+                raise ConnectionResetError("client gone")
+
+        mock_response = MagicMock()
+        mock_response.prepare = AsyncMock()
+        mock_response.write = AsyncMock(side_effect=failing_write)
+
+        with (
+            patch(
+                "custom_components.tuya_cloudless.pairing_server.asyncio.wait_for",
+                side_effect=fake_wait_for,
+            ),
+            patch(
+                "custom_components.tuya_cloudless.pairing_server.web.StreamResponse",
+                return_value=mock_response,
+            ),
+        ):
+            # Must complete without raising
+            await server._handle_sse(MagicMock())
+
+        # Keep-alive write was attempted and failed — handler exited without re-raising
+        assert write_count >= 1, "write() must have been called at least once"
+
 
 # ── SEC-003: Strict CORS on result and SSE endpoints (PLAT-826) ──────────────
 
