@@ -794,3 +794,38 @@ describe("WiFi AP cancel clears _activeSseTimer / null-safe click listener", () 
     expect(() => document.dispatchEvent(new MouseEvent("click", { bubbles: true }))).not.toThrow();
   });
 });
+
+// ── Round 43 — aria-label not HTML-escaped in setAttribute context ─────────────
+
+describe("showDeviceCard aria-label is not HTML-escaped", () => {
+  const { showDeviceCard } = app;
+
+  beforeEach(() => {
+    document.body.innerHTML = `<div id="device-list" role="list"></div>`;
+  });
+
+  it("SSID with angle brackets is set literally in aria-label (not esc()-d)", () => {
+    showDeviceCard("My <Smart> AP");
+    const card = document.querySelector(".device-card");
+    expect(card).not.toBeNull();
+    // Should be raw string, NOT HTML-entity-encoded
+    expect(card.getAttribute("aria-label")).toContain("My <Smart> AP");
+    expect(card.getAttribute("aria-label")).not.toContain("&lt;");
+    expect(card.getAttribute("aria-label")).not.toContain("&gt;");
+  });
+
+  it("SSID with ampersand is set literally in aria-label", () => {
+    showDeviceCard("Home & Office");
+    const card = document.querySelector(".device-card");
+    expect(card.getAttribute("aria-label")).toContain("Home & Office");
+    expect(card.getAttribute("aria-label")).not.toContain("&amp;");
+  });
+
+  it("SSID still HTML-escaped inside card innerHTML (prevents XSS in displayed text)", () => {
+    showDeviceCard("<script>alert(1)</script>");
+    const card = document.querySelector(".device-card");
+    // innerHTML must NOT contain a live <script> tag — esc() must be used there
+    expect(card.innerHTML).not.toContain("<script>");
+    expect(card.innerHTML).toContain("&lt;script&gt;");
+  });
+});

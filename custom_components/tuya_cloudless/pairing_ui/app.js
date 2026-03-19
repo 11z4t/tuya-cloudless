@@ -530,7 +530,10 @@ function showDeviceCard(ssid) {
   card.type = "button";
   card.className = "device-card";
   card.dataset.ssid = ssid;
-  card.setAttribute("aria-label", esc(ssid) + " — " + t("pair_via_wifi_ap"));
+  // Do NOT use esc() here: setAttribute sets the literal attribute value; the browser
+  // handles any special characters. Using esc() would expose HTML entities (&lt;, &amp;)
+  // verbatim in the accessible name announced by screen readers.
+  card.setAttribute("aria-label", ssid + " — " + t("pair_via_wifi_ap"));
   card.innerHTML =
     "<div class=\"device-card-left\">" +
     "<div class=\"device-card-name\">" + esc(ssid) + "</div>" +
@@ -553,12 +556,12 @@ async function autoDetectDevices() {
   const refreshBtn = document.getElementById("btn-refresh-scan");
   if (refreshBtn) refreshBtn.disabled = true;
 
-  // Clear any previously rendered device cards so a refresh starts clean
+  // Clear any previously rendered device cards so a refresh starts clean.
+  // #devices-scanning is now a sibling of #device-list (moved outside the list
+  // so the list only contains role=listitem children), so all list children are cards.
   const list = document.getElementById("device-list");
   if (list) {
-    Array.from(list.children).forEach(child => {
-      if (child.id !== "devices-scanning") list.removeChild(child);
-    });
+    Array.from(list.children).forEach(child => list.removeChild(child));
   }
   if (noDevEl) noDevEl.className = "status-box status-info hidden";
   if (scanEl) scanEl.style.display = "";  // show scanning indicator
