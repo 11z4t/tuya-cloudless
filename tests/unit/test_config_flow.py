@@ -1860,7 +1860,7 @@ class TestSuggestProfileWildcard:
 
         from custom_components.tuya_cloudless import config_flow as cf_mod
 
-        cf_mod._suggest_profile.cache_clear()
+        cf_mod._suggest_profile_cached.cache_clear()
 
         mock_profile = MagicMock()
         mock_profile.name = "Generic Device"
@@ -1872,7 +1872,7 @@ class TestSuggestProfileWildcard:
         ):
             result = cf_mod._suggest_profile("key_wildcard_test_unique")
 
-        cf_mod._suggest_profile.cache_clear()
+        cf_mod._suggest_profile_cached.cache_clear()
         assert result == "__auto_detect__"
 
 
@@ -1886,7 +1886,7 @@ class TestSuggestProfileImportErrorNew:
 
         from custom_components.tuya_cloudless import config_flow as cf_mod
 
-        cf_mod._suggest_profile.cache_clear()
+        cf_mod._suggest_profile_cached.cache_clear()
 
         saved = sys.modules.pop("tuya_cloudless.profiles", None)
         try:
@@ -1897,7 +1897,7 @@ class TestSuggestProfileImportErrorNew:
                 sys.modules["tuya_cloudless.profiles"] = saved
             else:
                 sys.modules.pop("tuya_cloudless.profiles", None)
-            cf_mod._suggest_profile.cache_clear()
+            cf_mod._suggest_profile_cached.cache_clear()
 
         assert result == "__auto_detect__"
 

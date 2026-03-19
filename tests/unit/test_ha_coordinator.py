@@ -944,10 +944,11 @@ class TestNegotiateSessionKeyOnce:
         mock_keypair = MagicMock()
         mock_keypair.public_key_bytes = b"\x42" * 32
 
-        # Provide a valid 16-byte header (payload_len=4) followed by 4-byte payload.
+        # Provide a valid 16-byte header (payload_len=16) followed by 16-byte payload.
+        # payload_len must be >= 8 to pass the frame-length guard added in Round 13.
         # split_frames is then mocked to return no frames to trigger the "parse" error.
-        _header = b"\x00" * 12 + struct.pack(">I", 4)
-        _payload = b"\x00\x00\x00\x00"
+        _header = b"\x00" * 12 + struct.pack(">I", 16)
+        _payload = b"\x00" * 16
         reader.readexactly.side_effect = [_header, _payload]
 
         with (
@@ -986,9 +987,12 @@ class TestNegotiateSessionKeyOnce:
         mock_frame = MagicMock()
         mock_frame.payload = b"\x00" * 10  # Too short
 
-        # Provide a valid 16-byte header (payload_len=4) followed by 4-byte payload.
-        _header = b"\x00" * 12 + struct.pack(">I", 4)
-        _payload = b"\x00\x00\x00\x00"
+        # Provide a valid 16-byte header (payload_len=16) followed by 16-byte payload.
+        # payload_len must be >= 8 to pass the frame-length guard added in Round 13.
+        # decode_frame is mocked to return a frame with a short payload (< 32 bytes)
+        # which triggers the "too short" error path under test.
+        _header = b"\x00" * 12 + struct.pack(">I", 16)
+        _payload = b"\x00" * 16
         reader.readexactly.side_effect = [_header, _payload]
 
         with (

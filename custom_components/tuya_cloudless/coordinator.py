@@ -227,6 +227,14 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     translation_domain="tuya_cloudless",
                     translation_key="command_timeout",
                 ) from exc
+            except (OSError, TuyaCloudlessError) as exc:
+                # OSError: TCP write failed (connection dropped between check and write).
+                # TuyaCloudlessError: encode_control raised CryptoError (e.g. missing
+                # session key for v3.4/3.5 during reconnect).
+                raise HomeAssistantError(
+                    translation_domain="tuya_cloudless",
+                    translation_key="send_failed",
+                ) from exc
 
     async def _do_send_dps(self, dps: dict[str, Any]) -> None:
         """Internal: encode and write DPS control frame."""
@@ -733,6 +741,10 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 reader.readexactly(FRAME_HEADER_SIZE), timeout=_SESSION_KEY_NEG_TIMEOUT
             )
             frame_payload_len = _struct.unpack(">I", header_bytes[12:16])[0]
+            if frame_payload_len < 8:
+                raise TuyaCloudlessError(
+                    f"Session key response frame length too small ({frame_payload_len} < 8)"
+                )
             if frame_payload_len > MAX_PAYLOAD_SIZE:
                 raise TuyaCloudlessError(
                     f"Session key response frame too large ({frame_payload_len} bytes)"

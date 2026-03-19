@@ -122,28 +122,19 @@ def _get_profile_options() -> list[SelectOptionDict]:
 
 
 @functools.lru_cache(maxsize=64)
-def _suggest_profile(product_key: str | None) -> str:
-    """Return the best-matching profile name for a discovered product key (PLAT-724).
+def _suggest_profile_cached(product_key: str | None) -> str:
+    """Cached profile lookup — caller MUST have already sanitised *product_key*.
 
-    If a specific (non-wildcard) profile matches the product key, suggest it
-    so the user sees their device pre-selected.  Otherwise default to the
-    ``__auto_detect__`` sentinel so the integration detects the profile
-    automatically at confirm time (PLAT-778).
-
-    Results are cached by product_key — the profile list is static at runtime
-    so repeated calls for the same key (across multiple config flow steps) are
-    free after the first lookup.
+    Only ``None`` or ASCII strings of at most 64 characters may be passed so
+    that attacker-controlled UDP data cannot pollute the LRU cache with large
+    strings (PLAT-724).
 
     Args:
-        product_key: Product key from UDP device discovery, or ``None``.
+        product_key: Validated product key or ``None``.
 
     Returns:
         Profile name string to use as the form default.
     """
-    # Reject oversized or non-ASCII keys from untrusted UDP discovery to prevent
-    # LRU cache pollution with attacker-controlled strings.
-    if product_key and (len(product_key) > 64 or not product_key.isascii()):
-        product_key = None
     if product_key:
         try:
             from tuya_cloudless.profiles import find_profile_by_product_key
@@ -157,6 +148,28 @@ def _suggest_profile(product_key: str | None) -> str:
             pass
 
     return _PROFILE_AUTO
+
+
+def _suggest_profile(product_key: str | None) -> str:
+    """Return the best-matching profile name for a discovered product key.
+
+    Validates *product_key* before the LRU-cached lookup so that oversized or
+    non-ASCII strings from untrusted UDP discovery are rejected without being
+    stored in the cache (cache-pollution prevention).
+
+    Results are cached by product_key — the profile list is static at runtime
+    so repeated calls for the same key (across multiple config flow steps) are
+    free after the first lookup.
+
+    Args:
+        product_key: Product key from UDP device discovery, or ``None``.
+
+    Returns:
+        Profile name string to use as the form default.
+    """
+    if not product_key or len(product_key) > 64 or not product_key.isascii():
+        product_key = None
+    return _suggest_profile_cached(product_key)
 
 
 class TuyaCloudlessConfigFlow(ConfigFlow, domain=DOMAIN):

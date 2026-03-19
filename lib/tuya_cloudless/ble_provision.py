@@ -245,6 +245,11 @@ def _chunk_frame(frame_bytes: bytes) -> list[bytes]:
         for i in range(0, len(frame_bytes), transport_payload_size)
     ]
     total = len(chunks_data)
+    if total > 255:
+        raise PairingError(
+            f"BLE frame too large to chunk: {len(frame_bytes)} bytes produces "
+            f"{total} chunks (max 255)"
+        )
     return [bytes([idx, total]) + chunk for idx, chunk in enumerate(chunks_data)]
 
 
@@ -582,9 +587,11 @@ class BleProvisioner:
                 return
             # Cap to prevent unbounded memory growth from a malicious peripheral
             # sending chunks without ever setting the last-chunk flag.
+            # After clearing, fall through to append: the current chunk may be the
+            # first/only chunk of a new legitimate frame, so discarding it would
+            # prevent notify_event from ever being set and cause a timeout.
             if len(recv_chunks) >= 512:
                 recv_chunks.clear()
-                return
             recv_chunks.append(bytes(data))
             if data[0] + 1 == data[1]:  # last chunk (chunk_no + 1 == total)
                 notify_event.set()

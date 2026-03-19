@@ -1778,12 +1778,19 @@ async def ensure_pairing_server(hass: HomeAssistant) -> PairingServer:
     from .const import DOMAIN
 
     domain_data: dict[str, object] = hass.data.setdefault(DOMAIN, {})
-    server = domain_data.get(_KEY_PAIRING_SERVER)
 
-    if not isinstance(server, PairingServer):
-        server = PairingServer(hass)
-        await server.start()
-        domain_data[_KEY_PAIRING_SERVER] = server
+    # Guard against concurrent startup (e.g. two config entries set up at the same
+    # time) which would cause both coroutines to call server.start() on the same
+    # port, triggering OSError: [Errno 98] Address already in use on the second.
+    _LOCK_KEY = "_pairing_server_start_lock"
+    if _LOCK_KEY not in domain_data:
+        domain_data[_LOCK_KEY] = asyncio.Lock()
+    async with domain_data[_LOCK_KEY]:  # type: ignore[union-attr]
+        server = domain_data.get(_KEY_PAIRING_SERVER)
+        if not isinstance(server, PairingServer):
+            server = PairingServer(hass)
+            await server.start()
+            domain_data[_KEY_PAIRING_SERVER] = server
 
     return server
 
