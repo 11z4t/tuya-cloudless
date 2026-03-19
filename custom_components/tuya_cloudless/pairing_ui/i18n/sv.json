@@ -81,5 +81,11 @@
   "warn_no_device_selected": "Ingen enhet vald. Gå tillbaka och välj en enhet.",
   "btn_cancel": "Avbryt",
   "wifi_scan_unavailable": "WiFi-scanning är inte tillgänglig — ange nätverksnamnet nedan.",
-  "wifi_scan_empty": "Inga nätverk hittades. Ange nätverksnamnet manuellt."
+  "wifi_scan_empty": "Inga nätverk hittades. Ange nätverksnamnet manuellt.",
+  "btn_copy_key": "Kopiera",
+  "copied_ok": "Kopierat!",
+  "show": "Visa",
+  "hide": "Dölj",
+  "back_to_devices": "← Tillbaka till enheter",
+  "back_to_wifi": "← Tillbaka till WiFi"
 }

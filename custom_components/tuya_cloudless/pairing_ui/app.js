@@ -241,11 +241,23 @@ function applyStrings() {
   if (el("btn-cancel-wifi-ap-label")) el("btn-cancel-wifi-ap-label").textContent = t("btn_cancel") || "Cancel";
   // WiFi scan button aria-label — not set in HTML to avoid duplication; applyStrings owns it.
   if (el("btn-wifi-scan")) el("btn-wifi-scan").setAttribute("aria-label", t("wifi_scan_btn"));
-  // Re-apply btn-pwd-toggle aria-label in the current show/hide state
+  // Re-apply btn-pwd-toggle aria-label + visible label in the current show/hide state
   const pwdToggle = document.getElementById("btn-pwd-toggle");
   if (pwdToggle) {
     const isShowing = document.getElementById("password")?.type === "text";
     pwdToggle.setAttribute("aria-label", isShowing ? t("hide_password") : t("show_password"));
+    const pwdLabelEl = document.getElementById("btn-pwd-toggle-label");
+    if (pwdLabelEl) pwdLabelEl.textContent = isShowing ? (t("hide") || "Hide") : (t("show") || "Show");
+  }
+  // Contextual back button labels — depend on which panel is currently visible
+  if (el("btn-back-label")) {
+    const onWifi = !el("panel-wifi")?.classList.contains("hidden");
+    el("btn-back-label").textContent = onWifi
+      ? (t("back_to_devices") || "← Back to Devices")
+      : t("btn_back");
+  }
+  if (el("btn-back-ble-label")) {
+    el("btn-back-ble-label").textContent = t("back_to_wifi") || t("btn_back");
   }
   // Re-apply btn-reveal-key text and aria-label in the current revealed/hidden state
   const revealBtn = document.getElementById("btn-reveal-key");
@@ -303,6 +315,7 @@ let _currentEventSource = null; // Active EventSource — closed on panel switch
 let _activeSseTimer    = null; // setTimeout handle from listenForActivation — cleared on unload
 let _wifiApDone        = false; // dedup guard: set true when WiFi AP pair is resolved/cancelled
 let _wifiScanAvailable = true;  // updated from server config; false when nmcli unavailable
+let _toastTimer        = null;  // clearTimeout handle for auto-dismiss
 
 // ── Step counter ──────────────────────────────────────────────────────────────
 let _currentStep = 1;
@@ -311,14 +324,34 @@ const _TOTAL_STEPS = 3;
 function updateStepCounter(step) {
   _currentStep = step;
   const el = document.getElementById("step-counter");
+  const bar = document.getElementById("progress-bar");
   // Guard: element may be absent in test environments or during early init
   if (!el) return;
   if (step > _TOTAL_STEPS) {
     el.classList.add("hidden");
+    // Done — fill all segments green
+    if (bar) {
+      bar.classList.remove("hidden");
+      for (let i = 1; i <= _TOTAL_STEPS; i++) {
+        const seg = document.getElementById("prog-" + i);
+        if (seg) seg.className = "progress-segment seg-done";
+      }
+    }
     return;
   }
   el.classList.remove("hidden");
   el.textContent = t("step_x_of_y", { x: step, y: _TOTAL_STEPS }).toUpperCase();
+  // Update progress bar: segments before current = done (green), current = active (accent), rest = idle
+  if (bar) {
+    bar.classList.remove("hidden");
+    for (let i = 1; i <= _TOTAL_STEPS; i++) {
+      const seg = document.getElementById("prog-" + i);
+      if (!seg) continue;
+      if (i < step)      seg.className = "progress-segment seg-done";
+      else if (i === step) seg.className = "progress-segment seg-active";
+      else                 seg.className = "progress-segment";
+    }
+  }
 }
 
 // ── SSID persistence (PLAT-811) ───────────────────────────────────────────────
@@ -736,6 +769,8 @@ function goToDevices() {
     if (toggle) {
       toggle.setAttribute("aria-pressed", "false");
       toggle.setAttribute("aria-label", t("show_password"));
+      const lbl = document.getElementById("btn-pwd-toggle-label");
+      if (lbl) lbl.textContent = t("show") || "Show";
     }
   }
   document.getElementById("panel-wifi").classList.add("hidden");
@@ -794,8 +829,13 @@ function goToCredentials() {
     if (toggle) {
       toggle.setAttribute("aria-pressed", "false");
       toggle.setAttribute("aria-label", t("show_password"));
+      const lbl = document.getElementById("btn-pwd-toggle-label");
+      if (lbl) lbl.textContent = t("show") || "Show";
     }
   }
+  // Contextual back label: "← Back to Devices" so user knows where they're going
+  const backLbl = document.getElementById("btn-back-label");
+  if (backLbl) backLbl.textContent = t("back_to_devices") || "← Back to Devices";
   // Move focus to SSID input so user can start typing immediately
   const ssidEl = document.getElementById("ssid");
   if (ssidEl) ssidEl.focus();
@@ -858,6 +898,9 @@ function goToStep2() {
   document.getElementById("panel-ble").classList.remove("hidden");
   updateStepCounter(3);
   dbg("Step 3: BLE pairing");
+  // Contextual back label: "← Back to WiFi"
+  const blePanelBackLbl = document.getElementById("btn-back-ble-label");
+  if (blePanelBackLbl) blePanelBackLbl.textContent = t("back_to_wifi") || "← Back to WiFi";
   // Move focus to the BLE panel heading so screen readers announce the new panel
   const bleTitle = document.getElementById("step2-title");
   if (bleTitle && typeof bleTitle.focus === "function") {
@@ -895,6 +938,10 @@ function showDone(gw_id, local_key, ip_address) {
     "aria-label=\"" + esc(t("label_reveal_key")) + " " + esc(t("label_local_key")) + "\" " +
     "style=\"padding:2px 8px;font-size:0.75rem;background:var(--surface-2);border:1px solid var(--border);border-radius:6px;cursor:pointer\">" +
     esc(t("label_reveal_key")) + "</button>" +
+    "<button type=\"button\" id=\"btn-copy-key\" class=\"btn-sm\" " +
+    "aria-label=\"" + esc(t("btn_copy_key") || "Copy key") + "\" " +
+    "style=\"padding:2px 8px;font-size:0.75rem;background:var(--surface-2);border:1px solid var(--border);border-radius:6px;cursor:pointer\">" +
+    esc(t("btn_copy_key") || "Copy") + "</button>" +
     "</dd>";
 
   if (_haFlowId) {
@@ -933,6 +980,17 @@ function showDone(gw_id, local_key, ip_address) {
       this.textContent = newLabel;
       this.setAttribute("aria-label", newLabel + " " + t("label_local_key"));
     }, { once: false });
+  }
+
+  // Wire up the copy key button — copies local_key to clipboard, shows toast
+  const copyKeyBtn = document.getElementById("btn-copy-key");
+  if (copyKeyBtn && local_key) {
+    copyKeyBtn.addEventListener("click", function() {
+      navigator.clipboard.writeText(local_key).then(
+        () => showToast(t("copied_ok") || "Copied!"),
+        () => showToast("⚠ Copy failed")
+      );
+    });
   }
 }
 
@@ -1073,6 +1131,29 @@ function makeSpinnerHtml(msg) {
 
 function showSpinner(msg) {
   setPairStatus("status-info", makeSpinnerHtml(msg));
+}
+
+// Show pairing progress with numbered step indicator (1/4, 2/4, …)
+function showPairStep(step, msg) {
+  setPairStatus("status-info",
+    "<span style=\"display:flex;align-items:center;gap:8px\">" +
+    "<span class=\"spinner\" aria-hidden=\"true\"></span>" +
+    "<span><span style=\"opacity:.6;font-size:.8em;margin-right:4px\">(" + step + "/4)</span>" +
+    esc(msg) + "</span></span>"
+  );
+}
+
+// Brief toast notification (copy confirmations etc.) — auto-dismisses after `ms` ms.
+function showToast(msg, ms = 2200) {
+  const el = document.getElementById("toast");
+  if (!el) return;
+  el.textContent = msg;
+  el.classList.add("toast-visible");
+  if (_toastTimer) clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => {
+    el.classList.remove("toast-visible");
+    _toastTimer = null;
+  }, ms);
 }
 
 function esc(s) {
@@ -1358,7 +1439,7 @@ async function startPairing() {
 
   try {
     dbg(t("spin_scanning"));
-    showSpinner(t("spin_scanning"));
+    showPairStep(1, t("spin_scanning"));
     device = await navigator.bluetooth.requestDevice({
       filters: [{ services: [BLE_SERVICE] }],
       optionalServices: [BLE_SERVICE],
@@ -1366,7 +1447,7 @@ async function startPairing() {
 
     const connMsg = t("spin_connecting", { name: device.name || device.id });
     dbg(connMsg);
-    showSpinner(connMsg);
+    showPairStep(2, connMsg);
     server = await device.gatt.connect();
     const service    = await server.getPrimaryService(BLE_SERVICE);
     const writeChar  = await service.getCharacteristic(WRITE_CHAR);
@@ -1389,7 +1470,7 @@ async function startPairing() {
     device.addEventListener("gattserverdisconnected", _onDisconnected);
 
     dbg(t("spin_handshake"));
-    showSpinner(t("spin_handshake"));
+    showPairStep(2, t("spin_handshake"));
     const controllerNonce = new Uint8Array(16);
     crypto.getRandomValues(controllerNonce);
 
@@ -1403,7 +1484,7 @@ async function startPairing() {
     if (hsResp.payload.length < 16) throw new Error("Bad handshake nonce");
 
     dbg(t("spin_sending"));
-    showSpinner(t("spin_sending"));
+    showPairStep(3, t("spin_sending"));
     const wifiPayload = JSON.stringify({
       s: _ssid, p: _pwd, t: token, r: "az", activator: activator,
     });
@@ -1418,7 +1499,7 @@ async function startPairing() {
     if (ack.cmd === CMD_PAIR_FAIL) throw new Error(t("err_pair_fail"));
 
     dbg(t("spin_waiting"));
-    showSpinner(t("spin_waiting"));
+    showPairStep(4, t("spin_waiting"));
 
     if (typeof _cleanupNotify === "function") { _cleanupNotify(); _cleanupNotify = null; }
     if (device && _onDisconnected) { device.removeEventListener("gattserverdisconnected", _onDisconnected); _onDisconnected = null; }
@@ -1551,7 +1632,11 @@ function copyShareUrl() {
     const pwd = document.getElementById("password");
     const showing = pwd.type === "text";
     pwd.type = showing ? "password" : "text";
-    this.textContent = showing ? "\uD83D\uDC41" : "\uD83D\uDE48";  // 👁 / 🙈
+    // Update icon and label separately — do not overwrite inner spans via textContent
+    const iconEl  = document.getElementById("btn-pwd-toggle-icon");
+    const labelEl = document.getElementById("btn-pwd-toggle-label");
+    if (iconEl)  iconEl.textContent  = showing ? "\uD83D\uDC41" : "\uD83D\uDE48";  // 👁 / 🙈
+    if (labelEl) labelEl.textContent = showing ? (t("show") || "Show") : (t("hide") || "Hide");
     this.setAttribute("aria-label", showing ? t("show_password") || "Show password" : t("hide_password") || "Hide password");
     this.setAttribute("aria-pressed", String(!showing));
   });
@@ -1572,6 +1657,23 @@ function copyShareUrl() {
     el.setAttribute("readonly", "");
     el.addEventListener("focus", () => el.removeAttribute("readonly"));
   });
+
+  // Byte counters — live feedback below SSID (max 32) and password (max 63) inputs
+  const _attachCounter = (inputId, counterId, maxBytes) => {
+    const input   = document.getElementById(inputId);
+    const counter = document.getElementById(counterId);
+    if (!input || !counter) return;
+    const update = () => {
+      const bytes = countUtf8Bytes(input.value);
+      counter.textContent = bytes + "/" + maxBytes + " bytes";
+      counter.className = "input-counter" +
+        (bytes > maxBytes      ? " error" :
+         bytes > maxBytes * 0.85 ? " warn"  : "");
+    };
+    input.addEventListener("input", update);
+  };
+  _attachCounter("ssid",     "ssid-counter", 32);
+  _attachCounter("password", "pwd-counter",  63);
 
   // 1. Detect and load language
   const lang = detectLang();
@@ -1682,5 +1784,7 @@ if (typeof module !== "undefined") {
     _getWifiScanAvailable: () => _wifiScanAvailable,
     _listenForActivation: listenForActivation,
     _updateStepCounter: updateStepCounter,
+    _showToast: showToast,
+    _showPairStep: showPairStep,
   };
 }

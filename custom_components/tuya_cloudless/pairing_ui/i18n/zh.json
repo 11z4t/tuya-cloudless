@@ -81,5 +81,11 @@
   "warn_no_device_selected": "未选择设备。请返回并选择一个设备。",
   "btn_cancel": "取消",
   "wifi_scan_unavailable": "WiFi scanning is not available on this host — type your network name below.",
-  "wifi_scan_empty": "No networks found. Try typing your network name."
+  "wifi_scan_empty": "No networks found. Try typing your network name.",
+  "btn_copy_key": "Copy",
+  "copied_ok": "Copied!",
+  "show": "Show",
+  "hide": "Hide",
+  "back_to_devices": "← Back to Devices",
+  "back_to_wifi": "← Back to WiFi"
 }

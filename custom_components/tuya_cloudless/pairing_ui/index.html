@@ -333,6 +333,60 @@
       line-height: 1.5;
     }
 
+    /* Progress bar */
+    .progress-bar {
+      display: flex;
+      gap: 5px;
+      align-items: center;
+    }
+    .progress-segment {
+      height: 4px;
+      flex: 1;
+      border-radius: 2px;
+      background: var(--border);
+      transition: background .35s;
+    }
+    .progress-segment.seg-active { background: var(--accent); }
+    .progress-segment.seg-done   { background: var(--success); }
+
+    /* Input byte counter */
+    .input-counter {
+      font-size: 0.73rem;
+      color: var(--muted);
+      text-align: right;
+      margin-top: 3px;
+      min-height: 1em;
+      transition: color .15s;
+    }
+    .input-counter.warn  { color: var(--warn); }
+    .input-counter.error { color: var(--error); }
+
+    /* Toast notification */
+    .toast {
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%) translateY(80px);
+      background: var(--success);
+      color: #0f172a;
+      padding: 10px 20px;
+      border-radius: 8px;
+      font-size: 0.88rem;
+      font-weight: 600;
+      transition: transform .2s ease;
+      pointer-events: none;
+      z-index: 9999;
+      white-space: nowrap;
+    }
+    .toast.toast-visible { transform: translateX(-50%) translateY(0); }
+
+    /* Better highlight for current WiFi network in dropdown */
+    .wifi-option.wifi-option-current {
+      background: rgba(249, 115, 22, 0.12);
+      color: var(--accent);
+    }
+    .wifi-option.wifi-option-current:hover { background: var(--accent); color: #0f172a; }
+
     .ha-flow-notice {
       text-align: center;
       font-size: 0.9rem;
@@ -438,6 +492,13 @@
   <!-- Step counter (hidden on done screen) -->
   <div id="step-counter" class="step-counter" role="status" aria-live="polite" aria-label="Progress"></div>
 
+  <!-- Visual progress bar — aria-hidden, step-counter is the accessible equivalent -->
+  <div class="progress-bar hidden" id="progress-bar" aria-hidden="true">
+    <div class="progress-segment" id="prog-1"></div>
+    <div class="progress-segment" id="prog-2"></div>
+    <div class="progress-segment" id="prog-3"></div>
+  </div>
+
   <!-- Visually hidden live region — announces language changes to screen readers -->
   <div id="lang-announce" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
 
@@ -503,6 +564,7 @@
         </div>
         <div id="wifi-dropdown" class="wifi-dropdown hidden"></div>
         <p id="wifi-scan-hint" class="step-hint hidden" role="note"></p>
+        <div id="ssid-counter" class="input-counter" aria-live="polite"></div>
       </div>
 
       <div>
@@ -510,8 +572,13 @@
         <div class="ssid-row">
           <input type="password" id="password" autocomplete="off" placeholder="WiFi password">
           <button class="wifi-scan-btn" id="btn-pwd-toggle" type="button"
-                  aria-label="Show password" aria-pressed="false">👁</button>
+                  aria-label="Show password" aria-pressed="false"
+                  style="display:flex;align-items:center;gap:4px;padding:0 10px">
+            <span aria-hidden="true" id="btn-pwd-toggle-icon">👁</span>
+            <span id="btn-pwd-toggle-label" style="font-size:0.8rem">Show</span>
+          </button>
         </div>
+        <div id="pwd-counter" class="input-counter" aria-live="polite"></div>
       </div>
 
       <!-- Dedicated error div — role=alert so screen readers announce validation errors immediately -->
@@ -637,6 +704,9 @@
       <span id="btn-pair-another-label">← Pair Another Device</span>
     </button>
   </div>
+
+  <!-- Toast notification (copy confirmations etc.) -->
+  <div id="toast" class="toast" role="status" aria-live="polite" aria-atomic="true"></div>
 
   <!-- Debug log (visible on all screens) -->
   <details class="debug-details" id="debug-details">
