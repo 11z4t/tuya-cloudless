@@ -286,6 +286,7 @@ const SSE_TIMEOUT_MS = 120_000;
 let _pairMethod = null;       // PAIR_METHOD.BLE | PAIR_METHOD.WIFI_AP
 let _selectedApSsid = null;   // SSID of Tuya AP chosen by user
 let _currentEventSource = null; // Active EventSource — closed on panel switch
+let _activeSseTimer    = null; // setTimeout handle from listenForActivation — cleared on unload
 
 // ── Step counter ──────────────────────────────────────────────────────────────
 let _currentStep = 1;
@@ -1022,12 +1023,14 @@ function listenForActivation(token) {
   _currentEventSource = es;
   const sseTimer = setTimeout(() => {
     es.close();
+    _activeSseTimer = null;
     // Show timeout error so the user isn't left staring at a forever-spinner
     setPairStatus("status-warn", "\u23F1 " + esc(t("wifi_ap_timeout")));
     const pairBtn = document.getElementById("btn-pair");
     if (pairBtn) pairBtn.disabled = false;
     dbg("BLE pairing: activation timeout after " + (SSE_TIMEOUT_MS / 1000) + "s");
   }, SSE_TIMEOUT_MS);
+  _activeSseTimer = sseTimer;
   es.addEventListener("activated", (e) => {
     try {
       const d = JSON.parse(e.data);
@@ -1035,7 +1038,7 @@ function listenForActivation(token) {
       // compat with old server builds that omit the field). Reject events with a
       // different non-null token — they belong to a concurrent pairing session.
       if ((d.token == null || d.token === token) && d.gw_id && d.local_key) {
-        clearTimeout(sseTimer);
+        clearTimeout(sseTimer); _activeSseTimer = null;
         es.close();
         setPairStatus("status-success", esc(t("success_activated")));
         dbg("Device activated: " + esc(d.gw_id) + " \u2713");
@@ -1049,7 +1052,7 @@ function listenForActivation(token) {
     } catch (err) { dbg("SSE parse error: " + err.message); }
   });
   es.onerror = () => {
-    clearTimeout(sseTimer);
+    clearTimeout(sseTimer); _activeSseTimer = null;
     es.close();
     // Re-enable pairing button so user can retry after SSE connection loss
     setPairStatus("status-error", "\u274C " + esc(t("err_sse_lost")));
@@ -1372,6 +1375,10 @@ function copyShareUrl() {
       _currentEventSource.close();
       _currentEventSource = null;
     }
+    if (_activeSseTimer !== null) {
+      clearTimeout(_activeSseTimer);
+      _activeSseTimer = null;
+    }
   });
 
   // Escape key: cancel WiFi AP pairing when cancel button is visible
@@ -1514,5 +1521,7 @@ if (typeof module !== "undefined") {
     countUtf8Bytes, reassemble, onNotify, waitForResponse, parseFrame, crc16Modbus,
     _safePath, _safeUrl, _t: t,
     _getRecvReject: () => _recvReject,
+    _getActiveSseTimer: () => _activeSseTimer,
+    _listenForActivation: listenForActivation,
   };
 }

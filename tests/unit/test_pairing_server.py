@@ -713,6 +713,29 @@ class TestQuickScan:
         assert "WiFi_EE" in ssids
         assert "HomeNet" not in ssids
 
+    async def test_quick_scan_filters_ssids_with_control_chars(self, client: TestClient) -> None:
+        """SSIDs containing control characters (0x00-0x1F, 0x7F) are excluded from quick-scan."""
+        mock_proc = MagicMock()
+        # "SmartLife_Good" is valid; "SmartLife_Bad\x00" has a null byte
+        mock_proc.communicate = AsyncMock(
+            return_value=(
+                b"SmartLife_Good\nSmartLife_Bad\x00Name\nSL_Also\x1fGood_Not\n",
+                b"",
+            )
+        )
+        mock_proc.returncode = 0
+        mock_proc.kill = MagicMock()
+
+        with patch("asyncio.create_subprocess_exec", return_value=mock_proc):
+            resp = await client.get("/api/provision/quick-scan")
+
+        data = await resp.json()
+        ssids = [ap["ssid"] for ap in data["tuya_aps"]]
+        assert "SmartLife_Good" in ssids
+        assert not any("\x00" in s or "\x1f" in s for s in ssids), (
+            "SSIDs with control chars must be filtered from quick-scan results"
+        )
+
     async def test_quick_scan_rate_limited(self, server: PairingServer) -> None:
         """quick-scan returns 429 when per-IP rate limit (10/min) is exceeded."""
         ts = TestServer(server._app)
@@ -1072,6 +1095,47 @@ class TestWifiApPair:
         assert payload.get("t") == "tok_gw"
         assert payload.get("activator") == "http://ha:8099"
         assert payload.get("s") == "HomeNet"
+
+    async def test_gw_json_post_uses_allow_redirects_false(self) -> None:
+        """gw.json POST must use allow_redirects=False to prevent SSRF via firmware redirect."""
+        from custom_components.tuya_cloudless.pairing_server import PairingServer as PS
+
+        srv = PS(_make_hass(), port=0)
+        captured: dict[str, object] = {}
+
+        async def fake_exec(*args: object, **kwargs: object) -> MagicMock:
+            proc = MagicMock()
+            proc.communicate = AsyncMock(return_value=(b"yes:HomeNet", b""))
+            proc.returncode = 0
+            proc.kill = MagicMock()
+            return proc
+
+        with (
+            patch("asyncio.create_subprocess_exec", side_effect=fake_exec),
+            patch("aiohttp.ClientSession") as mock_cls,
+        ):
+            mock_session = AsyncMock()
+            mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+            mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+            mock_resp = AsyncMock()
+            mock_resp.status = 200
+
+            def capture_post(url: str, **kwargs: object) -> AsyncMock:
+                captured.update(kwargs)
+                cm = AsyncMock()
+                cm.__aenter__ = AsyncMock(return_value=mock_resp)
+                cm.__aexit__ = AsyncMock(return_value=False)
+                return cm
+
+            mock_session.post = capture_post
+
+            await srv._wifi_ap_pair_task(
+                "SmartLife_AB12", "HomeNet", "s3cr3t", "tok_redirect", "http://ha:8099"
+            )
+
+        assert captured.get("allow_redirects") is False, (
+            "gw.json POST must set allow_redirects=False (SSRF prevention)"
+        )
 
     async def test_unexpected_exception_emits_wifi_ap_error_sse(self) -> None:
         """An unexpected exception inside _wifi_ap_pair_task still emits wifi_ap_error SSE."""

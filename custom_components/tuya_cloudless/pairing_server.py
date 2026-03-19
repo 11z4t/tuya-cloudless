@@ -819,7 +819,7 @@ class PairingServer:
             result: list[str] = []
             for line in stdout.decode(errors="replace").splitlines():
                 ssid = line.strip()
-                if ssid and ssid != "--":
+                if ssid and ssid != "--" and not _CTRL_CHAR_RE.search(ssid):
                     result.append(ssid)
             return result
 
@@ -899,7 +899,13 @@ class PairingServer:
             seen: set[str] = set()
             for line in stdout.decode(errors="replace").splitlines():
                 ssid = line.strip()
-                if ssid and ssid != "--" and ssid not in seen and _is_tuya_ap(ssid):
+                if (
+                    ssid
+                    and ssid != "--"
+                    and not _CTRL_CHAR_RE.search(ssid)
+                    and ssid not in seen
+                    and _is_tuya_ap(ssid)
+                ):
                     seen.add(ssid)
                     tuya_aps.append({"ssid": ssid})
         except (FileNotFoundError, TimeoutError, OSError) as exc:
@@ -1077,6 +1083,7 @@ class PairingServer:
                         f"http://{_TUYA_AP_GATEWAY_IP}/gw.json",
                         json=payload,
                         timeout=_aiohttp.ClientTimeout(total=_TUYA_AP_GW_TIMEOUT),
+                        allow_redirects=False,  # Prevent SSRF via device firmware redirect
                     ) as resp,
                 ):
                     _LOGGER.debug("gw.json response: %s", resp.status)

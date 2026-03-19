@@ -11,7 +11,7 @@ const {
   isIOS, isAndroid, chromeIntentUrl,
   saveLastSsid, loadLastSsid, SSID_TTL_MS, SSID_STORAGE_KEY,
   countUtf8Bytes, reassemble, onNotify, waitForResponse, parseFrame, crc16Modbus,
-  _safePath, _safeUrl, _t, _getRecvReject,
+  _safePath, _safeUrl, _t, _getRecvReject, _getActiveSseTimer,
 } = app;
 
 // ── PLAT-810 — Browser compatibility helpers ──────────────────────────────────
@@ -606,5 +606,44 @@ describe("waitForResponse — disconnect rejection", () => {
     expect(chunks).toHaveLength(2);
     // _recvReject is cleared on resolve
     expect(_getRecvReject()).toBeNull();
+  });
+});
+
+// ── Round 37 — SSE timer leak prevention on beforeunload ──────────────────────
+
+describe("_activeSseTimer — tracked for beforeunload cleanup", () => {
+  const { _listenForActivation } = app;
+
+  beforeEach(() => {
+    // Stub EventSource so listenForActivation doesn't throw in jsdom
+    global.EventSource = class {
+      constructor() { this.addEventListener = () => {}; this.onerror = null; this.close = () => {}; }
+    };
+  });
+
+  afterEach(() => {
+    // Clear any leftover timer to prevent interference between tests
+    const t = _getActiveSseTimer();
+    if (t !== null) clearTimeout(t);
+  });
+
+  it("sets _activeSseTimer when listenForActivation is called", () => {
+    jest.useFakeTimers();
+    _listenForActivation("tok_timer_test");
+    expect(_getActiveSseTimer()).not.toBeNull();
+    jest.useRealTimers();
+  });
+
+  it("clears _activeSseTimer after SSE timeout fires", () => {
+    jest.useFakeTimers();
+    // Stub DOM elements that the timeout callback accesses
+    document.body.innerHTML = `<button id="btn-pair"></button>`;
+    _listenForActivation("tok_timeout_clears");
+    expect(_getActiveSseTimer()).not.toBeNull();
+    // Advance past SSE_TIMEOUT_MS to trigger the timeout callback
+    const { SSE_TIMEOUT_MS } = app;
+    jest.advanceTimersByTime(SSE_TIMEOUT_MS + 100);
+    expect(_getActiveSseTimer()).toBeNull();
+    jest.useRealTimers();
   });
 });
