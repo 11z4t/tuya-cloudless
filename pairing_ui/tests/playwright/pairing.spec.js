@@ -545,6 +545,14 @@ test.describe("SSID pre-fill", () => {
     await expect(page.locator("#ssid")).toHaveAttribute("autocapitalize", "none");
   });
 
+  test("password input has autocomplete=off (not new-password) to prevent PM saving WiFi creds", async ({ page }) => {
+    // WiFi passwords are not user account passwords — autocomplete="off" prevents password
+    // managers from offering to save a WiFi PSK as an account credential.
+    await setupRoutes(page);
+    await loadPage(page);
+    await expect(page.locator("#password")).toHaveAttribute("autocomplete", "off");
+  });
+
   test("server SSID takes priority over localStorage SSID", async ({ page }) => {
     await setupRoutes(page, {
       config: {

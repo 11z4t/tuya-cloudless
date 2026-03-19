@@ -871,6 +871,27 @@ class TestQuickScan:
             "SSIDs with control chars must be filtered from quick-scan results"
         )
 
+    async def test_nmcli_nonzero_exit_returns_empty_list(self, client: TestClient) -> None:
+        """nmcli returning non-zero exit code (e.g. permission denied) falls back to empty list.
+
+        quick-scan does not check proc.returncode — it decodes whatever stdout was produced
+        (empty bytes on most errors) and returns tuya_aps=[].  This is intentional: a failing
+        nmcli should not block the pairing UI, just show no auto-discovered devices.
+        """
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        mock_proc = MagicMock()
+        mock_proc.returncode = 1  # nmcli error (e.g. permissions, no WiFi adapter)
+        mock_proc.communicate = AsyncMock(return_value=(b"", b"Error: permission denied\n"))
+        mock_proc.kill = MagicMock()
+
+        with patch("asyncio.create_subprocess_exec", return_value=mock_proc):
+            resp = await client.get("/api/provision/quick-scan")
+
+        assert resp.status == 200
+        data = await resp.json()
+        assert data["tuya_aps"] == [], "Non-zero nmcli exit must fall back to empty list"
+
     async def test_quick_scan_rate_limited(self, server: PairingServer) -> None:
         """quick-scan returns 429 when per-IP rate limit (10/min) is exceeded."""
         ts = TestServer(server._app)
