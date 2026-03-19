@@ -1171,3 +1171,44 @@ describe("showDone — deep-link safeGwId + safeKey validation", () => {
   });
 });
 
+// ── showDone — copy-IP button ──────────────────────────────────────────────────
+describe("showDone — copy-IP button", () => {
+  const { showDone } = app;
+
+  function setupDom() {
+    document.body.innerHTML = `
+      <div id="panel-devices" class="hidden"></div>
+      <div id="panel-wifi" class="hidden"></div>
+      <div id="panel-ble" class="hidden"></div>
+      <div id="panel-done" class="hidden">
+        <h2 id="step3-title" tabindex="-1"></h2>
+        <p id="ha-flow-msg" class="hidden"></p>
+        <dl id="result-grid"></dl>
+        <a id="btn-add-ha" class="hidden" href="#"></a>
+        <button id="btn-pair-another" class="hidden"></button>
+      </div>
+      <span id="step-counter"></span>
+    `;
+  }
+
+  beforeEach(() => { setupDom(); });
+
+  it("renders btn-copy-ip when ip_address is present", () => {
+    showDone("gw001", "aabbccddeeff00112233445566778899", "192.168.1.99");
+    const btn = document.querySelector("#btn-copy-ip");
+    expect(btn).not.toBeNull();
+  });
+
+  it("does NOT render btn-copy-ip when ip_address is empty", () => {
+    showDone("gw001", "aabbccddeeff00112233445566778899", "");
+    const btn = document.querySelector("#btn-copy-ip");
+    expect(btn).toBeNull();
+  });
+
+  it("shows em-dash placeholder when ip_address is empty", () => {
+    showDone("gw001", "aabbccddeeff00112233445566778899", "");
+    const grid = document.getElementById("result-grid");
+    expect(grid.textContent).toContain("\u2014");  // em dash
+  });
+});
+
