@@ -1053,6 +1053,119 @@ class TestWifiApPair:
 
         assert any(ev == "wifi_ap_error" for ev, _ in broadcast_calls)
 
+    async def test_nmcli_connect_nonzero_exit_emits_wifi_ap_error(self, client: TestClient) -> None:
+        """nmcli connect returning non-zero (device not found / wrong SSID) emits wifi_ap_error.
+
+        This exercises the OSError path at pairing_server.py:1098-1099 where a non-zero
+        return code from ``nmcli device wifi connect`` causes the task to fail.
+        """
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        call_count = 0
+
+        async def fake_exec(*args: object, **kwargs: object) -> MagicMock:
+            nonlocal call_count
+            call_count += 1
+            proc = MagicMock()
+            if "connect" in args and "SmartLife_AB12" in args:
+                # Tuya AP connect fails — returncode != 0
+                proc.communicate = AsyncMock(
+                    return_value=(b"", b"Error: No network with SSID 'SmartLife_AB12' found.")
+                )
+                proc.returncode = 4  # nmcli error code for "not found"
+            else:
+                # All other nmcli calls (connection show, reconnect) succeed
+                proc.communicate = AsyncMock(return_value=(b"yes:HomeNet", b""))
+                proc.returncode = 0
+            proc.kill = MagicMock()
+            return proc
+
+        hass = MagicMock()
+        server = PairingServer(hass, port=9099)
+        broadcast_calls: list[tuple[str, str]] = []
+
+        async def fake_broadcast(event: str, data: str) -> None:
+            broadcast_calls.append((event, data))
+
+        server._broadcast_sse = fake_broadcast  # type: ignore[method-assign]
+
+        with patch("asyncio.create_subprocess_exec", side_effect=fake_exec):
+            await server._wifi_ap_pair_task(
+                "SmartLife_AB12", "HomeNet", "pass", "tok_fail", "http://ha:8099"
+            )
+
+        # Non-zero exit from connect → OSError caught → wifi_ap_error broadcast
+        assert any(ev == "wifi_ap_error" for ev, _ in broadcast_calls), (
+            "wifi_ap_error SSE must be emitted when nmcli connect returns non-zero"
+        )
+        # The token must be included so the client can match this error to its session
+        error_payloads = [data for ev, data in broadcast_calls if ev == "wifi_ap_error"]
+        assert any("tok_fail" in p for p in error_payloads), (
+            "wifi_ap_error SSE payload must include the session token"
+        )
+
+    async def test_nmcli_connect_timeout_kills_process(self, client: TestClient) -> None:
+        """When nmcli connect hangs past its timeout, the process is killed.
+
+        The internal _run() helper calls proc.kill() on TimeoutError and returns (-1, ""),
+        which causes the caller to raise OSError (rc == -1 != 0), broadcasting wifi_ap_error.
+        """
+        import asyncio
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        killed: list[bool] = []
+
+        async def fake_exec(*args: object, **kwargs: object) -> MagicMock:
+            proc = MagicMock()
+            if "connect" in args and "SmartLife_AB12" in args:
+                # Simulate a hanging nmcli — communicate() never returns
+                async def _hang() -> None:
+                    await asyncio.sleep(999)
+
+                proc.communicate = _hang
+                proc.returncode = None
+
+                def _record_kill() -> None:
+                    killed.append(True)
+
+                proc.kill = _record_kill
+            else:
+                proc.communicate = AsyncMock(return_value=(b"yes:HomeNet", b""))
+                proc.returncode = 0
+                proc.kill = MagicMock()
+            return proc
+
+        hass = MagicMock()
+        server = PairingServer(hass, port=9099)
+        broadcast_calls: list[tuple[str, str]] = []
+
+        async def fake_broadcast(event: str, data: str) -> None:
+            broadcast_calls.append((event, data))
+
+        server._broadcast_sse = fake_broadcast  # type: ignore[method-assign]
+
+        # Patch asyncio.wait_for to use a very short timeout so the test is fast
+        original_wait_for = asyncio.wait_for
+
+        async def fast_wait_for(coro: object, timeout: float) -> object:
+            # Shorten any timeout > 1s to 0.05s so the test doesn't take 15+ seconds
+            return await original_wait_for(coro, 0.05 if timeout > 1 else timeout)
+
+        with (
+            patch("asyncio.create_subprocess_exec", side_effect=fake_exec),
+            patch("asyncio.wait_for", side_effect=fast_wait_for),
+        ):
+            await server._wifi_ap_pair_task(
+                "SmartLife_AB12", "HomeNet", "pass", "tok_timeout", "http://ha:8099"
+            )
+
+        # proc.kill() must have been called to terminate the stalled process
+        assert killed, "proc.kill() must be called when nmcli connect times out"
+        # The timed-out connect returns rc=-1 → OSError → wifi_ap_error broadcast
+        assert any(ev == "wifi_ap_error" for ev, _ in broadcast_calls), (
+            "wifi_ap_error must be emitted when nmcli connect times out"
+        )
+
     async def test_reconnect_failure_does_not_raise(self, client: TestClient) -> None:
         """Reconnect failure (step 4) is logged but does not propagate as an error SSE."""
         from unittest.mock import AsyncMock, MagicMock, patch
