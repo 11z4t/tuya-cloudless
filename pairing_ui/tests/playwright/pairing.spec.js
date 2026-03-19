@@ -485,6 +485,27 @@ test.describe("WiFi dropdown keyboard navigation", () => {
     await expect(page.locator("#ssid")).toHaveValue("Net-B");
     await expect(page.locator("#wifi-dropdown")).toBeHidden();
   });
+
+  test("Tab from a dropdown item closes dropdown (no need to tab through all options)", async ({ page }) => {
+    await setupRoutes(page, { ssids: ["Net-A", "Net-B", "Net-C"] });
+    await loadPage(page);
+    await navigateToCredentials(page);
+
+    await page.locator("#btn-wifi-scan").click();
+    await expect(page.locator("#wifi-dropdown")).toBeVisible();
+
+    // Focus the first dropdown option
+    await page.locator(".wifi-option[tabindex='0']").first().focus();
+    await expect(page.locator(".wifi-option[tabindex='0']").first()).toBeFocused();
+
+    // Press Tab — dropdown closes so user doesn't have to tab through every option
+    await page.keyboard.press("Tab");
+
+    // Dropdown should be hidden (closed)
+    await expect(page.locator("#wifi-dropdown")).toBeHidden();
+    // aria-expanded must also be cleared
+    await expect(page.locator("#btn-wifi-scan")).toHaveAttribute("aria-expanded", "false");
+  });
 });
 
 // ── Tests: SSID pre-fill ──────────────────────────────────────────────────────
@@ -1186,6 +1207,39 @@ test.describe("Full pairing flow", () => {
     await expect(page.locator("#pair-status")).toBeVisible({ timeout: 5000 });
     await expect(page.locator("#pair-status")).toHaveClass(/status-error/);
     await expect(page.locator("#btn-pair")).toBeEnabled({ timeout: 3000 });
+  });
+
+  test("'Pair Another Device' button navigates to device panel after BLE pairing", async ({
+    page,
+  }) => {
+    const ACTIVATION = {
+      gw_id: "dev-ble-001",
+      local_key: "0011223344556677",
+      ip_address: "192.168.1.10",
+      token: null,
+    };
+
+    await setupRoutes(page);
+    await mockBle(page, ACTIVATION);
+    await loadPage(page);
+    await navigateToCredentials(page);
+
+    await page.locator("#ssid").click();
+    await page.locator("#ssid").fill("MyNet");
+    await page.locator("#btn-next").click();
+    await page.locator("#btn-pair").click();
+
+    // Done screen appears after BLE + SSE activation
+    await expect(page.locator("#panel-done")).toBeVisible({ timeout: 5000 });
+
+    // "Pair Another Device" button should be visible and enabled
+    await expect(page.locator("#btn-pair-another")).toBeVisible();
+    await expect(page.locator("#btn-pair-another")).toBeEnabled();
+
+    // Click it — should navigate back to device panel
+    await page.locator("#btn-pair-another").click();
+    await expect(page.locator("#panel-devices")).toBeVisible({ timeout: 3000 });
+    await expect(page.locator("#panel-done")).toBeHidden();
   });
 });
 

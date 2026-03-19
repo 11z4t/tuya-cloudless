@@ -510,6 +510,14 @@ function showWifiDropdown(ssids, currentSsid) {
           const si = document.getElementById("ssid");
           if (si) si.focus();
         }
+        if (e.key === "Tab") {
+          // Close dropdown on Tab so keyboard users can move on without tabbing
+          // through every option.  Do NOT preventDefault — let the browser move
+          // focus naturally to the next element in the tab sequence.
+          dd.classList.add("hidden");
+          const sb = document.getElementById("btn-wifi-scan");
+          if (sb) sb.setAttribute("aria-expanded", "false");
+        }
       });
       dd.appendChild(item);
     }
