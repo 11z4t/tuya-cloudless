@@ -25,6 +25,8 @@ from typing import TypeAlias
 # Track the inserted path so we can clean it up when the last entry unloads.
 # Idempotent: we check sys.path before inserting so HA reloads do not accumulate
 # duplicate entries (PLAT-712).
+# NOTE: always set _INSERTED_LIB_PATH even when the path is already in sys.path
+# (e.g. after a module reload) so that cleanup in async_unload_entry still works.
 _INSERTED_LIB_PATH: str | None = None
 _BUNDLED_LIB = str(Path(__file__).resolve().parent / "lib")
 _DEV_LIB = str(Path(__file__).resolve().parent.parent.parent / "lib")
@@ -32,7 +34,7 @@ for _lib_dir in (_BUNDLED_LIB, _DEV_LIB):
     if Path(_lib_dir).is_dir():
         if _lib_dir not in sys.path:
             sys.path.insert(0, _lib_dir)
-            _INSERTED_LIB_PATH = _lib_dir
+        _INSERTED_LIB_PATH = _lib_dir  # always track, even if already present
         break
 
 import voluptuous as vol
@@ -59,6 +61,7 @@ from .const import (
     PROFILES_DIR,
 )
 from .coordinator import TuyaCloudlessCoordinator
+from .pairing_server import stop_pairing_server
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -319,11 +322,16 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
 
+    # Stop the pairing server when the last entry is unloaded (port 8099 must
+    # be freed so it does not stay bound after all devices are removed).
+    remaining = hass.config_entries.async_entries(DOMAIN)
+    if len(remaining) <= 1:
+        await stop_pairing_server(hass)
+
     # Clean up sys.path when the last entry for this domain is unloaded.
     # The inserted path was only needed for the initial import; it is safe to
     # remove once no more entries are active.
     global _INSERTED_LIB_PATH
-    remaining = hass.config_entries.async_entries(DOMAIN)
     if len(remaining) <= 1 and _INSERTED_LIB_PATH is not None:
         with contextlib.suppress(ValueError):
             sys.path.remove(_INSERTED_LIB_PATH)

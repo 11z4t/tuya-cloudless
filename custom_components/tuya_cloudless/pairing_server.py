@@ -438,7 +438,7 @@ class PairingServer:
         """
         self._pending_flows.discard(flow_id)
         if not self._pending_flows and self._auto_stop_task is None:
-            self._auto_stop_task = asyncio.create_task(
+            self._auto_stop_task = self._hass.async_create_task(
                 self._auto_stop_after_idle(), name="tuya-cloudless-auto-stop"
             )
             self._auto_stop_task.add_done_callback(
@@ -1165,7 +1165,7 @@ class PairingServer:
         activator_url = self.ha_local_url()
 
         self._wifi_ap_pairing_in_progress.add(ap_ssid)
-        task = asyncio.create_task(
+        task = self._hass.async_create_task(
             self._wifi_ap_pair_task(ap_ssid, home_ssid, home_password, token, activator_url),
             name="tuya-cloudless-wifi-ap-pair",
         )
@@ -1288,7 +1288,9 @@ class PairingServer:
                 json.dumps({"error": "WiFi control unavailable or connect failed", "token": token}),
             )
         except Exception as exc:
-            _LOGGER.exception("Unexpected error in WiFi AP pair task: %s", exc)
+            # Use warning (not exception) to avoid printing a traceback that
+            # could contain the WiFi password from the call-stack locals.
+            _LOGGER.warning("Unexpected error in WiFi AP pair task: %s", type(exc).__name__)
             await self._broadcast_sse(
                 "wifi_ap_error",
                 json.dumps({"error": "Unexpected pairing error", "token": token}),

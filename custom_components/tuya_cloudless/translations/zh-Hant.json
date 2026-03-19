@@ -146,7 +146,8 @@
       "https_required": "Tuya Cloudless requires HTTPS for BLE pairing. Your Home Assistant does not have an HTTPS URL configured. See the [HTTPS setup guide](https://github.com/11z4t/tuya-cloudless/wiki/HTTPS-Setup).",
       "reauth_successful": "安全金鑰已更新——裝置已重新連線",
       "reconfigure_successful": "設定已更新——裝置正在重新載入",
-      "no_device_id": "無法識別裝置——請確保其已開啟並連線到網路"
+      "no_device_id": "無法識別裝置——請確保其已開啟並連線到網路",
+      "reauth_entry_not_found": "The device entry was removed before re-authentication could complete"
     }
   },
   "exceptions": {

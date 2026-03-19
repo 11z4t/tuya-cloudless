@@ -274,7 +274,7 @@ def strip_v33_header(data: bytes) -> bytes:
     Returns:
         Payload bytes with 12-byte header stripped if the magic prefix is present.
     """
-    if data[:3] in (b"3.3", b"3.4", b"3.5"):
+    if data[:3] == b"3.3":
         # The header is always prepended by add_v33_header for v3.3 devices.
         # The version prefix check avoids corrupting a payload that starts with
         # something other than the 12-byte header (firmware edge case).

@@ -157,7 +157,8 @@
       "https_required": "Tuya Cloudless kräver HTTPS för BLE-parkoppling. Din Home Assistant har ingen HTTPS-URL konfigurerad. Se [guide för HTTPS-installation](https://github.com/11z4t/tuya-cloudless/wiki/HTTPS-Setup).",
       "reauth_successful": "Säkerhetsnyckeln uppdaterades — enheten är ansluten igen",
       "reconfigure_successful": "Inställningarna uppdaterades — enheten laddas om",
-      "no_device_id": "Det gick inte att identifiera enheten — kontrollera att den är påslagen och ansluten till nätverket"
+      "no_device_id": "Det gick inte att identifiera enheten — kontrollera att den är påslagen och ansluten till nätverket",
+      "reauth_entry_not_found": "Enhetsposten togs bort innan omautentiseringen kunde slutföras"
     }
   },
   "exceptions": {

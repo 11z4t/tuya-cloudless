@@ -66,7 +66,7 @@ class TestCreateFixFlowEntryId:
 
     @pytest.mark.asyncio
     async def test_entry_id_extracted_from_issue_id_string(self) -> None:
-        """entry_id falls back to the part after the first '_' in issue_id."""
+        """entry_id falls back to the part after the 'auth_failed_' prefix in issue_id."""
         from custom_components.tuya_cloudless.repairs import (
             TuyaCloudlessAuthRepairFlow,
             async_create_fix_flow,
@@ -74,7 +74,7 @@ class TestCreateFixFlowEntryId:
 
         flow = await async_create_fix_flow(None, "auth_failed_entry999", None)  # type: ignore[arg-type]
         assert isinstance(flow, TuyaCloudlessAuthRepairFlow)
-        assert flow._entry_id == "failed_entry999"
+        assert flow._entry_id == "entry999"
 
     @pytest.mark.asyncio
     async def test_connectivity_entry_id_from_data(self) -> None:

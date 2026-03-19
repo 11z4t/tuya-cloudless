@@ -747,7 +747,7 @@ class TuyaCloudlessConfigFlow(ConfigFlow, domain=DOMAIN):
             local_key = user_input[CONF_LOCAL_KEY].strip()
             ip_address = user_input[CONF_IP_ADDRESS].strip()
 
-            if not gw_id or len(gw_id) > 64:
+            if not gw_id or not _GW_ID_RE.match(gw_id):
                 errors[CONF_GW_ID] = "invalid_gw_id"
             if len(local_key) != _LOCAL_KEY_LENGTH:
                 errors[CONF_LOCAL_KEY] = "invalid_local_key"
@@ -993,7 +993,10 @@ class TuyaCloudlessConfigFlow(ConfigFlow, domain=DOMAIN):
         """
         errors: dict[str, str] = {}
 
-        reauth_entry = self._get_reauth_entry()
+        try:
+            reauth_entry = self._get_reauth_entry()
+        except Exception:  # HA raises UnknownEntry if entry removed mid-flow
+            return self.async_abort(reason="reauth_entry_not_found")
 
         if user_input is not None:
             local_key = user_input[CONF_LOCAL_KEY].strip()

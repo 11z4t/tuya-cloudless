@@ -127,11 +127,14 @@ async def async_create_fix_flow(
         A :class:`RepairsFlow` instance appropriate for the issue type.
     """
     # Extract entry_id: issue_id format is "auth_failed_{entry_id}" or "connectivity_{entry_id}"
+    # Coordinator does not pass data= to async_create_issue, so fall back to string parsing.
     entry_id = ""
     if data and "entry_id" in data:
         entry_id = str(data["entry_id"])
-    elif "_" in issue_id:
-        entry_id = issue_id.split("_", 1)[-1]
+    elif issue_id.startswith("auth_failed_"):
+        entry_id = issue_id[len("auth_failed_") :]
+    elif issue_id.startswith("connectivity_"):
+        entry_id = issue_id[len("connectivity_") :]
 
     if issue_id.startswith("connectivity"):
         return TuyaCloudlessConnectivityRepairFlow(entry_id, data)

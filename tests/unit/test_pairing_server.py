@@ -75,6 +75,10 @@ def _make_hass() -> MagicMock:
     """Return a minimal HomeAssistant mock."""
     hass = MagicMock()
     hass.config.internal_url = "http://homeassistant.local:8123"
+    # Delegate async_create_task to the real asyncio so background tasks actually run.
+    # PairingServer uses hass.async_create_task (not bare asyncio.create_task) for proper
+    # HA lifecycle management.
+    hass.async_create_task = asyncio.create_task
     return hass
 
 
@@ -2346,24 +2350,27 @@ class TestHaLocalUrlFallbacks:
 
     def test_unregister_flow_schedules_auto_stop(self) -> None:
         """unregister_flow() must schedule idle-stop when no flows remain."""
-        srv = PairingServer(_make_hass(), port=0)
+        hass = _make_hass()
+        mock_ct = MagicMock(return_value=MagicMock())
+        hass.async_create_task = mock_ct
+        srv = PairingServer(hass, port=0)
         srv._pending_flows.add("flow-xyz")
 
-        # Patch create_task so we don't need a real event loop (ROB-003)
-        with patch("asyncio.create_task", return_value=MagicMock()) as mock_ct:
-            srv.unregister_flow("flow-xyz")
+        srv.unregister_flow("flow-xyz")
 
         assert "flow-xyz" not in srv._pending_flows
         mock_ct.assert_called_once()
 
     def test_unregister_flow_no_schedule_when_others_remain(self) -> None:
         """unregister_flow() must NOT schedule idle-stop while other flows are registered."""
-        srv = PairingServer(_make_hass(), port=0)
+        hass = _make_hass()
+        mock_ct = MagicMock(return_value=MagicMock())
+        hass.async_create_task = mock_ct
+        srv = PairingServer(hass, port=0)
         srv._pending_flows.add("flow-1")
         srv._pending_flows.add("flow-2")
 
-        with patch("asyncio.create_task", return_value=MagicMock()) as mock_ct:
-            srv.unregister_flow("flow-1")
+        srv.unregister_flow("flow-1")
 
         mock_ct.assert_not_called()
 
@@ -3777,13 +3784,15 @@ class TestCreateTaskUsed:
     """Verify unregister_flow uses asyncio.create_task, not ensure_future."""
 
     def test_unregister_flow_uses_create_task(self) -> None:
-        """unregister_flow must schedule idle-stop via asyncio.create_task."""
+        """unregister_flow must schedule idle-stop via hass.async_create_task."""
 
-        srv = PairingServer(_make_hass(), port=0)
+        hass = _make_hass()
+        mock_ct = MagicMock(return_value=MagicMock())
+        hass.async_create_task = mock_ct
+        srv = PairingServer(hass, port=0)
         srv._pending_flows.add("flow-rob")
 
-        with patch("asyncio.create_task", return_value=MagicMock()) as mock_ct:
-            srv.unregister_flow("flow-rob")
+        srv.unregister_flow("flow-rob")
 
         mock_ct.assert_called_once()
         # Verify the task name is set (name= kwarg)
@@ -3793,13 +3802,12 @@ class TestCreateTaskUsed:
 
     def test_unregister_flow_does_not_use_ensure_future(self) -> None:
         """unregister_flow must NOT use asyncio.ensure_future (deprecated path)."""
-        srv = PairingServer(_make_hass(), port=0)
+        hass = _make_hass()
+        hass.async_create_task = MagicMock(return_value=MagicMock())
+        srv = PairingServer(hass, port=0)
         srv._pending_flows.add("flow-rob2")
 
-        with (
-            patch("asyncio.ensure_future", return_value=MagicMock()) as mock_ef,
-            patch("asyncio.create_task", return_value=MagicMock()),
-        ):
+        with patch("asyncio.ensure_future", return_value=MagicMock()) as mock_ef:
             srv.unregister_flow("flow-rob2")
 
         mock_ef.assert_not_called()
