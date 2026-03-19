@@ -950,6 +950,18 @@ class TestWifiApPair:
         assert len(data["token"]) == 32  # 16 bytes hex = 32 chars
         assert "events_url" in data
 
+    async def test_non_tuya_ap_ssid_returns_400(self, client: TestClient) -> None:
+        """ap_ssid that does not match any Tuya AP prefix is rejected with 400.
+
+        Without this guard a malicious client could trick the server into connecting
+        HA's WiFi to an arbitrary network (HomeNet, OfficeWiFi, etc.).
+        """
+        resp = await client.post(
+            "/api/provision/wifi-ap-pair",
+            json={"ap_ssid": "HomeNet", "home_ssid": "HomeNet", "home_password": "pass"},
+        )
+        assert resp.status == 400
+
     async def test_missing_ap_ssid_returns_400(self, client: TestClient) -> None:
         """Missing ap_ssid → 400."""
         resp = await client.post(
@@ -1256,7 +1268,8 @@ class TestWifiApPair:
     @pytest.mark.parametrize(
         "field,value",
         [
-            ("ap_ssid", "Smart\x00Life"),  # null byte in AP SSID
+            # ap_ssid must have a Tuya prefix AND a control character
+            ("ap_ssid", "SmartLife_\x00T"),  # null byte after valid Tuya prefix
             ("home_ssid", "Home\x1fNet"),  # control char in home SSID
             ("home_password", "pass\x7fword"),  # DEL char in password
         ],
@@ -1272,13 +1285,13 @@ class TestWifiApPair:
     @pytest.mark.parametrize(
         "field,value,expected_status",
         [
-            # WiFi SSID limit: 32 bytes
-            ("ap_ssid", "S" * 33, 400),
+            # WiFi SSID limit: 32 bytes — use valid Tuya prefix for ap_ssid
+            ("ap_ssid", "SmartLife_" + "S" * 23, 400),  # 10+23=33 bytes → over limit
             ("home_ssid", "H" * 33, 400),
             # WPA2 password limit: 63 bytes
             ("home_password", "p" * 64, 400),
-            # Exactly at limit — must be accepted
-            ("ap_ssid", "S" * 32, 200),
+            # Exactly at limit — must be accepted (ap_ssid: 10+22=32 bytes with Tuya prefix)
+            ("ap_ssid", "SmartLife_" + "S" * 22, 200),
             ("home_ssid", "H" * 32, 200),
             ("home_password", "p" * 63, 200),
         ],

@@ -424,6 +424,25 @@ test.describe("WiFi scan dropdown", () => {
     await expect(options).toHaveCount(2);  // HomeNet + GuestNet only
     await expect(page.locator("#wifi-dropdown")).not.toContainText("SmartLife_AB12");
   });
+
+  test("empty-string SSIDs from wifi-scan are not rendered in dropdown", async ({ page }) => {
+    // Defensive against malformed server responses — an empty-string SSID would
+    // render as an invisible, selectable item in the dropdown.
+    await setupRoutes(page, { ssids: ["HomeNet", "", "GuestNet"] });
+    await loadPage(page);
+    await navigateToCredentials(page);
+
+    await page.locator("#btn-wifi-scan").click();
+    await expect(page.locator("#wifi-dropdown")).toBeVisible();
+
+    // Only the two non-empty SSIDs should appear as selectable options
+    const options = page.locator(".wifi-option:not(.muted)");
+    await expect(options).toHaveCount(2);
+
+    // None of the option texts should be empty
+    const texts = await options.allTextContents();
+    expect(texts.every((t) => t.trim().length > 0)).toBe(true);
+  });
 });
 
 // ── Tests: WiFi dropdown keyboard navigation ───────────────────────────────────

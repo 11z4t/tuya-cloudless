@@ -978,6 +978,13 @@ class PairingServer:
         if not ap_ssid or not home_ssid:
             return web.Response(status=400, text="ap_ssid and home_ssid are required")
 
+        # Reject SSIDs that are not recognised Tuya device APs — prevents a malicious
+        # client from tricking the server into connecting HA's WiFi to an arbitrary network.
+        if not _is_tuya_ap(ap_ssid):
+            return web.Response(
+                status=400, text="ap_ssid must be a known Tuya device AP (unrecognised prefix)"
+            )
+
         # Enforce WiFi spec limits: SSID ≤ 32 bytes, WPA2 password ≤ 63 bytes
         if len(ap_ssid.encode()) > 32 or len(home_ssid.encode()) > 32:
             return web.Response(status=400, text="SSID exceeds 32-byte WiFi limit")
