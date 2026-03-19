@@ -518,6 +518,12 @@ test.describe("SSID pre-fill", () => {
     await expect(page.locator("#ssid")).toHaveValue("PreviousNet");
   });
 
+  test("ssid input has autocapitalize=none to preserve case on mobile", async ({ page }) => {
+    await setupRoutes(page);
+    await loadPage(page);
+    await expect(page.locator("#ssid")).toHaveAttribute("autocapitalize", "none");
+  });
+
   test("server SSID takes priority over localStorage SSID", async ({ page }) => {
     await setupRoutes(page, {
       config: {

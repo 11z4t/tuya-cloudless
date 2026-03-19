@@ -624,6 +624,118 @@ class TestIsTuyaAp:
         assert _is_tuya_ap("sMarTlIfE_yy") is True
 
 
+# ── _is_rate_limited helper ───────────────────────────────────────────────────
+
+
+class TestIsRateLimited:
+    """Direct unit tests for :meth:`PairingServer._is_rate_limited`."""
+
+    def _make_server(self) -> PairingServer:
+        """Return a PairingServer (not started) with a fresh rate-limit dict."""
+        return PairingServer(_make_hass(), port=0)
+
+    def test_first_request_not_limited(self) -> None:
+        """First call from a new IP is always allowed."""
+        server = self._make_server()
+        assert server._is_rate_limited("10.0.0.1") is False
+
+    def test_under_limit_allowed(self) -> None:
+        """Requests under the threshold are not limited."""
+        server = self._make_server()
+        # max_requests=3, window=60 — first 3 should all pass
+        for _ in range(3):
+            assert server._is_rate_limited("10.0.0.1", max_requests=3, window=60.0) is False
+
+    def test_at_limit_blocked(self) -> None:
+        """The request that hits max_requests is blocked (>=, not >)."""
+        server = self._make_server()
+        now = time.monotonic()
+        # Pre-fill with exactly max_requests timestamps (all fresh)
+        server._rate_limit["10.0.0.2"] = [now] * 3
+        assert server._is_rate_limited("10.0.0.2", max_requests=3, window=60.0) is True
+
+    def test_expired_timestamps_not_counted(self) -> None:
+        """Timestamps older than window are discarded and don't count."""
+        server = self._make_server()
+        old = time.monotonic() - 120.0  # 2 minutes ago, well outside 60s window
+        # Pre-fill with stale timestamps — should be evicted, leaving room for new request
+        server._rate_limit["10.0.0.3"] = [old] * 10
+        assert server._is_rate_limited("10.0.0.3", max_requests=3, window=60.0) is False
+
+    def test_mixed_fresh_and_stale(self) -> None:
+        """Only fresh timestamps count toward the limit."""
+        server = self._make_server()
+        now = time.monotonic()
+        old = now - 120.0
+        # 2 stale + 2 fresh — only the 2 fresh count; max=3 → not limited
+        server._rate_limit["10.0.0.4"] = [old, old, now, now]
+        assert server._is_rate_limited("10.0.0.4", max_requests=3, window=60.0) is False
+        # After this call (which is allowed), there are 3 fresh → next call is blocked
+        assert server._is_rate_limited("10.0.0.4", max_requests=3, window=60.0) is True
+
+    def test_different_ips_independent(self) -> None:
+        """Rate limiting is per-IP — one IP's limit doesn't affect another."""
+        server = self._make_server()
+        now = time.monotonic()
+        # IP A is at the limit
+        server._rate_limit["10.0.0.5"] = [now] * 5
+        # IP B is untouched
+        assert server._is_rate_limited("10.0.0.5", max_requests=5, window=60.0) is True
+        assert server._is_rate_limited("10.0.0.6", max_requests=5, window=60.0) is False
+
+    def test_empty_list_evicted_from_dict(self) -> None:
+        """IPs with an empty timestamp list are evicted from the dict on the next allowed call.
+
+        The eviction uses ``if ts_list`` (falsy check), so only genuinely empty
+        lists are removed globally — stale-but-nonempty lists for OTHER IPs are
+        not freshness-filtered during a different IP's call.
+        """
+        server = self._make_server()
+        server._rate_limit["10.0.0.7"] = []  # Empty list — will be evicted
+        # Trigger eviction via any allowed call from a different IP
+        server._is_rate_limited("10.0.0.8", max_requests=5, window=60.0)
+        assert "10.0.0.7" not in server._rate_limit
+
+    def test_stale_timestamps_cleaned_on_own_call(self) -> None:
+        """An IP's own stale timestamps are discarded when IT makes the next request."""
+        server = self._make_server()
+        old = time.monotonic() - 120.0
+        server._rate_limit["10.0.0.7"] = [old, old]
+        # Call for the SAME IP — stale timestamps filtered → not limited
+        result = server._is_rate_limited("10.0.0.7", max_requests=5, window=60.0)
+        assert result is False
+        # Only 1 fresh timestamp should remain (the one just appended)
+        assert len(server._rate_limit.get("10.0.0.7", [])) == 1
+
+    def test_allowed_request_recorded(self) -> None:
+        """Allowed requests are appended to the IP's timestamp list."""
+        server = self._make_server()
+        assert "10.0.0.9" not in server._rate_limit
+        server._is_rate_limited("10.0.0.9", max_requests=5, window=60.0)
+        assert len(server._rate_limit["10.0.0.9"]) == 1
+
+    def test_blocked_request_not_recorded(self) -> None:
+        """Blocked requests are NOT added to the bucket (no timestamp appended)."""
+        server = self._make_server()
+        now = time.monotonic()
+        server._rate_limit["10.0.0.10"] = [now] * 5
+        count_before = len(server._rate_limit["10.0.0.10"])
+        server._is_rate_limited("10.0.0.10", max_requests=5, window=60.0)
+        assert len(server._rate_limit["10.0.0.10"]) == count_before
+
+    def test_default_params_match_constants(self) -> None:
+        """Default window and max_requests match the module-level constants."""
+        from custom_components.tuya_cloudless.pairing_server import _RATE_LIMIT_MAX
+
+        server = self._make_server()
+        now = time.monotonic()
+        # Just under the default limit — allowed
+        server._rate_limit["10.0.1.1"] = [now] * (_RATE_LIMIT_MAX - 1)
+        assert server._is_rate_limited("10.0.1.1") is False
+        # Now at the limit — blocked
+        assert server._is_rate_limited("10.0.1.1") is True
+
+
 # ── /api/provision/quick-scan ─────────────────────────────────────────────────
 
 
