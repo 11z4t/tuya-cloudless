@@ -183,7 +183,7 @@ class TestActivateEndpoint:
         assert body["result"]["gwId"] == "device123"
 
     async def test_response_has_timestamp(self, client: TestClient) -> None:
-        resp = await client.post("/api/tuya/device/active", json={})
+        resp = await client.post("/api/tuya/device/active", json={"gw_id": "ts_test_gw"})
         body = await resp.json()
         assert isinstance(body["t"], int)
 
@@ -196,9 +196,10 @@ class TestActivateEndpoint:
         resp = await client.get(f"/api/provision/result/{_TOKEN_A}")
         assert resp.status == 200
 
-    async def test_empty_body_accepted(self, client: TestClient) -> None:
+    async def test_empty_body_rejected(self, client: TestClient) -> None:
+        """Activations with no gw_id must be rejected — the device must identify itself."""
         resp = await client.post("/api/tuya/device/active", json={})
-        assert resp.status == 200
+        assert resp.status == 400
 
     async def test_empty_token_not_stored_in_results(
         self, client: TestClient, server: PairingServer
@@ -2623,17 +2624,15 @@ class TestActivateResponseStructure:
 
 
 class TestActivateBadJson:
-    async def test_bad_json_body_still_returns_200(self, client: TestClient) -> None:
-        """Body that is not valid JSON must be accepted gracefully (body defaults to {})."""
+    async def test_bad_json_body_returns_400(self, client: TestClient) -> None:
+        """Body that is not valid JSON must not crash the handler; body defaults to {} → 400."""
         resp = await client.post(
             "/api/tuya/device/active",
             data=b"not-json-at-all",
             headers={"Content-Type": "application/json"},
         )
-        # CSRF guard passes (JSON content-type), body parse falls back to {}
-        assert resp.status == 200
-        body = await resp.json()
-        assert body["success"] is True
+        # CSRF guard passes (JSON content-type), body parse falls back to {} → gw_id="" → 400
+        assert resp.status == 400
 
     @pytest.mark.parametrize(
         "raw_body",
@@ -2645,23 +2644,21 @@ class TestActivateBadJson:
         ],
         ids=["null", "string", "int", "array"],
     )
-    async def test_non_dict_json_body_returns_200(
+    async def test_non_dict_json_body_returns_400(
         self, client: TestClient, raw_body: bytes
     ) -> None:
         """A valid JSON primitive (null / string / int / array) must not crash the handler.
 
         Previously the code called ``body.get(...)`` without checking isinstance(body, dict),
         so ``null`` would produce an AttributeError and return 500.  The fixed code treats
-        any non-dict value as an empty body and continues normally.
+        any non-dict value as an empty body (no gw_id → 400).
         """
         resp = await client.post(
             "/api/tuya/device/active",
             data=raw_body,
             headers={"Content-Type": "application/json"},
         )
-        assert resp.status == 200, f"Expected 200 for body={raw_body!r}, got {resp.status}"
-        body = await resp.json()
-        assert body["success"] is True
+        assert resp.status == 400, f"Expected 400 for body={raw_body!r}, got {resp.status}"
 
 
 # ── _handle_activate with pending flow ────────────────────────────────────────

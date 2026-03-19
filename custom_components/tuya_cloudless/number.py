@@ -105,7 +105,11 @@ class TuyaCloudlessNumber(TuyaCloudlessEntity, NumberEntity):
         if raw is None:
             return None
         scale = self._spec.dp_value.scale
-        return float(raw) * scale
+        try:
+            value = float(raw) * scale
+        except (ValueError, TypeError):
+            return None
+        return max(self._attr_native_min_value, min(self._attr_native_max_value, value))
 
     async def async_set_native_value(self, value: float) -> None:
         """Set the number value, converting display value back to raw DP.

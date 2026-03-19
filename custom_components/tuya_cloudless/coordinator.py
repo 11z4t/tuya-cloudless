@@ -338,6 +338,10 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 writer.close()
                 with contextlib.suppress(OSError):
                     await writer.wait_closed()
+                # Clear instance refs so concurrent async_send_dps calls cannot
+                # observe stale closed streams before the next reconnect attempt.
+                self._reader = None
+                self._writer = None
                 raise
         else:
             self._session_key = None

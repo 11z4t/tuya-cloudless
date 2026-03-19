@@ -686,8 +686,8 @@ class PairingServer:
 
         # Validate gw_id and product_key character set — Tuya IDs are alphanumeric ASCII.
         # Rejects control characters that could interfere with SSE format or HA config flow.
-        if gw_id and not _DEVICE_ID_RE.match(gw_id):
-            _LOGGER.warning("Activation request rejected: invalid gw_id format")
+        if not gw_id or not _DEVICE_ID_RE.match(gw_id):
+            _LOGGER.warning("Activation request rejected: missing or invalid gw_id format")
             return web.Response(status=400, text="Invalid gw_id format")
         if product_key and not _DEVICE_ID_RE.match(product_key):
             _LOGGER.warning("Activation request rejected: invalid product_key format")
