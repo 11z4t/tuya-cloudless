@@ -2373,6 +2373,43 @@ test.describe("goToDevices auto-scan on back navigation", () => {
   });
 });
 
+test.describe("BLE btn-back-ble re-enabled after SSE terminal state", () => {
+  test("btn-back-ble is re-enabled after SSE onerror (connection lost)", async ({ page }) => {
+    // The Back button is disabled at the start of BLE pairing. Previously it was only
+    // re-enabled in the catch block (BLE error path) — not when SSE connection was lost
+    // after a successful BLE handshake. The user would be stuck: able to retry via
+    // btn-pair but unable to go back to change SSID/password.
+    await setupRoutes(page);
+    await mockBle(page, null);  // BLE succeeds; no activation — SSE fires onerror instead
+    await page.addInitScript(() => {
+      // Custom EventSource that fires onerror immediately after construction
+      window.EventSource = class OnerrorEventSource {
+        constructor() { this.readyState = 1; this._cbs = {}; }
+        addEventListener(evt, cb) {
+          if (!this._cbs[evt]) this._cbs[evt] = [];
+          this._cbs[evt].push(cb);
+        }
+        set onerror(fn) {
+          // Fire onerror after a short delay so the ES can be stored in _currentEventSource
+          setTimeout(() => fn && fn({}), 150);
+        }
+        close() { this.readyState = 2; }
+      };
+    });
+
+    await loadPage(page);
+    await navigateToCredentials(page);
+    await page.locator("#ssid").fill("MyNet");
+    await page.locator("#btn-next").click();
+    await expect(page.locator("#panel-ble")).toBeVisible();
+    await page.locator("#btn-pair").click();
+
+    // After SSE onerror fires: both pair button AND back button should be re-enabled
+    await expect(page.locator("#btn-pair")).toBeEnabled({ timeout: 2000 });
+    await expect(page.locator("#btn-back-ble")).toBeEnabled({ timeout: 2000 });
+  });
+});
+
 test.describe("BLE SSE malformed JSON — immediate error", () => {
   test("malformed JSON in activated SSE event shows error and re-enables pair button", async ({ page }) => {
     await setupRoutes(page);

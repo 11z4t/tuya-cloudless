@@ -1061,6 +1061,9 @@ function listenForActivation(token) {
     setPairStatus("status-warn", "\u23F1 " + esc(t("wifi_ap_timeout")));
     const pairBtn = document.getElementById("btn-pair");
     if (pairBtn) pairBtn.disabled = false;
+    // Re-enable Back button so the user can return to credentials and adjust settings
+    const backBtnSse = document.getElementById("btn-back-ble");
+    if (backBtnSse) backBtnSse.disabled = false;
     dbg("BLE pairing: activation timeout after " + (SSE_TIMEOUT_MS / 1000) + "s");
   }, SSE_TIMEOUT_MS);
   _activeSseTimer = sseTimer;
@@ -1082,6 +1085,8 @@ function listenForActivation(token) {
         // Guard: btn-pair may be absent in test environments (onerror handler also guards)
         const pairBtnActivated = document.getElementById("btn-pair");
         if (pairBtnActivated) pairBtnActivated.disabled = false;
+        const backBtnActivated = document.getElementById("btn-back-ble");
+        if (backBtnActivated) backBtnActivated.disabled = false;
       } else if (d.gw_id === undefined || d.local_key === undefined) {
         dbg("SSE activated: missing gw_id or local_key");
       }
@@ -1092,15 +1097,19 @@ function listenForActivation(token) {
       setPairStatus("status-error", "\u274C " + esc(t("err_sse_lost")));
       const pairBtnErr = document.getElementById("btn-pair");
       if (pairBtnErr) pairBtnErr.disabled = false;
+      const backBtnErr = document.getElementById("btn-back-ble");
+      if (backBtnErr) backBtnErr.disabled = false;
     }
   });
   es.onerror = () => {
     clearTimeout(sseTimer); _activeSseTimer = null;
     es.close();
-    // Re-enable pairing button so user can retry after SSE connection loss
+    // Re-enable pairing button and back button so user can retry or adjust credentials
     setPairStatus("status-error", "\u274C " + esc(t("err_sse_lost")));
     const pairBtn = document.getElementById("btn-pair");
     if (pairBtn) pairBtn.disabled = false;
+    const backBtnOerr = document.getElementById("btn-back-ble");
+    if (backBtnOerr) backBtnOerr.disabled = false;
   };
   return es;
 }

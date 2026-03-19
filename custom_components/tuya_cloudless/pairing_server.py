@@ -607,6 +607,11 @@ class PairingServer:
         except (json.JSONDecodeError, ValueError, UnicodeDecodeError):
             body = {}
 
+        # Guard: a valid JSON primitive (null, "string", 123) passes the decoder but
+        # is not a dict. Treat such payloads as empty so .get() calls are safe.
+        if not isinstance(body, dict):
+            body = {}
+
         # Support both top-level and nested ``data`` field
         data: dict[str, object] = body.get("data", body)  # type: ignore[assignment]
 

@@ -2192,6 +2192,34 @@ class TestActivateBadJson:
         body = await resp.json()
         assert body["success"] is True
 
+    @pytest.mark.parametrize(
+        "raw_body",
+        [
+            b"null",
+            b'"just-a-string"',
+            b"42",
+            b"[1, 2, 3]",
+        ],
+        ids=["null", "string", "int", "array"],
+    )
+    async def test_non_dict_json_body_returns_200(
+        self, client: TestClient, raw_body: bytes
+    ) -> None:
+        """A valid JSON primitive (null / string / int / array) must not crash the handler.
+
+        Previously the code called ``body.get(...)`` without checking isinstance(body, dict),
+        so ``null`` would produce an AttributeError and return 500.  The fixed code treats
+        any non-dict value as an empty body and continues normally.
+        """
+        resp = await client.post(
+            "/api/tuya/device/active",
+            data=raw_body,
+            headers={"Content-Type": "application/json"},
+        )
+        assert resp.status == 200, f"Expected 200 for body={raw_body!r}, got {resp.status}"
+        body = await resp.json()
+        assert body["success"] is True
+
 
 # ── _handle_activate with pending flow ────────────────────────────────────────
 
