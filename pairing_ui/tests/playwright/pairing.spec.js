@@ -972,6 +972,41 @@ test.describe("Full pairing flow", () => {
     await expect(page.locator("#btn-pair")).toBeEnabled();
   });
 
+  test("NotSupportedError (Bluetooth off) shows actionable error and re-enables button", async ({
+    page,
+  }) => {
+    await setupRoutes(page);
+
+    // Mock BLE to throw NotSupportedError — happens when Bluetooth is disabled
+    await page.addInitScript(() => {
+      Object.defineProperty(window, "isSecureContext", { get: () => true });
+      Object.defineProperty(navigator, "bluetooth", {
+        value: {
+          requestDevice: async () => {
+            const err = new Error("Bluetooth adapter not available");
+            err.name = "NotSupportedError";
+            throw err;
+          },
+        },
+        configurable: true,
+      });
+    });
+
+    await loadPage(page);
+    await navigateToCredentials(page);
+    await page.locator("#ssid").fill("MyNet");
+    await page.locator("#btn-next").click();
+    await page.locator("#btn-pair").click();
+
+    // Should show error (not a warning) with actionable message
+    await expect(page.locator("#pair-status")).toBeVisible({ timeout: 3000 });
+    await expect(page.locator("#pair-status")).toHaveClass(/status-error/);
+    await expect(page.locator("#pair-status")).toContainText("Bluetooth");
+
+    // Button re-enabled so user can enable Bluetooth and retry
+    await expect(page.locator("#btn-pair")).toBeEnabled();
+  });
+
   test("startNotifications() failure shows error and re-enables pair button", async ({ page }) => {
     await setupRoutes(page);
 

@@ -35,6 +35,7 @@
   "spin_waiting": "Kimlik bilgileri gönderildi ✓ — cihazın etkinleşmesi bekleniyor…",
   "success_activated": "✓ Cihaz etkinleştirildi! Yerel anahtar oluşturuldu.",
   "warn_scan_cancelled": "⚠ Bluetooth taraması iptal edildi.",
+  "warn_ble_disabled": "⚠ Bluetooth is disabled. Enable Bluetooth and try again.",
   "label_device_id": "Cihaz kimliği",
   "label_ip": "IP adresi",
   "label_local_key": "Yerel anahtar",

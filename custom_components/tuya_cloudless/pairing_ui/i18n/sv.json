@@ -38,6 +38,7 @@
   "spin_waiting": "Uppgifter skickade ✓ — väntar på att enheten ska aktiveras…",
   "success_activated": "✓ Enheten aktiverades! Lokal nyckel genererades.",
   "warn_scan_cancelled": "⚠ Bluetooth-sökning avbruten.",
+  "warn_ble_disabled": "⚠ Bluetooth är inaktiverat. Aktivera Bluetooth och försök igen.",
   "label_device_id": "Enhets-ID",
   "label_ip": "IP-adress",
   "label_local_key": "Lokal nyckel",

@@ -35,6 +35,7 @@
   "spin_waiting": "Gegevens verzonden ✓ — wachten op activering van apparaat…",
   "success_activated": "✓ Apparaat geactiveerd! Lokale sleutel gegenereerd.",
   "warn_scan_cancelled": "⚠ Bluetooth-scan geannuleerd.",
+  "warn_ble_disabled": "⚠ Bluetooth is disabled. Enable Bluetooth and try again.",
   "label_device_id": "Apparaat-ID",
   "label_ip": "IP-adres",
   "label_local_key": "Lokale sleutel",

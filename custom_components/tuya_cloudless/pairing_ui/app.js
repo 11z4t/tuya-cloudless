@@ -149,6 +149,7 @@ function t(key, vars) {
       warn_invalid_ssid:      "\u26A0 Invalid network name (max 32 bytes, no null characters).",
       warn_invalid_password:  "\u26A0 Password too long (max 63 bytes for WPA2).",
       warn_scan_cancelled:    "\u26A0 Bluetooth scan cancelled.",
+      warn_ble_disabled:      "\u26A0 Bluetooth is disabled. Enable Bluetooth and try again.",
       warn_no_device_selected:"No device selected. Go back and select a device.",
       err_sse_lost:   "Connection lost \u2014 please try again.",
       err_pair_fail:  "Device rejected WiFi config. Check credentials and retry.",
@@ -328,7 +329,7 @@ function loadLastSsid() {
     if (!raw) return null;
     const { ssid, saved_at } = JSON.parse(raw);
     if (Date.now() - saved_at > SSID_TTL_MS) {
-      localStorage.removeItem(SSID_STORAGE_KEY);
+      try { localStorage.removeItem(SSID_STORAGE_KEY); } catch (e) { dbg("SSID cache clear failed: " + e.message); }
       return null;
     }
     return ssid;
@@ -1381,6 +1382,9 @@ async function startPairing() {
     if (err.name === "NotFoundError" || err.name === "AbortError") {
       setPairStatus("status-warn", esc(t("warn_scan_cancelled")));
       dbg("BLE scan cancelled");
+    } else if (err.name === "NotSupportedError") {
+      setPairStatus("status-error", "\u274C " + esc(t("warn_ble_disabled")));
+      dbg("BLE not supported (Bluetooth off?): " + err.message);
     } else {
       setPairStatus("status-error", "\u274C " + esc(err.message));
       dbg("BLE error: " + err.message);

@@ -38,6 +38,7 @@
   "spin_waiting": "凭据已发送 ✓ — 等待设备激活…",
   "success_activated": "✓ 设备已激活！本地密钥已生成。",
   "warn_scan_cancelled": "⚠ 蓝牙扫描已取消。",
+  "warn_ble_disabled": "⚠ Bluetooth is disabled. Enable Bluetooth and try again.",
   "label_device_id": "设备 ID",
   "label_ip": "IP 地址",
   "label_local_key": "本地密钥",

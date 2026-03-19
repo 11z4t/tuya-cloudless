@@ -35,6 +35,7 @@
   "spin_waiting": "Nalunaarusiissitit nassiussisoqarpoq ✓ — nalunaarusiissitit pisinnaanissaminnik…",
   "success_activated": "✓ Nalunaarusiissitit pisinnaanissaminnik! Nammineq killiffissaq nalilersorneqarpoq.",
   "warn_scan_cancelled": "⚠ Bluetooth ujarlerineq nalilersorneqarpoq.",
+  "warn_ble_disabled": "⚠ Bluetooth is disabled. Enable Bluetooth and try again.",
   "label_device_id": "Nalunaarusiissitit ID",
   "label_ip": "IP-inissisimasoq",
   "label_local_key": "Nammineq killiffissaq",

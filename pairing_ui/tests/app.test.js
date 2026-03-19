@@ -242,6 +242,15 @@ describe("countUtf8Bytes", () => {
     const pwd = "a".repeat(32) + "é".repeat(16);
     expect(countUtf8Bytes(pwd)).toBeGreaterThan(63);
   });
+
+  it("counts ZWJ emoji sequences (multi-codepoint) correctly", () => {
+    // Family emoji: U+1F468 ZWJ U+1F469 ZWJ U+1F467
+    // Each person emoji = 4 bytes, ZWJ (U+200D) = 3 bytes each
+    // Total: 4 + 3 + 4 + 3 + 4 = 18 bytes
+    expect(countUtf8Bytes("\u{1F468}\u200D\u{1F469}\u200D\u{1F467}")).toBe(18);
+    // Flag emoji: regional indicator S (U+1F1F8) + E (U+1F1EA) = 4 + 4 = 8 bytes
+    expect(countUtf8Bytes("\u{1F1F8}\u{1F1EA}")).toBe(8);
+  });
 });
 
 // ── reassemble ────────────────────────────────────────────────────────────────

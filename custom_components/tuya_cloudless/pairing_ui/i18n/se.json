@@ -35,6 +35,7 @@
   "spin_waiting": "Dieđut sádejuvvon ✓ — vuordimin vehki čoaggánahttojuvvot…",
   "success_activated": "✓ Vehki čoaggánahttojuvvon! Báikkálaš čoavddus ráhkaduvvon.",
   "warn_scan_cancelled": "⚠ Bluetooth-ohcan geassojuvvon.",
+  "warn_ble_disabled": "⚠ Bluetooth is disabled. Enable Bluetooth and try again.",
   "label_device_id": "Vehki ID",
   "label_ip": "IP-čujuhus",
   "label_local_key": "Báikkálaš čoavddus",

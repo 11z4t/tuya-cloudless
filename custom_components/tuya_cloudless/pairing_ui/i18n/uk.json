@@ -35,6 +35,7 @@
   "spin_waiting": "Дані надіслано ✓ — очікування активації пристрою…",
   "success_activated": "✓ Пристрій активовано! Локальний ключ згенеровано.",
   "warn_scan_cancelled": "⚠ Сканування Bluetooth скасовано.",
+  "warn_ble_disabled": "⚠ Bluetooth is disabled. Enable Bluetooth and try again.",
   "label_device_id": "ID пристрою",
   "label_ip": "IP-адреса",
   "label_local_key": "Локальний ключ",

@@ -35,6 +35,7 @@
   "spin_waiting": "Opplysninger sendt ✓ — venter på aktivering av enhet…",
   "success_activated": "✓ Enhet aktivert! Lokal nøkkel generert.",
   "warn_scan_cancelled": "⚠ Bluetooth-skanning avbrutt.",
+  "warn_ble_disabled": "⚠ Bluetooth is disabled. Enable Bluetooth and try again.",
   "label_device_id": "Enhets-ID",
   "label_ip": "IP-adresse",
   "label_local_key": "Lokal nøkkel",

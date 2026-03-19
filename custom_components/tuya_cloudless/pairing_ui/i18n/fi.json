@@ -35,6 +35,7 @@
   "spin_waiting": "Tunnukset lähetetty ✓ — odotetaan laitteen aktivoitumista…",
   "success_activated": "✓ Laite aktivoitu! Paikallinen avain luotu.",
   "warn_scan_cancelled": "⚠ Bluetooth-skannaus peruutettu.",
+  "warn_ble_disabled": "⚠ Bluetooth is disabled. Enable Bluetooth and try again.",
   "label_device_id": "Laitetunnus",
   "label_ip": "IP-osoite",
   "label_local_key": "Paikallinen avain",

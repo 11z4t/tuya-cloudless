@@ -35,6 +35,7 @@
   "spin_waiting": "Přihlašovací údaje odeslány ✓ — čekám na aktivaci zařízení…",
   "success_activated": "✓ Zařízení aktivováno! Místní klíč vygenerován.",
   "warn_scan_cancelled": "⚠ Bluetooth skenování zrušeno.",
+  "warn_ble_disabled": "⚠ Bluetooth is disabled. Enable Bluetooth and try again.",
   "label_device_id": "ID zařízení",
   "label_ip": "IP adresa",
   "label_local_key": "Místní klíč",

@@ -35,6 +35,7 @@
   "spin_waiting": "Credenciais enviadas ✓ — a aguardar activação do dispositivo…",
   "success_activated": "✓ Dispositivo activado! Chave local gerada.",
   "warn_scan_cancelled": "⚠ Pesquisa Bluetooth cancelada.",
+  "warn_ble_disabled": "⚠ Bluetooth is disabled. Enable Bluetooth and try again.",
   "label_device_id": "ID do dispositivo",
   "label_ip": "Endereço IP",
   "label_local_key": "Chave local",

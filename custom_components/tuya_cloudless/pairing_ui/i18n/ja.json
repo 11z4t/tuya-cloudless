@@ -35,6 +35,7 @@
   "spin_waiting": "認証情報を送信しました ✓ — デバイスの有効化を待っています…",
   "success_activated": "✓ デバイスが有効化されました！ローカルキーが生成されました。",
   "warn_scan_cancelled": "⚠ Bluetooth スキャンがキャンセルされました。",
+  "warn_ble_disabled": "⚠ Bluetooth is disabled. Enable Bluetooth and try again.",
   "label_device_id": "デバイス ID",
   "label_ip": "IP アドレス",
   "label_local_key": "ローカルキー",
