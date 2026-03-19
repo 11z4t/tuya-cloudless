@@ -167,6 +167,7 @@ function t(key, vars) {
       error_browser_unsupported_title: "Unsupported browser",
       error_browser_unsupported_body:  "Web Bluetooth requires Chrome or Edge (desktop or Android).",
       // Misc
+      wifi_scan_btn:     "Scan for WiFi networks",
       wifi_scan_none:    "No networks found",
       wifi_current_network: "Current network",
       debug_title:       "Debug log",
@@ -230,6 +231,8 @@ function applyStrings() {
   if (el("btn-back-ble-label"))    el("btn-back-ble-label").textContent    = t("btn_back");
   if (el("btn-pair-another-label")) el("btn-pair-another-label").textContent = t("btn_pair_another");
   if (el("btn-cancel-wifi-ap-label")) el("btn-cancel-wifi-ap-label").textContent = t("btn_cancel") || "Cancel";
+  // WiFi scan button aria-label — not set in HTML to avoid duplication; applyStrings owns it.
+  if (el("btn-wifi-scan")) el("btn-wifi-scan").setAttribute("aria-label", t("wifi_scan_btn"));
   // Re-apply btn-pwd-toggle aria-label in the current show/hide state
   const pwdToggle = document.getElementById("btn-pwd-toggle");
   if (pwdToggle) {
@@ -438,7 +441,8 @@ async function scanWifi() {
   } finally {
     btn.disabled = false;
     btn.textContent = origIcon;
-    btn.setAttribute("aria-label", "Scan for networks");
+    // Restore localized label — must match what applyStrings() sets so language switches work.
+    btn.setAttribute("aria-label", t("wifi_scan_btn"));
   }
 }
 

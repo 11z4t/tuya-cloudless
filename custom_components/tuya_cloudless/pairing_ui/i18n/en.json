@@ -47,6 +47,7 @@
   "step2_desc": "Make sure your device is flashing rapidly (pairing mode).",
   "help_text": "Need help?",
   "help_link_label": "Open guide →",
+  "wifi_scan_btn": "Scan for WiFi networks",
   "wifi_scan_none": "No networks found",
   "wifi_current_network": "Current network",
   "debug_title": "Debug log",

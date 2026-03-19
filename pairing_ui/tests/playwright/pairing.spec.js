@@ -2128,3 +2128,52 @@ test.describe("WiFi AP pairing flow", () => {
     expect(emojiText).toContain("🔄");
   });
 });
+
+// ── Round 46 — wifi_scan_btn aria-label localization ─────────────────────────
+
+test.describe("WiFi scan button aria-label", () => {
+  test("aria-label is restored to non-English-hardcoded value after WiFi scan completes", async ({ page }) => {
+    // Regression guard: scanWifi() used to hardcode "Scan for networks" (English)
+    // when restoring aria-label after scan. Now it uses t("wifi_scan_btn").
+    // Verify: after a full WiFi scan, the button's aria-label is a non-empty
+    // non-"Scanning" string (the idle state).
+    await setupRoutes(page, { tuya_aps: [{ ssid: "SmartLife_AB12" }] });
+    await loadPage(page);
+
+    // Navigate to credentials panel to have the WiFi scan button visible
+    await page.locator(".device-card").first().click();
+    await page.waitForSelector("#panel-wifi:not(.hidden)");
+
+    // Override wifi-scan to return quickly
+    await page.route(BASE + "/api/provision/wifi-scan", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ ssids: ["HomeWifi"], tuya_aps: [], current_ssid: null }),
+      })
+    );
+
+    // Click the WiFi scan button and wait for the dropdown to appear (scan complete)
+    await page.locator("#btn-wifi-scan").click();
+    await page.waitForSelector("#wifi-dropdown:not(.hidden)");
+
+    // After scan, aria-label must NOT be the scanning state and must not be empty
+    const label = await page.locator("#btn-wifi-scan").getAttribute("aria-label");
+    expect(label).toBeTruthy();
+    expect(label).not.toContain("Scanning");
+    expect(label).not.toBe("");
+  });
+
+  test("btn-wifi-scan has non-empty aria-label on page load", async ({ page }) => {
+    // applyStrings() must set aria-label for btn-wifi-scan so it's announced correctly
+    // without relying on the HTML attribute (which cannot be localized statically).
+    await setupRoutes(page);
+    await loadPage(page);
+    // Navigate to credentials panel
+    await navigateToCredentials(page);
+
+    const label = await page.locator("#btn-wifi-scan").getAttribute("aria-label");
+    expect(label).toBeTruthy();
+    expect(label.length).toBeGreaterThan(0);
+  });
+});

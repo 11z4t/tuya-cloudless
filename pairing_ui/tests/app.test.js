@@ -910,6 +910,17 @@ describe("t() fallback for spin_connecting", () => {
 
 // ── Round 45 — Double-submit prevention & aria-hidden emoji ───────────────────
 
+// ── Round 46 — wifi_scan_btn i18n key ────────────────────────────────────────
+
+describe("t() fallback for wifi_scan_btn", () => {
+  it("returns a non-empty, non-key-name string even before i18n loads", () => {
+    const result = _t("wifi_scan_btn");
+    // Must not fall back to returning the raw key name
+    expect(result).not.toBe("wifi_scan_btn");
+    expect(result.length).toBeGreaterThan(0);
+  });
+});
+
 describe("PAIR_METHOD constants", () => {
   // Regression guard: goToStep2() branches on PAIR_METHOD.BLE / PAIR_METHOD.WIFI_AP.
   // If these collapse to the same value or disappear, both code paths would be broken.
