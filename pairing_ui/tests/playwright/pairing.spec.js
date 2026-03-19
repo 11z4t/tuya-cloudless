@@ -2343,6 +2343,32 @@ test.describe("WiFi AP pair — unexpected HTTP error shows localized message", 
     // Must contain some error text (localized fallback)
     expect(text.trim().length).toBeGreaterThan(0);
   });
+
+  test("HTTP 400 (Tuya AP prefix rejected) shows localized error, re-enables pair button", async ({ page }) => {
+    // After Round 62 the backend validates that ap_ssid uses a known Tuya prefix.
+    // A 400 response falls through to the generic wifi_ap_error message in the UI.
+    await setupRoutes(page, { tuya_aps: [{ ssid: "SmartLife_AB12" }] });
+
+    // Simulate the backend rejecting the AP SSID prefix
+    await page.route("**/api/provision/wifi-ap-pair", (route) => {
+      route.fulfill({ status: 400, body: "ap_ssid must be a known Tuya device AP (unrecognised prefix)" });
+    });
+
+    await loadPage(page);
+    await pairViaWifiApUi(page);
+
+    const statusEl = page.locator("#wifi-ap-status");
+    await expect(statusEl).toBeVisible({ timeout: 5000 });
+    const text = await statusEl.textContent();
+
+    // Must show a user-friendly error, NOT the raw server text
+    expect(text).not.toContain("unrecognised prefix");
+    expect(text).not.toContain("HTTP 400");
+    expect(text.trim().length).toBeGreaterThan(0);
+
+    // Pair button must be re-enabled so the user can retry
+    await expect(page.locator("#btn-next")).toBeEnabled({ timeout: 2000 });
+  });
 });
 
 // ── Round 50 — Decorative emoji aria-hidden + auto-scan on back navigation ────
