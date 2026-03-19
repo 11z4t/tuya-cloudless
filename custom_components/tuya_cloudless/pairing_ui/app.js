@@ -175,6 +175,8 @@ function t(key, vars) {
       debug_title:       "Debug log",
       help_text:         "Need help?",
       help_link_label:   "Open guide \u2192",
+      btn_try_again:     "Try Again",
+      label_network:     "Network",
     };
     s = fallbacks[key] !== undefined ? fallbacks[key] : key;
   }
@@ -283,6 +285,9 @@ function applyStrings() {
   }
   // Re-apply WiFi scan unavailable state (hint text must update on language change)
   if (!_wifiScanAvailable) _applyWifiScanUnavailableUi();
+  // Re-apply inline retry button text if it is currently shown
+  const retryPairBtn = document.getElementById("retry-pair-btn");
+  if (retryPairBtn) retryPairBtn.textContent = t("btn_try_again") || "Try Again";
 }
 
 function changeLang(lang) {
@@ -952,6 +957,8 @@ function showDone(gw_id, local_key, ip_address) {
     "<dd class=\"result-value\">" + esc(gw_id) + "</dd>" +
     "<dt class=\"result-label\">" + esc(t("label_ip")) + "</dt>" +
     "<dd class=\"result-value\">" + esc(ip_address) + "</dd>" +
+    "<dt class=\"result-label\">" + esc(t("label_network")) + "</dt>" +
+    "<dd class=\"result-value\">" + esc(_ssid || "\u2014") + "</dd>" +
     "<dt class=\"result-label\">" + esc(t("label_local_key")) + "</dt>" +
     "<dd class=\"result-value key-value\" style=\"display:flex;align-items:center;gap:8px\">" +
     "<span id=\"key-masked\">\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022 (hidden)</span>" +
@@ -1553,6 +1560,17 @@ async function startPairing() {
     } else {
       setPairStatus("status-error", "\u274C " + esc(err.message));
       dbg("BLE error: " + err.message);
+    }
+    // Add inline "Try Again" button so user doesn't need to scroll up to retry
+    const pairStatusEl = document.getElementById("pair-status");
+    if (pairStatusEl) {
+      const retryBtn = document.createElement("button");
+      retryBtn.type = "button";
+      retryBtn.id = "retry-pair-btn";
+      retryBtn.className = "btn-retry";
+      retryBtn.textContent = t("btn_try_again") || "Try Again";
+      retryBtn.addEventListener("click", startPairing);
+      pairStatusEl.appendChild(retryBtn);
     }
     btn.disabled = false;
     if (backBtn) backBtn.disabled = false;
