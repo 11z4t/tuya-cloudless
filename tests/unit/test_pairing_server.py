@@ -1544,6 +1544,30 @@ class TestStartStop:
         assert srv._runner is None
         assert srv._site is None
 
+    async def test_stop_does_not_block_on_full_sse_queue(self) -> None:
+        """stop() must not block when an SSE queue is full (stalled client).
+
+        Regression: previously used await q.put(None) which blocks forever when
+        the queue is at maxsize.  Now uses put_nowait() + suppress(QueueFull).
+        """
+        hass = _make_hass()
+        srv = PairingServer(hass, port=0)
+        mock_runner = MagicMock()
+        mock_runner.cleanup = AsyncMock()
+        srv._runner = mock_runner
+
+        # Fill the queue to capacity so put() would block
+        full_q: asyncio.Queue[str | None] = asyncio.Queue(maxsize=2)
+        await full_q.put("msg1")
+        await full_q.put("msg2")
+        srv._sse_queues.append(full_q)
+
+        # Must complete without hanging (put_nowait + suppress(QueueFull))
+        await asyncio.wait_for(srv.stop(), timeout=2.0)
+
+        # Queue is cleared from the tracking list regardless
+        assert srv._sse_queues == []
+
     async def test_stop_cancels_auto_stop_task(self) -> None:
         """stop() must cancel any pending auto-stop task."""
         hass = _make_hass()

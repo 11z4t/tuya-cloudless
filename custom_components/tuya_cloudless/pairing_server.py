@@ -275,9 +275,15 @@ class PairingServer:
         self._background_tasks.clear()
         self._wifi_ap_pairing_in_progress.clear()
 
-        # Signal all SSE subscribers to close
+        # Signal all SSE subscribers to close.
+        # Use put_nowait() instead of await put() — if a queue is full (stalled
+        # client), await would block HA shutdown indefinitely.  A suppressed
+        # QueueFull is safe here because the runner.cleanup() below will close
+        # the TCP connection regardless, causing ConnectionResetError in the
+        # _handle_sse loop.
         for q in list(self._sse_queues):
-            await q.put(None)
+            with contextlib.suppress(asyncio.QueueFull):
+                q.put_nowait(None)
         self._sse_queues.clear()
 
         # Discard pending flow IDs — they belong to the current session and
