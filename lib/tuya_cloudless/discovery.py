@@ -397,7 +397,10 @@ class DiscoveryListener:
             return None
 
         gw_id: str = info.get("gwId", "")
-        ip: str = info.get("ip", source_ip)
+        # Force ip to str — a rogue device could send an integer (e.g. {"ip": 12345});
+        # ipaddress.ip_address() would silently accept it and store an int, causing
+        # TypeError later when asyncio.open_connection() or slicing is attempted.
+        ip: str = str(info.get("ip", source_ip))
         version: str = str(info.get("version", PROTOCOL_31))
         product_key: str = info.get("productKey", "")
         encrypt: bool = bool(info.get("encrypt", False))
@@ -412,10 +415,13 @@ class DiscoveryListener:
             len(gw_id) > _MAX_GW_ID_LEN
             or len(version) > _MAX_VERSION_LEN
             or len(product_key) > _MAX_PRODUCT_KEY_LEN
+            or len(ip) > 45  # max length for IPv6 address
         ):
             _LOGGER.debug(
-                "Discovery packet field too long (gwId=%d, version=%d, productKey=%d) — discarded",
+                "Discovery packet field too long "
+                "(gwId=%d, ip=%d, version=%d, productKey=%d) — discarded",
                 len(gw_id),
+                len(ip),
                 len(version),
                 len(product_key),
             )

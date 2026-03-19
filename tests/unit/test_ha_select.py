@@ -101,6 +101,14 @@ class TestTuyaCloudlessSelect:
         e.coordinator.async_send_dps.assert_awaited_once_with({"5": "heat"})
 
     @pytest.mark.asyncio
+    async def test_select_option_invalid_rejected(self) -> None:
+        """Calling async_select_option with a value not in the options list must
+        not send any DPS command to the device (important security boundary)."""
+        e = _make_select({"5": "sound1"})
+        await e.async_select_option("__invalid__")
+        e.coordinator.async_send_dps.assert_not_awaited()
+
+    @pytest.mark.asyncio
     async def test_select_option_no_dp_spec(self) -> None:
         coord = _make_coordinator({})
         spec = EntitySpec(platform="select", name="siren_mode")
