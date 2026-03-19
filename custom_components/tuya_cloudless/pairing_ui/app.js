@@ -203,6 +203,7 @@ function applyStrings() {
   }
   el("ssid-label").textContent     = t("ssid_label");
   el("ssid").placeholder           = t("ssid_placeholder");
+  if (el("hint-24ghz")) el("hint-24ghz").textContent = t("hint_24ghz");
   el("password-label").textContent = t("password_label");
   el("password").placeholder       = t("password_placeholder");
   el("step2-title").textContent    = t("step2_title");

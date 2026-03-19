@@ -67,6 +67,7 @@
   "wifi_ap_waiting": "Credentials sent — waiting for device to join your network…",
   "btn_pair_wifi_ap": "Pair device →",
   "step1_desc_wifiap": "Your device will connect to this network. Enter the password and click Pair.",
+  "hint_24ghz": "Tuya devices only support 2.4 GHz WiFi — do not use a 5 GHz network.",
   "wifi_ap_timeout": "Device did not activate within 2 minutes. Check pairing mode and try again.",
   "btn_back": "← Back",
   "btn_pair_another": "← Pair Another Device",
