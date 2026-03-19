@@ -303,6 +303,34 @@ class TestResultEndpoint:
         body = await resp_expired.json()
         assert body["status"] == "pending"
 
+    async def test_pending_202_includes_no_cache_header(self, client: TestClient) -> None:
+        """A 202 Pending response must include Cache-Control: no-cache.
+
+        Without this header, polling clients may cache the 202 and stop re-polling,
+        causing device activation to silently fail from the client's perspective.
+        """
+        resp = await client.get("/api/provision/result/never_existed")
+        assert resp.status == 202
+        cache_ctrl = resp.headers.get("Cache-Control", "")
+        assert "no-cache" in cache_ctrl, (
+            f"202 response missing Cache-Control: no-cache (got: {cache_ctrl!r})"
+        )
+
+    async def test_post_to_result_endpoint_returns_405(self, client: TestClient) -> None:
+        """Result endpoint is GET-only — POST must return 405 Method Not Allowed."""
+        resp = await client.post("/api/provision/result/some_token", json={})
+        assert resp.status == 405
+
+    async def test_post_to_activate_with_get_returns_405(self, client: TestClient) -> None:
+        """Activate endpoint is POST-only — GET must return 405 Method Not Allowed."""
+        resp = await client.get("/api/tuya/device/active")
+        assert resp.status == 405
+
+    async def test_post_to_wifi_ap_pair_with_get_returns_405(self, client: TestClient) -> None:
+        """WiFi AP pair endpoint is POST-only — GET must return 405 Method Not Allowed."""
+        resp = await client.get("/api/provision/wifi-ap-pair")
+        assert resp.status == 405
+
 
 # ── / (index page) ────────────────────────────────────────────────────────────
 

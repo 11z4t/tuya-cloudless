@@ -729,7 +729,11 @@ class PairingServer:
         result = self.get_result(token)
 
         if result is None:
-            return web.json_response({"status": "pending"}, status=202)
+            return web.json_response(
+                {"status": "pending"},
+                status=202,
+                headers={"Cache-Control": "no-cache"},
+            )
 
         return web.json_response(
             {
