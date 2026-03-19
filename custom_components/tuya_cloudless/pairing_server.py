@@ -1476,8 +1476,10 @@ class PairingServer:
             window:       Sliding window in seconds (default from constant).
         """
         now = time.monotonic()
-        timestamps = self._rate_limit.get(client_ip, [])
-        timestamps = [ts for ts in timestamps if now - ts < window]
+        timestamps = [ts for ts in self._rate_limit.get(client_ip, []) if now - ts < window]
+        # Always persist the filtered list so stale timestamps are evicted even for
+        # rate-limited IPs that return early below (before the dict comprehension).
+        self._rate_limit[client_ip] = timestamps
         if len(timestamps) >= max_requests:
             _LOGGER.warning(
                 "Rate limit exceeded: ip=%s requests=%d",
@@ -1486,7 +1488,6 @@ class PairingServer:
             )
             return True
         timestamps.append(now)
-        self._rate_limit[client_ip] = timestamps
         self._rate_limit = {ip: ts_list for ip, ts_list in self._rate_limit.items() if ts_list}
         return False
 

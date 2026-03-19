@@ -3225,6 +3225,37 @@ class TestRateLimiting:
         # 4th request should be rate-limited
         assert server._is_rate_limited("10.0.0.1", max_requests=3, window=10.0) is True
 
+    def test_rate_limited_ip_stale_timestamps_evicted_on_reject(
+        self, server: PairingServer
+    ) -> None:
+        """_is_rate_limited must evict stale timestamps even when returning True.
+
+        Previously the filtered list was stored back only on the non-limited path,
+        leaving stale timestamps in _rate_limit for rate-limited IPs forever.
+        """
+        from custom_components.tuya_cloudless.pairing_server import (
+            _RATE_LIMIT_MAX,
+            _RATE_LIMIT_WINDOW,
+        )
+
+        # Inject max_requests stale + 1 current timestamp (sum > max → rate limited)
+        stale = time.monotonic() - _RATE_LIMIT_WINDOW - 1.0
+        fresh = time.monotonic()
+        # One fresh timestamp keeps the IP rate-limited; the stale ones should be evicted
+        server._rate_limit["10.0.0.5"] = [stale] * (_RATE_LIMIT_MAX - 1) + [fresh]
+
+        # Call _is_rate_limited — the stale entries should be cleaned up even though
+        # we return True (rate limited) due to the one fresh timestamp still counting.
+        result = server._is_rate_limited("10.0.0.5", max_requests=1, window=_RATE_LIMIT_WINDOW)
+        assert result is True  # fresh timestamp keeps this limited with max=1
+
+        # After the call, stale timestamps must be gone from the dict entry
+        remaining = server._rate_limit.get("10.0.0.5", [])
+        stale_remaining = [ts for ts in remaining if time.monotonic() - ts >= _RATE_LIMIT_WINDOW]
+        assert stale_remaining == [], (
+            f"Stale timestamps not evicted for rate-limited IP: {stale_remaining}"
+        )
+
     async def test_is_rate_limited_different_ips_independent(self, server: PairingServer) -> None:
         """Different IPs have independent rate limit buckets."""
         from custom_components.tuya_cloudless.pairing_server import _RATE_LIMIT_MAX
