@@ -11,7 +11,7 @@ const {
   isIOS, isAndroid, chromeIntentUrl,
   saveLastSsid, loadLastSsid, SSID_TTL_MS, SSID_STORAGE_KEY,
   countUtf8Bytes, reassemble, onNotify, waitForResponse, parseFrame, crc16Modbus,
-  _safePath,
+  _safePath, _safeUrl,
 } = app;
 
 // ── PLAT-810 — Browser compatibility helpers ──────────────────────────────────
@@ -469,5 +469,39 @@ describe("_safePath", () => {
     expect(_safePath(null, "/fallback")).toBe("/fallback");
     expect(_safePath(42, "/fallback")).toBe("/fallback");
     expect(_safePath(undefined, "/fallback")).toBe("/fallback");
+  });
+});
+
+// ── _safeUrl — activator_url / events_url validation ─────────────────────────
+
+describe("_safeUrl", () => {
+  it("accepts a relative path", () => {
+    expect(_safeUrl("/api/provision/events", "fallback")).toBe("/api/provision/events");
+  });
+
+  it("accepts an absolute http URL (LAN activator)", () => {
+    expect(_safeUrl("http://192.168.1.100:8099", "fallback")).toBe("http://192.168.1.100:8099");
+  });
+
+  it("accepts an absolute https URL", () => {
+    expect(_safeUrl("https://ha.example.com/api/provision/events", "fallback"))
+      .toBe("https://ha.example.com/api/provision/events");
+  });
+
+  it("rejects protocol-relative URL", () => {
+    expect(_safeUrl("//evil.com/events", "fallback")).toBe("fallback");
+  });
+
+  it("rejects javascript: pseudo-URL", () => {
+    expect(_safeUrl("javascript:fetch('//evil.com')", "fallback")).toBe("fallback");
+  });
+
+  it("rejects ftp:// scheme", () => {
+    expect(_safeUrl("ftp://evil.com/file", "fallback")).toBe("fallback");
+  });
+
+  it("returns fallback for non-string", () => {
+    expect(_safeUrl(null, "fallback")).toBe("fallback");
+    expect(_safeUrl(42, "fallback")).toBe("fallback");
   });
 });

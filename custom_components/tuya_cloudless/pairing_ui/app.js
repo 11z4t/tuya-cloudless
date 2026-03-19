@@ -257,6 +257,14 @@ function _safePath(raw, fallback) {
   if (typeof raw !== "string") return fallback;
   return /^\/[a-zA-Z0-9/_-]*$/.test(raw) ? raw : fallback;
 }
+// Accept relative paths OR absolute http/https URLs (used for activator_url / events_url
+// which may be either a LAN HTTP URL or a relative HA HTTPS path).
+function _safeUrl(raw, fallback) {
+  if (typeof raw !== "string") return fallback;
+  if (/^\/[a-zA-Z0-9/_-]*$/.test(raw)) return raw;              // relative path
+  if (/^https?:\/\/[a-zA-Z0-9._:/%@-]+$/.test(raw)) return raw; // absolute http(s)
+  return fallback;
+}
 const _PROVISION_BASE = _safePath(
   typeof window._TUYA_PROVISION_BASE !== "undefined" ? window._TUYA_PROVISION_BASE : undefined,
   "/api/provision"
@@ -283,8 +291,8 @@ async function loadServerConfig() {
     }
     if (r.ok) {
       const cfg = await r.json();
-      if (cfg.activator_url) ACTIVATOR_URL = cfg.activator_url;
-      if (cfg.events_url)    EVENTS_URL    = cfg.events_url;
+      if (cfg.activator_url) ACTIVATOR_URL = _safeUrl(cfg.activator_url, ACTIVATOR_URL);
+      if (cfg.events_url)    EVENTS_URL    = _safeUrl(cfg.events_url,    EVENTS_URL);
       dbg("Server: " + ACTIVATOR_URL + " \u2713");
       if (cfg.default_ssid) {
         // Server-provided SSID takes highest priority (HA knows the active network)
@@ -1384,6 +1392,6 @@ if (typeof module !== "undefined") {
     autoDetectDevices, showDeviceCard, selectDeviceWifiAp, selectDeviceBle,
     goToDevices, goToCredentials, showDone,
     countUtf8Bytes, reassemble, onNotify, waitForResponse, parseFrame, crc16Modbus,
-    _safePath,
+    _safePath, _safeUrl,
   };
 }
