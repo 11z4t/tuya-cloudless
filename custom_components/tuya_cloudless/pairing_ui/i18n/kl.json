@@ -45,6 +45,7 @@
   "help_text": "Ikiuisitsisoqataanissaminnik?",
   "help_link_label": "Nalilersorneq atugarissaaruk →",
   "wifi_scan_none": "WiFi nalunngissumillu nalilersorneqanngikkaluarpoq",
+  "wifi_scan_btn": "Scan for WiFi networks",
   "wifi_current_network": "Current network",
   "debug_title": "Debug nalunaarusiissitit",
   "error_browser_unsupported_title": "Unsupported browser",

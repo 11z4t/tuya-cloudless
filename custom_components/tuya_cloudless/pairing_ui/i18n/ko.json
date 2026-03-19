@@ -45,6 +45,7 @@
   "help_text": "도움이 필요하신가요?",
   "help_link_label": "가이드 열기 →",
   "wifi_scan_none": "네트워크를 찾을 수 없습니다",
+  "wifi_scan_btn": "Scan for WiFi networks",
   "wifi_current_network": "현재 네트워크",
   "debug_title": "디버그 로그",
   "error_browser_unsupported_title": "지원되지 않는 브라우저",

@@ -45,6 +45,7 @@
   "help_text": "Dárbbašat veahki?",
   "help_link_label": "Rahpa meroštallangohte →",
   "wifi_scan_none": "Fierbmit eai gávdnon",
+  "wifi_scan_btn": "Scan for WiFi networks",
   "wifi_current_network": "Current network",
   "debug_title": "Debug-logg",
   "error_browser_unsupported_title": "Unsupported browser",

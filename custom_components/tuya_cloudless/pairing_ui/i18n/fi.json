@@ -45,6 +45,7 @@
   "help_text": "Tarvitsetko apua?",
   "help_link_label": "Avaa opas →",
   "wifi_scan_none": "Verkkoja ei löydetty",
+  "wifi_scan_btn": "Scan for WiFi networks",
   "wifi_current_network": "Nykyinen verkko",
   "debug_title": "Virheenkorjausloki",
   "error_browser_unsupported_title": "Selain ei tue tätä",

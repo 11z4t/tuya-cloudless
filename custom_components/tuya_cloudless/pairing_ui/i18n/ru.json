@@ -45,6 +45,7 @@
   "help_text": "Нужна помощь?",
   "help_link_label": "Открыть руководство →",
   "wifi_scan_none": "Сети не найдены",
+  "wifi_scan_btn": "Scan for WiFi networks",
   "wifi_current_network": "Текущая сеть",
   "debug_title": "Журнал отладки",
   "error_browser_unsupported_title": "Браузер не поддерживается",

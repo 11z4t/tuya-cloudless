@@ -1380,7 +1380,7 @@ function copyShareUrl() {
   copyPromise.then(() => {
     btn.textContent = t("qr_copy_done");
     setTimeout(() => { btn.textContent = t("qr_copy_btn"); }, 2000);
-  }).catch(() => {});
+  }).catch((err) => { dbg("Copy to clipboard failed: " + err.message); });
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────────

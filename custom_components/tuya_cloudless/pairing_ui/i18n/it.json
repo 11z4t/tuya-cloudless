@@ -45,6 +45,7 @@
   "help_text": "Hai bisogno di aiuto?",
   "help_link_label": "Apri guida →",
   "wifi_scan_none": "Nessuna rete trovata",
+  "wifi_scan_btn": "Scan for WiFi networks",
   "wifi_current_network": "Rete attuale",
   "debug_title": "Registro di debug",
   "error_browser_unsupported_title": "Browser non supportato",

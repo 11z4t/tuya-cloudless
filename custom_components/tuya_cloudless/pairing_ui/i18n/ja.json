@@ -45,6 +45,7 @@
   "help_text": "ヘルプが必要ですか？",
   "help_link_label": "ガイドを開く →",
   "wifi_scan_none": "ネットワークが見つかりません",
+  "wifi_scan_btn": "Scan for WiFi networks",
   "wifi_current_network": "現在のネットワーク",
   "debug_title": "デバッグログ",
   "error_browser_unsupported_title": "サポートされていないブラウザ",

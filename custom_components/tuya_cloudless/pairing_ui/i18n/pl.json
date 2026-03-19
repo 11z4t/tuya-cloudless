@@ -45,6 +45,7 @@
   "help_text": "Potrzebujesz pomocy?",
   "help_link_label": "Otwórz przewodnik →",
   "wifi_scan_none": "Nie znaleziono sieci",
+  "wifi_scan_btn": "Scan for WiFi networks",
   "wifi_current_network": "Aktualna sieć",
   "debug_title": "Dziennik debugowania",
   "error_browser_unsupported_title": "Nieobsługiwana przeglądarka",

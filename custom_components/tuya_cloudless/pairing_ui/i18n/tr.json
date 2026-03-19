@@ -45,6 +45,7 @@
   "help_text": "Yardıma mı ihtiyacınız var?",
   "help_link_label": "Kılavuzu aç →",
   "wifi_scan_none": "Ağ bulunamadı",
+  "wifi_scan_btn": "Scan for WiFi networks",
   "wifi_current_network": "Mevcut ağ",
   "debug_title": "Hata ayıklama günlüğü",
   "error_browser_unsupported_title": "Desteklenmeyen tarayıcı",

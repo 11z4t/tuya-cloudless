@@ -45,6 +45,7 @@
   "help_text": "Hulp nodig?",
   "help_link_label": "Gids openen →",
   "wifi_scan_none": "Geen netwerken gevonden",
+  "wifi_scan_btn": "Scan for WiFi networks",
   "wifi_current_network": "Huidig netwerk",
   "debug_title": "Foutopsporingslogboek",
   "error_browser_unsupported_title": "Browser niet ondersteund",

@@ -45,6 +45,7 @@
   "help_text": "Har du brug for hjælp?",
   "help_link_label": "Åbn vejledning →",
   "wifi_scan_none": "Ingen netværk fundet",
+  "wifi_scan_btn": "Scan for WiFi networks",
   "wifi_current_network": "Nuværende netværk",
   "debug_title": "Fejlfindingslog",
   "error_browser_unsupported_title": "Browser ikke understøttet",

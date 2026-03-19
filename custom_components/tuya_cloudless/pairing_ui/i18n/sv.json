@@ -48,6 +48,7 @@
   "help_text": "Behöver du hjälp?",
   "help_link_label": "Öppna guide →",
   "wifi_scan_none": "Inga nätverk hittades",
+  "wifi_scan_btn": "Scan for WiFi networks",
   "wifi_current_network": "Nuvarande nätverk",
   "debug_title": "Felsökningslogg",
   "error_browser_unsupported_title": "Webbläsaren stöds inte",

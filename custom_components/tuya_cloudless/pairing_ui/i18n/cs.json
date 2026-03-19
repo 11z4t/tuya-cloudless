@@ -45,6 +45,7 @@
   "help_text": "Potřebujete pomoc?",
   "help_link_label": "Otevřít průvodce →",
   "wifi_scan_none": "Žádné sítě nenalezeny",
+  "wifi_scan_btn": "Scan for WiFi networks",
   "wifi_current_network": "Aktuální síť",
   "debug_title": "Ladicí protokol",
   "error_browser_unsupported_title": "Nepodporovaný prohlížeč",

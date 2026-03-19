@@ -45,6 +45,7 @@
   "help_text": "¿Necesita ayuda?",
   "help_link_label": "Abrir guía →",
   "wifi_scan_none": "No se encontraron redes",
+  "wifi_scan_btn": "Scan for WiFi networks",
   "wifi_current_network": "Red actual",
   "debug_title": "Registro de depuración",
   "error_browser_unsupported_title": "Navegador no compatible",

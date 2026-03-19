@@ -45,6 +45,7 @@
   "help_text": "Trenger du hjelp?",
   "help_link_label": "Åpne veiledning →",
   "wifi_scan_none": "Ingen nettverk funnet",
+  "wifi_scan_btn": "Scan for WiFi networks",
   "wifi_current_network": "Nåværende nettverk",
   "debug_title": "Feilsøkingslogg",
   "error_browser_unsupported_title": "Nettleser støttes ikke",
