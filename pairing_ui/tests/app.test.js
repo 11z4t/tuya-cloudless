@@ -647,3 +647,51 @@ describe("_activeSseTimer — tracked for beforeunload cleanup", () => {
     jest.useRealTimers();
   });
 });
+
+// ── Round 38 — Navigation functions clear _activeSseTimer ─────────────────────
+
+describe("goToDevices / goToCredentials clear _activeSseTimer", () => {
+  const { _listenForActivation, goToDevices, goToCredentials } = app;
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+    global.EventSource = class {
+      constructor() { this.addEventListener = () => {}; this.onerror = null; this.close = () => {}; }
+    };
+    // Minimal DOM needed by navigation functions
+    document.body.innerHTML = `
+      <div id="panel-devices"><h2 id="devices-title" tabindex="-1"></h2></div>
+      <div id="panel-wifi" class="hidden"></div>
+      <div id="panel-ble" class="hidden"></div>
+      <div id="panel-done" class="hidden"></div>
+      <div id="pair-status" class="status-box hidden"></div>
+      <div id="wifi-ap-status" class="status-box hidden"></div>
+      <button id="btn-pair-another"></button>
+      <input id="ssid" />
+      <input id="password" type="password" />
+      <span id="btn-pwd-toggle" aria-pressed="false" aria-label=""></span>
+      <span id="s1-error" class="status-box hidden"></span>
+      <span id="step-counter" aria-label=""></span>
+    `;
+  });
+
+  afterEach(() => {
+    const t = _getActiveSseTimer();
+    if (t !== null) clearTimeout(t);
+    jest.useRealTimers();
+  });
+
+  it("goToDevices cancels a pending SSE timer from a previous BLE pairing", () => {
+    _listenForActivation("tok_nav_devices");
+    expect(_getActiveSseTimer()).not.toBeNull();
+    goToDevices();
+    expect(_getActiveSseTimer()).toBeNull();
+  });
+
+  it("goToCredentials cancels a pending SSE timer from a previous BLE pairing", () => {
+    _listenForActivation("tok_nav_creds");
+    expect(_getActiveSseTimer()).not.toBeNull();
+    goToCredentials();
+    expect(_getActiveSseTimer()).toBeNull();
+  });
+});

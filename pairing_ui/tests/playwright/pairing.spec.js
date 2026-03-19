@@ -228,6 +228,8 @@ async function mockBle(page, activation = null) {
           connected: false,
           connect: async () => { fakeDevice.gatt.connected = true; return fakeServer; },
         },
+        // Required by Round 36 fix: startPairing() attaches gattserverdisconnected listener
+        addEventListener: () => {},
       };
 
       Object.defineProperty(navigator, "bluetooth", {

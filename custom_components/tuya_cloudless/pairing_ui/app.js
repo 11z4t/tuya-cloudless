@@ -655,6 +655,8 @@ function goToDevices() {
     _currentEventSource.close();
     _currentEventSource = null;
   }
+  // Also cancel any pending SSE timeout that could fire on the new panel
+  if (_activeSseTimer !== null) { clearTimeout(_activeSseTimer); _activeSseTimer = null; }
   _pairMethod = null;
   _selectedApSsid = null;
   // Clear form state so credentials from a previous pairing cannot be reused accidentally
@@ -693,6 +695,7 @@ function goToCredentials() {
     _currentEventSource.close();
     _currentEventSource = null;
   }
+  if (_activeSseTimer !== null) { clearTimeout(_activeSseTimer); _activeSseTimer = null; }
   document.getElementById("panel-devices").classList.add("hidden");
   document.getElementById("panel-ble").classList.add("hidden");
   document.getElementById("panel-wifi").classList.remove("hidden");
@@ -1306,6 +1309,8 @@ async function startPairing() {
       try { await server.disconnect(); } catch (_) {}
     }
     es.close();
+    // Cancel the SSE timeout so it doesn't overwrite the error message after 60 s
+    if (_activeSseTimer !== null) { clearTimeout(_activeSseTimer); _activeSseTimer = null; }
     if (err.name === "NotFoundError" || err.name === "AbortError") {
       setPairStatus("status-warn", t("warn_scan_cancelled"));
       dbg("BLE scan cancelled");
