@@ -1653,6 +1653,34 @@ class TestActivateResponseStructure:
         assert (await r1.json())["status"] == "ok"
         assert (await r2.json())["status"] == "ok"
 
+    async def test_duplicate_activation_same_token_reuses_local_key(
+        self, client: TestClient
+    ) -> None:
+        """Duplicate activation with same gw_id + same token must reuse the existing key.
+
+        Tuya firmware may retry the activation POST if it misses the response.
+        Generating a new local_key on retry would cause a key mismatch between
+        the device (which stored the first key) and the HA config flow (which
+        received the second key via SSE).
+        """
+        resp1 = await client.post(
+            "/api/tuya/device/active",
+            json={"gw_id": "dedup_gw", "token": "tok_dedup"},
+        )
+        resp2 = await client.post(
+            "/api/tuya/device/active",
+            json={"gw_id": "dedup_gw", "token": "tok_dedup"},  # same token + gw_id
+        )
+        body1 = await resp1.json()
+        body2 = await resp2.json()
+
+        assert body1["result"]["gwId"] == "dedup_gw"
+        assert body2["result"]["gwId"] == "dedup_gw"
+        # Second activation must reuse the same local_key — not generate a new one
+        assert body1["result"]["localKey"] == body2["result"]["localKey"], (
+            "Duplicate activation (same token+gw_id) must be idempotent"
+        )
+
     async def test_timezone_falls_back_to_utc_when_not_string(self, client: TestClient) -> None:
         """When hass.config.time_zone is not a string, timezone defaults to 'UTC'."""
         # The default mock has a MagicMock as time_zone (not a string) →  UTC

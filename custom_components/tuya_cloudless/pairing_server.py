@@ -599,20 +599,34 @@ class PairingServer:
             client_ip,
         )
 
-        # Generate a random 16-character local_key (printable ASCII, 32 hex chars)
-        local_key = secrets.token_hex(_LOCAL_KEY_BYTES)
+        # Idempotency guard: if this token+gw_id was already activated, reuse the
+        # existing local_key rather than generating a new one.  Tuya device firmware
+        # may retry the activation POST if it doesn't receive a response in time.
+        # Generating a different key on a retry would cause a key mismatch when the
+        # user configures HA using the key shown on the done screen.
+        if token and token in self._results and self._results[token].gw_id == gw_id:
+            result = self._results[token]
+            local_key = result.local_key
+            _LOGGER.info(
+                "Duplicate activation gw_id=%s token=%s… — reusing local_key [REDACTED]",
+                gw_id,
+                token[:8],
+            )
+        else:
+            # Generate a random 16-character local_key (printable ASCII, 32 hex chars)
+            local_key = secrets.token_hex(_LOCAL_KEY_BYTES)
 
-        result = ActivationResult(
-            gw_id=gw_id,
-            product_key=product_key,
-            local_key=local_key,
-            ip_address=client_ip,
-            sw_ver=sw_ver,
-        )
+            result = ActivationResult(
+                gw_id=gw_id,
+                product_key=product_key,
+                local_key=local_key,
+                ip_address=client_ip,
+                sw_ver=sw_ver,
+            )
 
-        if token:
-            self._results[token] = result
-            self._expire_old_results()
+            if token:
+                self._results[token] = result
+                self._expire_old_results()
 
         # Notify SSE subscribers
         event_data = {
