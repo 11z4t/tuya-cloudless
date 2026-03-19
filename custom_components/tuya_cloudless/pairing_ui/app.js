@@ -701,6 +701,10 @@ function goToDevices() {
   // Move focus to panel heading for screen reader announcement
   const title = document.getElementById("devices-title");
   if (title) { title.setAttribute("tabindex", "-1"); title.focus(); }
+  // Auto-refresh device scan — previously-paired devices have joined home WiFi
+  // and are no longer in AP mode.  Running quick-scan clears stale cards.
+  // The _scanInProgress guard prevents duplicate calls if scan is already running.
+  autoDetectDevices();
 }
 
 function goToCredentials() {

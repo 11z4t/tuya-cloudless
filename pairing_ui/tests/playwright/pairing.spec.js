@@ -2206,3 +2206,65 @@ test.describe("WiFi AP pair — unexpected HTTP error shows localized message", 
     expect(text.trim().length).toBeGreaterThan(0);
   });
 });
+
+// ── Round 50 — Decorative emoji aria-hidden + auto-scan on back navigation ────
+test.describe("Decorative emoji aria-hidden", () => {
+  test("help banner question mark emoji has aria-hidden=true", async ({ page }) => {
+    await setupRoutes(page);
+    await loadPage(page);
+    // Navigate to credentials panel where help-banner-1 is visible
+    await navigateToCredentials(page);
+    // Both help banners should have aria-hidden on the decorative ❓
+    const hidden1 = await page.locator("#panel-wifi .help-banner span[aria-hidden='true']").first().getAttribute("aria-hidden");
+    expect(hidden1).toBe("true");
+  });
+
+  test("done panel check mark emoji has aria-hidden=true", async ({ page }) => {
+    // Simulate a completed pairing to reach the done panel
+    const token = "tok-done-check";
+    await setupRoutes(page, { tuya_aps: [{ ssid: "SmartLife_AB12" }] });
+    await mockWifiApRoute(page, {
+      token,
+      sseEvent: "activated",
+      activation: { token, gw_id: "GWID123", local_key: "aabbccdd11223344" },
+    });
+    await loadPage(page);
+    await pairViaWifiApUi(page);
+
+    await expect(page.locator("#panel-done")).toBeVisible({ timeout: 5000 });
+    const ariaHidden = await page.locator(".done-check").getAttribute("aria-hidden");
+    expect(ariaHidden).toBe("true");
+  });
+});
+
+test.describe("goToDevices auto-scan on back navigation", () => {
+  test("navigating back triggers a new quick-scan request", async ({ page }) => {
+    // setupRoutes() first so subsequent page.route() overrides it (Playwright:
+    // routes are matched in reverse registration order — last added wins).
+    await setupRoutes(page);
+
+    let scanCount = 0;
+    // Override quick-scan route to count calls — registered AFTER setupRoutes
+    // so this one takes priority.
+    await page.route(BASE + "/api/provision/quick-scan", (route) => {
+      scanCount++;
+      route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ tuya_aps: [] }) });
+    });
+
+    await loadPage(page);
+    // Wait for initial scan (called from init()) to complete
+    await page.waitForFunction(() => {
+      const scanning = document.getElementById("devices-scanning");
+      return scanning && scanning.style.display === "none";
+    });
+    const countAfterInit = scanCount;
+
+    // Navigate forward then back — goToDevices() now calls autoDetectDevices()
+    await navigateToCredentials(page);
+    await page.click("#btn-back");
+    // Wait for the new scan to start (scanning indicator becomes visible then hides)
+    await page.waitForTimeout(500);
+
+    expect(scanCount).toBeGreaterThan(countAfterInit);
+  });
+});
