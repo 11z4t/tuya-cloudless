@@ -685,6 +685,11 @@ function goToDevices() {
 }
 
 function goToCredentials() {
+  // Defensive: close any stale SSE from a previous pairing that wasn't already cleaned up.
+  if (_currentEventSource) {
+    _currentEventSource.close();
+    _currentEventSource = null;
+  }
   document.getElementById("panel-devices").classList.add("hidden");
   document.getElementById("panel-ble").classList.add("hidden");
   document.getElementById("panel-wifi").classList.remove("hidden");
@@ -1103,11 +1108,12 @@ async function pairViaWifiAp() {
   es.addEventListener("activated", (e) => {
     try {
       const d = JSON.parse(e.data);
-      // !token: POST hasn't returned yet — accept any activation in the brief window
-      // before our token is known (device activation takes 15-20s so this rarely fires).
-      // d.token == null: backward compat — server omitted token field.
-      // Reject events with a non-null token that doesn't match ours.
-      if ((!token || d.token == null || d.token === token) && d.gw_id && d.local_key) {
+      // d.token == null: backward compat — old server omitted token field; accept.
+      // d.token === token: normal match.
+      // Reject events with a non-null, non-matching token even if our token is
+      // not yet known (POST still in flight) — avoids accepting a concurrent
+      // user's activation during the brief pre-token window.
+      if ((d.token == null || d.token === token) && d.gw_id && d.local_key) {
         wifiApCleanup(true);
         if (_ssid) saveLastSsid(_ssid);  // save only on confirmed activation
         setWifiApStatus("status-success", esc(t("success_activated")));
@@ -1121,7 +1127,7 @@ async function pairViaWifiAp() {
   es.addEventListener("wifi_ap_error", (e) => {
     try {
       const d = JSON.parse(e.data);
-      if (!token || d.token === token) {
+      if (d.token == null || d.token === token) {
         wifiApCleanup(true);
         setWifiApStatus("status-error", "\u274C " + esc(t("wifi_ap_error")));
         dbg("WiFi AP error: " + (d.error || "unknown"));

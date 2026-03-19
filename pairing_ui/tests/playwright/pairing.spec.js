@@ -1588,6 +1588,56 @@ test.describe("WiFi AP pairing flow", () => {
     await expect(page.locator("#panel-wifi")).toBeVisible();
   });
 
+  test("SSE activated event with non-null token in pre-token window is rejected", async ({ page }) => {
+    // Regression guard for the pre-token race: before our POST returns (token=null),
+    // a concurrent user's activation event should NOT be accepted.
+    // Old code: `(!token || d.token == null || d.token === token)` — `!token` was true → accepted wrong events.
+    // New code: `(d.token == null || d.token === token)` — null !== "other-token" → rejected.
+    const ourToken = "our-session-token";
+    await setupRoutes(page, { tuya_aps: [{ ssid: "SmartLife_AB12" }] });
+
+    // POST responds slowly (simulating slow network / HA under load)
+    await page.route(BASE + "/api/provision/wifi-ap-pair", async (route) => {
+      await new Promise((r) => setTimeout(r, 400));  // POST delayed 400ms
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ token: ourToken, events_url: BASE + "/api/provision/events" }),
+      });
+    });
+
+    // SSE fires IMMEDIATELY (0ms) with a non-null foreign token — simulates another user's
+    // device activating before our POST response arrives and sets our token variable.
+    await page.addInitScript(() => {
+      window.EventSource = class PreTokenRaceEventSource {
+        constructor() { this.readyState = 1; this._cbs = {}; }
+        addEventListener(evt, cb) {
+          if (!this._cbs[evt]) this._cbs[evt] = [];
+          this._cbs[evt].push(cb);
+          if (evt === "activated") {
+            // Fire immediately — before the POST response sets token
+            setTimeout(() => {
+              cb({ data: JSON.stringify({
+                token: "other-users-token",  // non-null, won't match ourToken
+                gw_id: "foreign-device",
+                local_key: "aabbccddeeff00112233445566778899",
+              }) });
+            }, 10);
+          }
+        }
+        set onerror(_fn) {}
+        close() { this.readyState = 2; }
+      };
+    });
+
+    await loadPage(page);
+    await pairViaWifiApUi(page);
+
+    // Foreign token event should be silently discarded — done screen must NOT appear
+    await expect(page.locator("#panel-done")).toBeHidden({ timeout: 600 });
+    await expect(page.locator("#panel-wifi")).toBeVisible();
+  });
+
   test("'Pair Another Device' button is enabled after second pairing via WiFi AP", async ({ page }) => {
     // Regression: goToDevices() disabled btn-pair-another but showDone() didn't re-enable it.
     // On second pairing, the button would be visible but permanently disabled.
@@ -1924,6 +1974,38 @@ test.describe("WiFi AP pairing flow", () => {
     await expect(page.locator("#no-devices-msg")).toBeVisible({ timeout: 3000 });
     const liveText = await page.locator("#devices-status").textContent();
     expect(liveText.trim().length).toBeGreaterThan(0);
+  });
+
+  test("navigating back to device panel after WiFi AP cancel leaves UI in clean state", async ({ page }) => {
+    // After cancel + back-to-devices, the credentials panel must be cleared (no stale errors
+    // or pairing status) and a second attempt must be possible (pair button re-enabled).
+    await setupRoutes(page, { tuya_aps: [{ ssid: "SmartLife_AB12" }] });
+    await mockWifiApRoute(page, { sseEvent: null });  // SSE never fires — stays in-progress
+    await loadPage(page);
+
+    // Start pairing then cancel
+    await pairViaWifiApUi(page);
+    await expect(page.locator("#btn-cancel-wifi-ap")).toBeVisible({ timeout: 3000 });
+    await page.locator("#btn-cancel-wifi-ap").click();
+
+    // Navigate back to devices panel
+    await page.locator("#btn-back").click();
+    await page.waitForSelector("#panel-devices:not(.hidden)");
+
+    // State must be clean — device panel showing, no stale status
+    await expect(page.locator("#panel-devices")).toBeVisible();
+    await expect(page.locator("#panel-wifi")).toBeHidden();
+
+    // Re-clicking the device card should navigate back to credentials with clean state
+    await page.locator(".device-card").first().click();
+    await page.waitForSelector("#panel-wifi:not(.hidden)");
+
+    // wifi-ap-status must be hidden (cleared by goToCredentials)
+    await expect(page.locator("#wifi-ap-status")).toHaveClass(/hidden/);
+    // Pair button must be enabled for the new attempt
+    await expect(page.locator("#btn-next")).toBeEnabled();
+    // Cancel button must be hidden (not showing from previous attempt)
+    await expect(page.locator("#btn-cancel-wifi-ap")).toBeHidden();
   });
 
   test("wifi-ap-status uses role=alert + aria-live=assertive when showing an error", async ({ page }) => {
