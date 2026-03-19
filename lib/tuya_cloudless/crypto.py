@@ -52,6 +52,7 @@ __all__ = [
     "decrypt_payload",
     "derive_ecb_key",
     "derive_session_key",
+    "encrypt_ble_payload",
     "encrypt_ecb",
     "encrypt_gcm",
     "encrypt_payload",
@@ -191,6 +192,35 @@ def encrypt_ecb(key: bytes, plaintext: bytes) -> bytes:
     return encryptor.update(padded) + encryptor.finalize()
 
 
+def encrypt_ble_payload(key: bytes, plaintext: bytes) -> bytes:
+    """Encrypt a Tuya BLE WiFi config payload with AES-128-ECB.
+
+    Used exclusively for Tuya BLE provisioning to encrypt the WiFi credential
+    frame with the session key derived from the handshake nonce exchange
+    (``derive_session_key``).  The Tuya BLE protocol uses true ECB mode —
+    distinct from the LAN protocol which uses CBC (``encrypt_ecb``).
+
+    Args:
+        key: 16-byte session key from :func:`tuya_cloudless.ble_provision.derive_session_key`.
+        plaintext: WiFi config payload (will be PKCS7-padded to AES block size).
+
+    Returns:
+        Encrypted bytes.
+
+    Raises:
+        CryptoError: If key length is not 16 bytes.
+    """
+    if len(key) != _AES_BLOCK:
+        raise CryptoError(f"BLE session key must be {_AES_BLOCK} bytes, got {len(key)}")
+    padded = _pad_pkcs7(plaintext)
+    # Tuya BLE protocol mandates AES-128-ECB for the WiFi credential frame.
+    # The key is ephemeral (derived fresh per pairing session from two random nonces)
+    # so the ECB block-pattern weakness does not yield long-term key exposure.
+    cipher = Cipher(algorithms.AES(key), modes.ECB())  # nosec B303 — BLE protocol mandate
+    encryptor = cipher.encryptor()
+    return encryptor.update(padded) + encryptor.finalize()
+
+
 def decrypt_ecb(key: bytes, ciphertext: bytes) -> bytes:
     """Decrypt ``ciphertext`` with AES-128-CBC (zero IV) and remove PKCS7 padding.
 
@@ -233,13 +263,16 @@ def add_v33_header(plaintext: bytes) -> bytes:
 def strip_v33_header(data: bytes) -> bytes:
     """Strip the 12-byte v3.3 version header from a decrypted payload.
 
+    Only called for v3.3 payloads — v3.4/3.5 use GCM and return before
+    reaching this function, so the b"3.4"/b"3.5" checks would be dead code.
+
     Args:
         data: Decrypted payload bytes (may or may not have header).
 
     Returns:
         Payload bytes with header removed if present.
     """
-    if data[:3] in (b"3.3", b"3.4", b"3.5"):
+    if data[:3] == b"3.3":
         return data[_AES_BLOCK - 4 :]  # 12-byte header
     return data
 

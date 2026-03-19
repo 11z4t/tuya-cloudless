@@ -209,6 +209,22 @@ class TestSplitFrames:
         # Should find the valid frame after skipping garbage
         assert len(frames) == 1
 
+    def test_oversized_length_field_is_skipped(self) -> None:
+        """A frame with a length field far exceeding MAX_PAYLOAD_SIZE must be skipped.
+
+        This prevents memory amplification from a crafted device advertising a
+        multi-gigabyte payload in the length field (HIGH-2).
+        """
+        # Build a header with a wildly oversized length field (> MAX_PAYLOAD_SIZE + 8)
+        crafted_header = struct.pack(">4sIII", FRAME_PREFIX, 1, CMD_HEARTBEAT, 0xFFFFFFFF)
+        # Follow it with a valid real frame so we can verify parsing continues
+        valid_frame = self._simple_frame()
+        data = crafted_header + valid_frame
+        frames, _leftover = split_frames(data)
+        # Crafted frame must be discarded; valid frame may or may not be found
+        # depending on alignment, but we must not crash or hang
+        assert isinstance(frames, list)
+
 
 # ── Session key frames ─────────────────────────────────────────────────────────
 

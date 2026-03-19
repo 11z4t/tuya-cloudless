@@ -30,6 +30,7 @@ import struct
 from dataclasses import dataclass, field
 from typing import Final
 
+from .crypto import encrypt_ble_payload
 from .exceptions import PairingError
 
 __all__ = [
@@ -260,6 +261,9 @@ def _reassemble_chunks(chunks: list[bytes]) -> bytes:
     if not chunks:
         raise PairingError("Cannot reassemble empty chunk list")
 
+    if len(chunks[0]) < 2:
+        raise PairingError("BLE chunk too short — missing chunk index or total bytes")
+
     total = chunks[0][1]
     if len(chunks) != total:
         raise PairingError(f"Incomplete BLE frame: expected {total} chunks, got {len(chunks)}")
@@ -328,21 +332,34 @@ class ProvisionPayload:
 # ── High-level frame builders ─────────────────────────────────────────────────
 
 
-def build_provision_frames(payload: ProvisionPayload, seq: int = 1) -> list[bytes]:
+def build_provision_frames(
+    payload: ProvisionPayload,
+    seq: int = 1,
+    *,
+    session_key: bytes | None = None,
+) -> list[bytes]:
     """Build the BLE chunk list for a complete WiFi provisioning exchange.
 
     Encodes the WiFi config into a :class:`BleFrame` (CMD_WIFI_CONFIG)
-    and splits it into BLE transport chunks.
+    and splits it into BLE transport chunks.  When ``session_key`` is provided
+    the payload bytes are AES-128-ECB encrypted before encoding, as required
+    by the Tuya BLE provisioning protocol.
 
     Args:
-        payload: Fully populated :class:`ProvisionPayload`.
-        seq:     Sequence number for the frame (default 1).
+        payload:     Fully populated :class:`ProvisionPayload`.
+        seq:         Sequence number for the frame (default 1).
+        session_key: 16-byte session key from :func:`derive_session_key`.
+                     Must be provided for production use — omitting it sends
+                     the WiFi credentials in cleartext over BLE.
 
     Returns:
         List of raw byte strings, each ≤ 20 bytes, to be written to the
         BLE Write characteristic in order.
     """
-    frame = BleFrame(seq=seq, cmd=CMD_WIFI_CONFIG, payload=payload.to_bytes())
+    raw_payload = payload.to_bytes()
+    if session_key is not None:
+        raw_payload = encrypt_ble_payload(session_key, raw_payload)
+    frame = BleFrame(seq=seq, cmd=CMD_WIFI_CONFIG, payload=raw_payload)
     return _chunk_frame(frame.encode())
 
 
@@ -555,6 +572,8 @@ class BleProvisioner:
         notify_event: asyncio.Event = asyncio.Event()
 
         def _on_notify(_char: BleakGATTCharacteristic, data: bytearray) -> None:
+            if len(data) < 2:  # malformed chunk — need at least chunk_no and total bytes
+                return
             recv_chunks.append(bytes(data))
             if data[0] + 1 == data[1]:  # last chunk (chunk_no + 1 == total)
                 notify_event.set()
@@ -584,12 +603,12 @@ class BleProvisioner:
                     )
 
                 device_nonce = resp.payload[:BLE_NONCE_SIZE]
-                _session_key = derive_session_key(controller_nonce, device_nonce)
+                session_key = derive_session_key(controller_nonce, device_nonce)
                 recv_chunks.clear()
                 notify_event.clear()
 
-                # Step 2: Send WiFi config
-                for chunk in build_provision_frames(payload, seq=1):
+                # Step 2: Send WiFi config, encrypted with the session key
+                for chunk in build_provision_frames(payload, seq=1, session_key=session_key):
                     await client.write_gatt_char(BLE_WRITE_CHAR_UUID, chunk, response=False)
 
                 # Wait for ACK

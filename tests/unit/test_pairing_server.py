@@ -1887,6 +1887,15 @@ class TestWifiApPair:
             body = await resp_over.text()
             assert "too many" in body.lower() or "retry" in body.lower()
 
+    async def test_missing_content_type_returns_415(self, client: TestClient) -> None:
+        """wifi-ap-pair must reject requests without application/json Content-Type (CSRF guard)."""
+        resp = await client.post(
+            "/api/provision/wifi-ap-pair",
+            data=b'{"ap_ssid":"X","home_ssid":"Y","home_password":"z"}',
+            headers={"Content-Type": "text/plain"},
+        )
+        assert resp.status == 415, f"Expected 415 for non-JSON Content-Type, got {resp.status}"
+
 
 # ── /api/provision/config ─────────────────────────────────────────────────────
 
@@ -3166,6 +3175,40 @@ class TestSseMessageDelivery:
             data = await asyncio.wait_for(resp.content.read(512), timeout=5)
             assert b"event: activated" in data
             assert b"gw_sse_test" in data
+
+    async def test_sse_activated_event_omits_local_key(self, client: TestClient) -> None:
+        """SSE activated event must NOT contain local_key — it is a session credential."""
+        async with client.session.get(
+            client.make_url("/api/provision/events"),
+        ) as resp:
+            assert resp.status == 200
+            await asyncio.wait_for(resp.content.read(64), timeout=5)  # skip connected comment
+
+            await client.post(
+                "/api/tuya/device/active",
+                json={"gw_id": "gw_sse_key", "token": "tok_sse_k"},
+            )
+
+            data = await asyncio.wait_for(resp.content.read(512), timeout=5)
+            assert b"event: activated" in data
+            assert b"local_key" not in data, "local_key must not appear in SSE broadcast"
+
+    async def test_sse_activated_event_omits_ip_address(self, client: TestClient) -> None:
+        """SSE activated event must NOT contain ip_address — it is sensitive information."""
+        async with client.session.get(
+            client.make_url("/api/provision/events"),
+        ) as resp:
+            assert resp.status == 200
+            await asyncio.wait_for(resp.content.read(64), timeout=5)  # skip connected comment
+
+            await client.post(
+                "/api/tuya/device/active",
+                json={"gw_id": "gw_sse_ip", "token": "tok_sse_i"},
+            )
+
+            data = await asyncio.wait_for(resp.content.read(512), timeout=5)
+            assert b"event: activated" in data
+            assert b"ip_address" not in data, "ip_address must not appear in SSE broadcast"
 
 
 # ── _handle_qr with mocked qrcode (lines 391, 401-409) ──────────────────────

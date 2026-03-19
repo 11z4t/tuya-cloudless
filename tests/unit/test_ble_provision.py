@@ -338,6 +338,52 @@ class TestBuildProvisionFrames:
         frame = BleFrame.decode(reassembled)
         assert frame.seq == 42
 
+    def test_with_session_key_payload_is_not_plain_json(self) -> None:
+        """When session_key is provided the payload must be encrypted (not plain JSON)."""
+        session_key = bytes(range(16))
+        chunks = build_provision_frames(self._payload(), session_key=session_key)
+        reassembled = _reassemble_chunks(chunks)
+        frame = BleFrame.decode(reassembled)
+        # Encrypted payload must not decode directly as JSON
+        with pytest.raises((json.JSONDecodeError, UnicodeDecodeError)):
+            json.loads(frame.payload)
+
+    def test_session_key_encrypted_payload_is_multiple_of_16(self) -> None:
+        """AES-ECB encrypted payload is always a multiple of the AES block size."""
+        session_key = bytes(range(16))
+        chunks = build_provision_frames(self._payload(), session_key=session_key)
+        reassembled = _reassemble_chunks(chunks)
+        frame = BleFrame.decode(reassembled)
+        assert len(frame.payload) % 16 == 0, "Encrypted payload must be AES-block-aligned"
+
+    def test_session_key_encryption_roundtrip(self) -> None:
+        """Encrypting then decrypting with the same key returns the original JSON."""
+        from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+        from cryptography.hazmat.primitives.padding import PKCS7
+
+        session_key = derive_session_key(bytes(range(16)), bytes(range(16, 32)))
+        chunks = build_provision_frames(self._payload(), session_key=session_key)
+        reassembled = _reassemble_chunks(chunks)
+        frame = BleFrame.decode(reassembled)
+
+        # Decrypt with AES-ECB to recover the JSON payload
+        cipher = Cipher(algorithms.AES(session_key), modes.ECB())  # nosec B303 — test-only decrypt
+        decryptor = cipher.decryptor()
+        decrypted_padded = decryptor.update(frame.payload) + decryptor.finalize()
+        unpadder = PKCS7(128).unpadder()
+        plaintext = unpadder.update(decrypted_padded) + unpadder.finalize()
+        doc = json.loads(plaintext)
+        assert doc["s"] == "Home"
+        assert doc["activator"] == "http://ha:8099"
+
+    def test_without_session_key_payload_is_plain_json(self) -> None:
+        """Omitting session_key (legacy / test mode) sends payload as plain JSON."""
+        chunks = build_provision_frames(self._payload())
+        reassembled = _reassemble_chunks(chunks)
+        frame = BleFrame.decode(reassembled)
+        doc = json.loads(frame.payload)  # must not raise
+        assert doc["s"] == "Home"
+
 
 # ── build_handshake_frame ─────────────────────────────────────────────────────
 
@@ -459,6 +505,16 @@ class TestReassembleChunksGap:
         chunk_b = bytes([0, 2]) + b"B" * 10  # idx=0 again — gap after sorting
         with pytest.raises(PairingError, match="sequence gap"):
             _reassemble_chunks([chunk_a, chunk_b])
+
+    def test_short_chunk_raises(self) -> None:
+        """A chunk shorter than 2 bytes raises PairingError (MED-2 guard)."""
+        with pytest.raises(PairingError, match="too short"):
+            _reassemble_chunks([b"\x00"])  # only chunk_no byte, missing total
+
+    def test_zero_byte_chunk_raises(self) -> None:
+        """An empty chunk raises PairingError."""
+        with pytest.raises(PairingError):
+            _reassemble_chunks([b""])
 
 
 # ── BleProvisioner — scan ──────────────────────────────────────────────────────

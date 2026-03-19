@@ -317,6 +317,14 @@ def split_frames(buffer: bytes) -> tuple[list[bytes], bytes]:
 
         # Read the length field
         _, _, _, length = _STRUCT_HEADER.unpack_from(buffer, idx)
+
+        # Reject implausibly large frames before allocating — prevents a
+        # crafted device from causing memory amplification via a huge length
+        # field.  Legitimate frames are bounded by MAX_PAYLOAD_SIZE + overhead.
+        if length > MAX_PAYLOAD_SIZE + 8:  # +8 for CRC(4) + suffix(4)
+            offset = idx + 1  # skip this prefix byte and search for next frame
+            continue
+
         frame_end = idx + _STRUCT_HEADER.size + length
 
         if frame_end > len(buffer):

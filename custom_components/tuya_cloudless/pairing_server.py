@@ -414,6 +414,16 @@ class PairingServer:
             self._auto_stop_task = asyncio.create_task(
                 self._auto_stop_after_idle(), name="tuya-cloudless-auto-stop"
             )
+            self._auto_stop_task.add_done_callback(
+                lambda t: (
+                    t.exception()
+                    and _LOGGER.error(
+                        "Auto-stop task raised unexpected exception: %s", t.exception()
+                    )
+                    if not t.cancelled()
+                    else None
+                )
+            )
 
     # ── Route handlers ─────────────────────────────────────────────────────
 
@@ -641,10 +651,10 @@ class PairingServer:
             return web.Response(status=400, text="Field too long")
 
         _LOGGER.info(
-            "Tuya device activation: gw_id=%s product_key=%s token=%s sw_ver=%s ip=%s",
+            "Tuya device activation: gw_id=%s product_key=%s token=%s… sw_ver=%s ip=%s",
             gw_id or "<empty>",
             product_key or "<empty>",
-            token or "<empty>",
+            (token or "<empty>")[:8],  # token is a session credential — log prefix only
             sw_ver or "<empty>",
             client_ip,
         )
@@ -678,14 +688,14 @@ class PairingServer:
                 self._results[token] = result
                 self._expire_old_results()
 
-        # Notify SSE subscribers.  local_key is intentionally excluded here —
-        # it is sensitive and the stream has no per-subscriber authentication.
-        # The browser retrieves the key via GET /api/provision/result/{token}
-        # which is only useful to the holder of the token.
+        # Notify SSE subscribers.  local_key and ip_address are intentionally
+        # excluded — both are sensitive and the stream has no per-subscriber
+        # authentication (ACAO: * for config endpoint, SSE open to all tabs).
+        # The browser retrieves the key and IP via GET /api/provision/result/{token}
+        # which is only useful to the holder of the session token.
         event_data = {
             "gw_id": gw_id,
             "token": token,
-            "ip_address": client_ip,
         }
         await self._broadcast_sse("activated", json.dumps(event_data))
 
@@ -1006,6 +1016,10 @@ class PairingServer:
             JSON: ``{"token": "...", "events_url": "/api/provision/events"}``
             Returns immediately; pairing happens in the background.
         """
+        content_type = request.content_type or ""
+        if not content_type.startswith("application/json"):
+            return web.Response(status=415, text="Content-Type must be application/json")
+
         try:
             body: dict[str, object] = await request.json()
         except (json.JSONDecodeError, ValueError, UnicodeDecodeError):
@@ -1547,6 +1561,8 @@ class PairingServer:
             event: SSE event name (e.g. ``"activated"``).
             data:  JSON string payload.
         """
+        if "\n" in event or "\r" in event:
+            raise ValueError(f"SSE event name must not contain newlines: {event!r}")
         message = f"event: {event}\ndata: {data}\n\n"
         stale: list[asyncio.Queue[str | None]] = []
         for q in list(self._sse_queues):
