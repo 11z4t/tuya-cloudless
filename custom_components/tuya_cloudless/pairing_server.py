@@ -848,7 +848,13 @@ class PairingServer:
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.DEVNULL,
             )
-            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=15.0)
+            try:
+                stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=15.0)
+            except TimeoutError:
+                # Kill the subprocess so it doesn't linger as a zombie; then re-raise
+                # so the outer except can log and return an empty list.
+                proc.kill()
+                raise
             result: list[str] = []
             for line in stdout.decode(errors="replace").splitlines():
                 ssid = line.strip()

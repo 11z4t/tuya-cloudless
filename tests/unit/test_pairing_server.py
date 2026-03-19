@@ -422,6 +422,32 @@ class TestWifiScan:
         assert data["ssids"] == []
         assert data["current_ssid"] is None
 
+    async def test_nmcli_timeout_kills_process_and_returns_empty(self, client: TestClient) -> None:
+        """When nmcli hangs, wait_for raises TimeoutError — proc.kill() must be called
+        and the endpoint must still return HTTP 200 with an empty SSID list."""
+        from unittest.mock import MagicMock, patch
+
+        mock_proc = MagicMock()
+        kill_called = False
+
+        def _kill() -> None:
+            nonlocal kill_called
+            kill_called = True
+
+        mock_proc.kill = _kill
+
+        with (
+            patch("asyncio.create_subprocess_exec", return_value=mock_proc),
+            patch("asyncio.wait_for", side_effect=asyncio.TimeoutError),
+            patch("asyncio.sleep"),
+        ):
+            resp = await client.get("/api/provision/wifi-scan")
+
+        assert resp.status == 200
+        data = await resp.json()
+        assert data["ssids"] == []
+        assert kill_called, "proc.kill() must be called when nmcli times out"
+
     async def test_uses_rescan_yes_then_no(self, client: TestClient) -> None:
         """Scan makes two passes: first --rescan yes, then --rescan no."""
         from unittest.mock import AsyncMock, MagicMock, patch

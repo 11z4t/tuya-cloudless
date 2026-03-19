@@ -2118,6 +2118,26 @@ test.describe("WiFi AP pairing flow", () => {
     await expect(page.locator("#btn-next")).toBeEnabled();
   });
 
+  test("Escape key has no effect when cancel button is hidden (not pairing)", async ({ page }) => {
+    // Regression guard: pressing Escape before pairing starts must not break UI
+    await setupRoutes(page, { tuya_aps: [{ ssid: "SmartLife_AB12" }] });
+    await loadPage(page);
+
+    // Navigate to credentials panel (cancel button does not exist yet)
+    await page.locator(".device-card").first().click();
+    await page.waitForSelector("#panel-wifi:not(.hidden)");
+
+    // Cancel button must be hidden at this point (pairing not started)
+    await expect(page.locator("#btn-cancel-wifi-ap")).toBeHidden();
+
+    // Press Escape — must not navigate away or break the UI
+    await page.keyboard.press("Escape");
+
+    // Credentials panel must still be visible and operable
+    await expect(page.locator("#panel-wifi")).not.toHaveClass(/hidden/);
+    await expect(page.locator("#btn-next")).toBeEnabled();
+  });
+
   test("quick-scan server error falls back to no-devices message without blocking UI", async ({ page }) => {
     await setupRoutes(page);
     // Override quick-scan to return a server error
