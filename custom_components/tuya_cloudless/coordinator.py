@@ -469,16 +469,18 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 _LOGGER.info("[%s] TCP connection closed by device", self._gw_id)
                 break
 
-            msg_buf.feed(chunk)
-            if msg_buf.pending_bytes > _MAX_BUFFER_BYTES:
+            # Check BEFORE feeding to prevent MessageBuffer.feed() from raising
+            # ProtocolError directly (which would bypass the reconnect log below).
+            if msg_buf.pending_bytes + len(chunk) > _MAX_BUFFER_BYTES:
                 _LOGGER.warning(
-                    "[%s] Receive buffer exceeded %d bytes — forcing reconnect",
+                    "[%s] Receive buffer would exceed %d bytes — forcing reconnect",
                     self._gw_id,
                     _MAX_BUFFER_BYTES,
                 )
                 if self._writer is not None:
                     self._writer.close()
                 return
+            msg_buf.feed(chunk)
 
             for tuya_msg in msg_buf.messages():
                 try:

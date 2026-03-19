@@ -252,6 +252,12 @@ def decode_frame(
             f"Bad frame prefix: {prefix.hex()} (expected {FRAME_PREFIX.hex()})"
         )
 
+    # The length field encodes: payload_size + CRC(4) + suffix(4) = minimum 8.
+    # A value < 8 would make suffix_offset overlap with or precede the header.
+    if length < 8:
+        raise MalformedPacketError(
+            f"Frame length field {length} too small (minimum 8 for CRC + suffix)"
+        )
     suffix_offset = _STRUCT_HEADER.size + length - 4  # suffix is last 4 bytes of length
     if suffix_offset + 4 > len(data):
         raise MalformedPacketError(
@@ -313,8 +319,17 @@ def split_frames(buffer: bytes) -> tuple[list[bytes], bytes]:
     """
     frames: list[bytes] = []
     offset = 0
+    # Bound iterations to prevent a pathological buffer (e.g., all prefix bytes)
+    # from causing O(N) loop iterations in the asyncio event loop.
+    # In practice a 64 KB buffer has at most ~1000 legitimate frames.
+    _MAX_ITERATIONS = 4096
+    _iterations = 0
 
     while offset < len(buffer):
+        _iterations += 1
+        if _iterations > _MAX_ITERATIONS:
+            break  # Prevent pathological O(N) loop on adversarial prefix-heavy buffers
+
         # Find next prefix
         idx = buffer.find(FRAME_PREFIX, offset)
         if idx == -1:

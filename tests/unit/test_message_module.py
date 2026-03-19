@@ -39,9 +39,15 @@ class TestCommandType:
     def test_from_int_valid(self) -> None:
         assert CommandType.from_int(0x09) == CommandType.HEART_BEAT
 
-    def test_from_int_unknown_raises(self) -> None:
-        with pytest.raises(InvalidMessageError, match="Unknown command type"):
-            CommandType.from_int(0xFF)
+    def test_from_int_unknown_returns_raw_int(self) -> None:
+        """Unknown command codes are returned as raw int, not raised.
+
+        This prevents devices with new/extended command codes from being
+        counted as decode errors and triggering a permanent reconnect loop.
+        """
+        result = CommandType.from_int(0xFF)
+        assert result == 0xFF
+        assert not isinstance(result, CommandType)
 
     def test_udp_command(self) -> None:
         assert CommandType.UDP == 0x01

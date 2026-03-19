@@ -104,6 +104,15 @@ _RATE_LIMIT_MAX: Final[int] = 10
 #: Rate-limit sliding window in seconds (SEC-001 / PLAT-824)
 _RATE_LIMIT_WINDOW: Final[float] = 60.0
 
+#: Maximum distinct IPs tracked in the rate-limit table.
+#: Prevents memory exhaustion from an IP-rotating attacker flooding with many
+#: source addresses.  When the cap is reached, the oldest entry is evicted.
+_MAX_RATE_LIMIT_IPS: Final[int] = 1024
+
+#: Separate entropy constant for provisioning tokens (distinct from local_key).
+#: secrets.token_hex(_PROVISION_TOKEN_BYTES) = 16 bytes = 32 lowercase hex chars.
+_PROVISION_TOKEN_BYTES: Final[int] = 16
+
 # ── SSE connection constants ────────────────────────────────────────────────
 
 #: Maximum concurrent SSE connections (SEC-002 / PLAT-825)
@@ -895,7 +904,9 @@ class PairingServer:
                     break
 
                 await response.write(message.encode())
-        except (ConnectionResetError, asyncio.CancelledError):
+        except asyncio.CancelledError:
+            raise  # Re-raise to properly signal task cancellation to asyncio
+        except ConnectionResetError:
             pass
         finally:
             if queue in self._sse_queues:
@@ -1150,7 +1161,7 @@ class PairingServer:
                 text="nmcli not available; WiFi AP pairing requires NetworkManager",
             )
 
-        token = secrets.token_hex(_LOCAL_KEY_BYTES)
+        token = secrets.token_hex(_PROVISION_TOKEN_BYTES)
         activator_url = self.ha_local_url()
 
         self._wifi_ap_pairing_in_progress.add(ap_ssid)
@@ -1647,7 +1658,16 @@ class PairingServer:
             )
             return True
         timestamps.append(now)
+        # Evict stale entries (empty lists = window has fully expired for that IP).
         self._rate_limit = {ip: ts_list for ip, ts_list in self._rate_limit.items() if ts_list}
+        # Hard cap on number of distinct tracked IPs — prevents memory exhaustion
+        # from an IP-rotating attacker filling the dict with many source addresses.
+        if len(self._rate_limit) > _MAX_RATE_LIMIT_IPS:
+            oldest_ip = min(
+                self._rate_limit,
+                key=lambda ip: self._rate_limit[ip][0] if self._rate_limit[ip] else 0,
+            )
+            del self._rate_limit[oldest_ip]
         return False
 
     async def _broadcast_sse(self, event: str, data: str) -> None:

@@ -263,17 +263,22 @@ def add_v33_header(plaintext: bytes) -> bytes:
 def strip_v33_header(data: bytes) -> bytes:
     """Strip the 12-byte v3.3 version header from a decrypted payload.
 
-    Only called for v3.3 payloads — v3.4/3.5 use GCM and return before
-    reaching this function, so the b"3.4"/b"3.5" checks would be dead code.
+    Only called for v3.3 payloads (``VERSIONS_WITH_PAYLOAD_HEADER``).  The
+    header is always present for v3.3 encrypted frames — checking for the
+    magic bytes is intentional to remain safe if called with a payload that
+    unexpectedly has no header (e.g., a device firmware edge case).
 
     Args:
-        data: Decrypted payload bytes (may or may not have header).
+        data: Decrypted payload bytes.
 
     Returns:
-        Payload bytes with header removed if present.
+        Payload bytes with 12-byte header stripped if the magic prefix is present.
     """
-    if data[:3] == b"3.3":
-        return data[_AES_BLOCK - 4 :]  # 12-byte header
+    if data[:3] in (b"3.3", b"3.4", b"3.5"):
+        # The header is always prepended by add_v33_header for v3.3 devices.
+        # The version prefix check avoids corrupting a payload that starts with
+        # something other than the 12-byte header (firmware edge case).
+        return data[_AES_BLOCK - 4 :]  # 12-byte header: 3 (ver) + 1 (.) + 8 (padding)
     return data
 
 

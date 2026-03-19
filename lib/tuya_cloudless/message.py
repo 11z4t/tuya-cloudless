@@ -128,23 +128,24 @@ class CommandType(IntEnum):
     UNBIND_V35 = 0x25
 
     @classmethod
-    def from_int(cls, value: int) -> CommandType:
-        """Convert integer to CommandType, raising on unknown values.
+    def from_int(cls, value: int) -> CommandType | int:
+        """Convert integer to CommandType, returning raw int for unknown values.
+
+        Unknown command codes are returned as plain ints rather than raising
+        ``InvalidMessageError``.  This prevents new Tuya firmware that uses
+        previously unseen command codes from being counted as decode errors and
+        triggering a permanent reconnect loop in the coordinator.
 
         Args:
             value: Integer command type from wire.
 
         Returns:
-            Matching CommandType enum member.
-
-        Raises:
-            InvalidMessageError: If value is not a known command type.
+            Matching :class:`CommandType` member, or the raw ``int`` if unknown.
         """
         try:
             return cls(value)
         except ValueError:
-            msg = f"Unknown command type: 0x{value:02X}"
-            raise InvalidMessageError(msg) from None
+            return value
 
 
 # ---------------------------------------------------------------------------
@@ -561,6 +562,9 @@ class MessageBuffer:
                     "discarding buffer to prevent stall",
                     cur_buf_len,
                 )
+                # Count the stall as an error so the coordinator's consecutive-error
+                # reconnect threshold is correctly triggered.
+                self._error_count += 1
                 self._buffer.clear()
                 break
             prev_buf_len = cur_buf_len

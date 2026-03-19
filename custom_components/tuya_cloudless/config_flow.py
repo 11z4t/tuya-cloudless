@@ -233,6 +233,7 @@ class TuyaCloudlessConfigFlow(ConfigFlow, domain=DOMAIN):
             local_key = str(user_input.get(CONF_LOCAL_KEY, "")).strip()
             ip_address = str(user_input.get(CONF_IP_ADDRESS, "")).strip()
 
+            _version = str(user_input.get(CONF_PROTOCOL_VERSION, DEFAULT_PROTOCOL_VERSION))
             if (
                 gw_id
                 and _GW_ID_RE.match(gw_id)
@@ -240,14 +241,13 @@ class TuyaCloudlessConfigFlow(ConfigFlow, domain=DOMAIN):
                 and local_key.isascii()
                 and local_key.isprintable()
                 and _validate_ip(ip_address)
+                and _version in PROTOCOL_VERSIONS
             ):
                 self._device = {
                     CONF_GW_ID: gw_id,
                     CONF_LOCAL_KEY: local_key,
                     CONF_IP_ADDRESS: ip_address,
-                    CONF_PROTOCOL_VERSION: str(
-                        user_input.get(CONF_PROTOCOL_VERSION, DEFAULT_PROTOCOL_VERSION)
-                    ),
+                    CONF_PROTOCOL_VERSION: _version,
                     CONF_DEVICE_NAME: str(user_input.get(CONF_DEVICE_NAME, "")).strip()
                     or ip_address,
                 }
