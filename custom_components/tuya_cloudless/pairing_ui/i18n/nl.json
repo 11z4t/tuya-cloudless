@@ -79,5 +79,7 @@
   "err_pair_fail": "Apparaat heeft WiFi-configuratie geweigerd. Controleer de gegevens en probeer opnieuw.",
   "wifi_ap_nmcli_missing": "WiFi-besturing niet beschikbaar — nmcli is niet geïnstalleerd op deze Home Assistant-host.",
   "warn_no_device_selected": "Geen apparaat geselecteerd. Ga terug en selecteer een apparaat.",
-  "btn_cancel": "Annuleren"
+  "btn_cancel": "Annuleren",
+  "wifi_scan_unavailable": "WiFi scanning is not available on this host — type your network name below.",
+  "wifi_scan_empty": "No networks found. Try typing your network name."
 }

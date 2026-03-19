@@ -266,6 +266,8 @@ function applyStrings() {
       ? t("debug_title") + " (" + count + ")"
       : t("debug_title");
   }
+  // Re-apply WiFi scan unavailable state (hint text must update on language change)
+  if (!_wifiScanAvailable) _applyWifiScanUnavailableUi();
 }
 
 function changeLang(lang) {
@@ -300,6 +302,7 @@ let _selectedApSsid = null;   // SSID of Tuya AP chosen by user
 let _currentEventSource = null; // Active EventSource — closed on panel switch
 let _activeSseTimer    = null; // setTimeout handle from listenForActivation — cleared on unload
 let _wifiApDone        = false; // dedup guard: set true when WiFi AP pair is resolved/cancelled
+let _wifiScanAvailable = true;  // updated from server config; false when nmcli unavailable
 
 // ── Step counter ──────────────────────────────────────────────────────────────
 let _currentStep = 1;
@@ -413,10 +416,28 @@ async function loadServerConfig() {
         }
       }
     }
+    if (cfg.wifi_scan_available === false) {
+      _wifiScanAvailable = false;
+      _applyWifiScanUnavailableUi();
+    }
   } catch (_) { /* keep defaults */ }
 }
 
 // ── WiFi scan ─────────────────────────────────────────────────────────────────
+function _applyWifiScanUnavailableUi() {
+  const btn = document.getElementById("btn-wifi-scan");
+  if (btn) {
+    btn.disabled = true;
+    btn.setAttribute("aria-label", t("wifi_scan_unavailable"));
+    btn.title = t("wifi_scan_unavailable");
+  }
+  const hint = document.getElementById("wifi-scan-hint");
+  if (hint) {
+    hint.textContent = t("wifi_scan_unavailable");
+    hint.classList.remove("hidden");
+  }
+}
+
 async function scanWifi() {
   const btn = document.getElementById("btn-wifi-scan");
   if (!btn) return;
@@ -441,7 +462,7 @@ async function scanWifi() {
     const ssids = allSsids.slice(0, 20);
     const current = data.current_ssid || null;
     dbg("WiFi scan: " + ssids.length + "/" + allSsids.length + " home networks shown (" + tuyaApSsids.size + " Tuya APs filtered)");
-    showWifiDropdown(ssids, current);
+    showWifiDropdown(ssids, current, _wifiScanAvailable);
   } catch (err) {
     dbg("WiFi scan error: " + err.message);
     // Close dropdown on error — showing "No networks found" would be misleading
@@ -458,7 +479,7 @@ async function scanWifi() {
   }
 }
 
-function showWifiDropdown(ssids, currentSsid) {
+function showWifiDropdown(ssids, currentSsid, nmcliAvailable = true) {
   const dd = document.getElementById("wifi-dropdown");
   if (!dd) return;
   dd.innerHTML = "";
@@ -469,7 +490,7 @@ function showWifiDropdown(ssids, currentSsid) {
     item.className = "wifi-option muted";
     item.setAttribute("role", "option");
     item.setAttribute("aria-disabled", "true");
-    item.textContent = t("wifi_scan_none");
+    item.textContent = nmcliAvailable ? t("wifi_scan_empty") : t("wifi_scan_unavailable");
     dd.appendChild(item);
   } else {
     for (const ssid of ssids) {
@@ -1658,6 +1679,7 @@ if (typeof module !== "undefined") {
     _getRecvReject: () => _recvReject,
     _getActiveSseTimer: () => _activeSseTimer,
     _getWifiApDone: () => _wifiApDone,
+    _getWifiScanAvailable: () => _wifiScanAvailable,
     _listenForActivation: listenForActivation,
     _updateStepCounter: updateStepCounter,
   };

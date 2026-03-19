@@ -484,6 +484,7 @@ class PairingServer:
                 "events_url": f"{base}/api/provision/events",
                 "result_url_template": f"{base}/api/provision/result/{{token}}",
                 "default_ssid": default_ssid,
+                "wifi_scan_available": shutil.which("nmcli") is not None,
             },
             headers={"Access-Control-Allow-Origin": "*"},
         )
@@ -1466,6 +1467,26 @@ class PairingServer:
                         return ssid
         except (FileNotFoundError, TimeoutError, OSError) as exc:
             _LOGGER.debug("Default SSID lookup unavailable: %s", exc)
+        # fallback: try iwgetid (lightweight, often available without NetworkManager)
+        if shutil.which("iwgetid"):
+            try:
+                proc = await asyncio.create_subprocess_exec(
+                    "iwgetid",
+                    "-r",
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.DEVNULL,
+                )
+                stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=3.0)
+                ssid = stdout.decode(errors="replace").strip()
+                if (
+                    ssid
+                    and ssid != "--"
+                    and not _CTRL_CHAR_RE.search(ssid)
+                    and len(ssid.encode()) <= 32
+                ):
+                    return ssid
+            except (FileNotFoundError, TimeoutError, OSError) as exc:
+                _LOGGER.debug("iwgetid fallback unavailable: %s", exc)
         return None
 
     def _is_rate_limited(

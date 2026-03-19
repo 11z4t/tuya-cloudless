@@ -79,5 +79,7 @@
   "label_hide_key": "隐藏",
   "wifi_ap_nmcli_missing": "WiFi控制不可用 — 此Home Assistant主机未安装nmcli。",
   "warn_no_device_selected": "未选择设备。请返回并选择一个设备。",
-  "btn_cancel": "取消"
+  "btn_cancel": "取消",
+  "wifi_scan_unavailable": "WiFi scanning is not available on this host — type your network name below.",
+  "wifi_scan_empty": "No networks found. Try typing your network name."
 }

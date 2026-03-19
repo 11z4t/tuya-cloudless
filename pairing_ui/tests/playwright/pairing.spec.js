@@ -3071,3 +3071,44 @@ test.describe("WiFi AP pair — network fetch error", () => {
     await expect(page.locator("#wifi-ap-status")).not.toHaveClass(/status-error/);
   });
 });
+
+// ── WiFi scan availability (nmcli unavailable) ────────────────────────────────
+
+test.describe("WiFi scan availability", () => {
+  test("wifi_scan_available=false: scan button disabled and hint shown", async ({ page }) => {
+    await setupRoutes(page, {
+      config: {
+        activator_url: BASE,
+        events_url: BASE + "/api/provision/events",
+        wifi_scan_available: false,
+      },
+      tuya_aps: [],
+    });
+    await loadPage(page);
+
+    // Navigate to credentials panel (select BLE, go to wifi step)
+    await page.locator("#btn-ble-scan").click();
+    await page.waitForSelector("#panel-wifi:not(.hidden)");
+
+    await expect(page.locator("#btn-wifi-scan")).toBeDisabled();
+    await expect(page.locator("#wifi-scan-hint")).toBeVisible();
+    await expect(page.locator("#wifi-scan-hint")).not.toBeEmpty();
+  });
+
+  test("wifi_scan_available=true (default): scan button enabled, hint hidden", async ({ page }) => {
+    await setupRoutes(page, {
+      config: {
+        activator_url: BASE,
+        events_url: BASE + "/api/provision/events",
+        wifi_scan_available: true,
+      },
+    });
+    await loadPage(page);
+
+    await page.locator("#btn-ble-scan").click();
+    await page.waitForSelector("#panel-wifi:not(.hidden)");
+
+    await expect(page.locator("#btn-wifi-scan")).toBeEnabled();
+    await expect(page.locator("#wifi-scan-hint")).toBeHidden();
+  });
+});

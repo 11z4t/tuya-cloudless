@@ -2002,6 +2002,39 @@ class TestConfigEndpoint:
         resp = await client.get("/api/provision/config")
         assert resp.headers.get("Access-Control-Allow-Origin") == "*"
 
+    async def test_config_includes_wifi_scan_available(self, client: TestClient) -> None:
+        """wifi_scan_available key must always be present and be a bool."""
+        resp = await client.get("/api/provision/config")
+        data = await resp.json()
+        assert "wifi_scan_available" in data
+        assert isinstance(data["wifi_scan_available"], bool)
+
+    async def test_config_wifi_scan_available_false_when_nmcli_missing(
+        self, client: TestClient
+    ) -> None:
+        """wifi_scan_available must be False when shutil.which('nmcli') returns None."""
+        from unittest.mock import patch
+
+        with patch("shutil.which", return_value=None):
+            resp = await client.get("/api/provision/config")
+        data = await resp.json()
+        assert data["wifi_scan_available"] is False
+
+    async def test_default_ssid_uses_iwgetid_when_nmcli_fails(self, client: TestClient) -> None:
+        """When nmcli raises FileNotFoundError, iwgetid fallback is tried."""
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        mock_proc = MagicMock()
+        mock_proc.communicate = AsyncMock(return_value=(b"MyFallbackNet\n", b""))
+
+        with (
+            patch("asyncio.create_subprocess_exec", side_effect=[FileNotFoundError, mock_proc]),
+            patch("shutil.which", return_value="/sbin/iwgetid"),
+        ):
+            resp = await client.get("/api/provision/config")
+        data = await resp.json()
+        assert data["default_ssid"] == "MyFallbackNet"
+
 
 # ── /static/icon.png ──────────────────────────────────────────────────────────
 

@@ -79,5 +79,7 @@
   "err_pair_fail": "Enheden afviste WiFi-konfigurationen. Tjek legitimationsoplysningerne og prøv igen.",
   "wifi_ap_nmcli_missing": "WiFi-kontrol utilgængelig — nmcli er ikke installeret på denne Home Assistant-vært.",
   "warn_no_device_selected": "Ingen enhed valgt. Gå tilbage og vælg en enhed.",
-  "btn_cancel": "Annuller"
+  "btn_cancel": "Annuller",
+  "wifi_scan_unavailable": "WiFi scanning is not available on this host — type your network name below.",
+  "wifi_scan_empty": "No networks found. Try typing your network name."
 }

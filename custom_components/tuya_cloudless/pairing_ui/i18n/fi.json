@@ -79,5 +79,7 @@
   "err_pair_fail": "Laite hylkäsi WiFi-asetukset. Tarkista tiedot ja yritä uudelleen.",
   "wifi_ap_nmcli_missing": "WiFi-ohjaus ei käytettävissä — nmcli ei ole asennettu tälle Home Assistant -isännälle.",
   "warn_no_device_selected": "Laitetta ei ole valittu. Mene takaisin ja valitse laite.",
-  "btn_cancel": "Peruuta"
+  "btn_cancel": "Peruuta",
+  "wifi_scan_unavailable": "WiFi scanning is not available on this host — type your network name below.",
+  "wifi_scan_empty": "No networks found. Try typing your network name."
 }

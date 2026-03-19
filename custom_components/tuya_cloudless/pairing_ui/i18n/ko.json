@@ -79,5 +79,7 @@
   "err_pair_fail": "기기가 WiFi 구성을 거부했습니다. 자격증명을 확인하고 다시 시도하세요.",
   "wifi_ap_nmcli_missing": "WiFi control unavailable — nmcli is not installed on this Home Assistant host.",
   "warn_no_device_selected": "No device selected. Go back and select a device.",
-  "btn_cancel": "Cancel"
+  "btn_cancel": "Cancel",
+  "wifi_scan_unavailable": "WiFi scanning is not available on this host — type your network name below.",
+  "wifi_scan_empty": "No networks found. Try typing your network name."
 }

@@ -79,5 +79,7 @@
   "err_pair_fail": "Gerät hat WiFi-Konfiguration abgelehnt. Zugangsdaten prüfen und wiederholen.",
   "wifi_ap_nmcli_missing": "WLAN-Steuerung nicht verfügbar — nmcli ist auf diesem Home-Assistant-Host nicht installiert.",
   "warn_no_device_selected": "Kein Gerät ausgewählt. Gehen Sie zurück und wählen Sie ein Gerät aus.",
-  "btn_cancel": "Abbrechen"
+  "btn_cancel": "Abbrechen",
+  "wifi_scan_unavailable": "WiFi scanning is not available on this host — type your network name below.",
+  "wifi_scan_empty": "No networks found. Try typing your network name."
 }

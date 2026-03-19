@@ -79,5 +79,7 @@
   "err_pair_fail": "El dispositivo rechazó la configuración WiFi. Verifica las credenciales e inténtalo de nuevo.",
   "wifi_ap_nmcli_missing": "Control WiFi no disponible — nmcli no está instalado en este host de Home Assistant.",
   "warn_no_device_selected": "Ningún dispositivo seleccionado. Vuelve atrás y selecciona un dispositivo.",
-  "btn_cancel": "Cancelar"
+  "btn_cancel": "Cancelar",
+  "wifi_scan_unavailable": "WiFi scanning is not available on this host — type your network name below.",
+  "wifi_scan_empty": "No networks found. Try typing your network name."
 }

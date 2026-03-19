@@ -79,5 +79,7 @@
   "label_hide_key": "Dölj",
   "wifi_ap_nmcli_missing": "WiFi-kontroll ej tillgänglig — nmcli är inte installerat på denna Home Assistant-värd.",
   "warn_no_device_selected": "Ingen enhet vald. Gå tillbaka och välj en enhet.",
-  "btn_cancel": "Avbryt"
+  "btn_cancel": "Avbryt",
+  "wifi_scan_unavailable": "WiFi-scanning är inte tillgänglig — ange nätverksnamnet nedan.",
+  "wifi_scan_empty": "Inga nätverk hittades. Ange nätverksnamnet manuellt."
 }
