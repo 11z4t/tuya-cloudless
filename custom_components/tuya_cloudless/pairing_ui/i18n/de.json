@@ -87,5 +87,9 @@
   "show": "Show",
   "hide": "Hide",
   "back_to_devices": "← Back to Devices",
-  "back_to_wifi": "← Back to WiFi"
+  "back_to_wifi": "← Back to WiFi",
+  "devices_found": "✓ Found {count} device(s) in pairing mode — click to pair",
+  "step2_hint_1": "Put device in pairing mode — hold pair button 5–10 sec (or factory reset)",
+  "step2_hint_2": "Wait until the LED flashes rapidly",
+  "step2_hint_3": "Click Scan & Pair below"
 }

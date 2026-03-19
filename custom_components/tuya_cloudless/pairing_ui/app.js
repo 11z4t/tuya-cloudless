@@ -206,7 +206,10 @@ function applyStrings() {
   el("step2-title").textContent    = t("step2_title");
   el("step2-badge").textContent    = t("step2_badge");
   el("step2-desc").textContent     = t("step2_desc");
-  el("step2-hint").textContent     = t("step2_hint");
+  // Numbered pairing steps (step2-hint is now an <ol> with 3 <li> items)
+  if (el("step2-hint-1")) el("step2-hint-1").textContent = t("step2_hint_1") || "Put device in pairing mode — hold pair button 5–10 sec";
+  if (el("step2-hint-2")) el("step2-hint-2").textContent = t("step2_hint_2") || "Wait until the LED flashes rapidly";
+  if (el("step2-hint-3")) el("step2-hint-3").textContent = t("step2_hint_3") || "Click Scan & Pair below";
   el("btn-pair-label").textContent = t("btn_scan");
   el("step3-title").textContent    = t("step3_title");
   el("ha-flow-msg").textContent    = t("step3_ha_flow");
@@ -625,7 +628,10 @@ function showDeviceCard(ssid) {
   card.setAttribute("aria-label", ssid + " — " + t("pair_via_wifi_ap"));
   card.innerHTML =
     "<div class=\"device-card-left\">" +
+    "<div style=\"display:flex;align-items:center;gap:8px\">" +
+    "<span class=\"device-led\" title=\"In pairing mode\" aria-hidden=\"true\"></span>" +
     "<div class=\"device-card-name\">" + esc(ssid) + "</div>" +
+    "</div>" +
     "<span class=\"device-ap-badge\">" + esc(t("pair_via_wifi_ap")) + "</span>" +
     "</div>" +
     "<span class=\"device-card-arrow\" aria-hidden=\"true\">\u203a</span>";
@@ -681,7 +687,11 @@ async function autoDetectDevices() {
     } else {
       for (const ap of aps) { if (ap.ssid) showDeviceCard(ap.ssid); }
       dbg("Found " + aps.length + " Tuya AP(s)");
-      if (statusLive) statusLive.textContent = aps.length + " " + t("pair_via_wifi_ap");
+      if (noDevEl) {
+        noDevEl.textContent = t("devices_found", { count: aps.length });
+        noDevEl.className = "status-box status-success";
+      }
+      if (statusLive) statusLive.textContent = t("devices_found", { count: aps.length });
     }
   } catch (err) {
     dbg("quick-scan failed: " + (err.message || err));

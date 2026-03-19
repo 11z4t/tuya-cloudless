@@ -87,5 +87,9 @@
   "show": "Visa",
   "hide": "Dölj",
   "back_to_devices": "← Tillbaka till enheter",
-  "back_to_wifi": "← Tillbaka till WiFi"
+  "back_to_wifi": "← Tillbaka till WiFi",
+  "devices_found": "✓ Hittade {count} enhet(er) i parkopplingsläge — klicka för att parkoppla",
+  "step2_hint_1": "Sätt enheten i parkopplingsläge — håll in parkopplingsknappen 5–10 sek (eller återställ)",
+  "step2_hint_2": "Vänta tills lysdioden blinkar snabbt",
+  "step2_hint_3": "Klicka på Sök & Parkoppla nedan"
 }

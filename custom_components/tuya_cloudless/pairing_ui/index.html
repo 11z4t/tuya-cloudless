@@ -170,7 +170,7 @@
     .wifi-option.muted { color: var(--muted); cursor: default; }
     .wifi-option.muted:hover { background: transparent; color: var(--muted); }
     .wifi-option.wifi-option-current { font-weight: 600; }
-    .wifi-option.wifi-option-current::after { content: " ✓"; opacity: 0.6; font-weight: 400; }
+    .wifi-option.wifi-option-current::before { content: "✓ "; color: var(--success); font-weight: 700; }
 
     .btn {
       display: inline-flex;
@@ -382,10 +382,45 @@
 
     /* Better highlight for current WiFi network in dropdown */
     .wifi-option.wifi-option-current {
-      background: rgba(249, 115, 22, 0.12);
-      color: var(--accent);
+      background: rgba(52, 211, 153, 0.08);
+      color: var(--success);
     }
-    .wifi-option.wifi-option-current:hover { background: var(--accent); color: #0f172a; }
+    .wifi-option.wifi-option-current:hover { background: var(--success); color: #0f172a; }
+
+    /* Pulsing LED indicator on device cards (shows device is in pairing/AP mode) */
+    .device-led {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--success);
+      animation: led-pulse 1.4s ease-in-out infinite;
+      flex-shrink: 0;
+    }
+    @keyframes led-pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50%       { opacity: 0.35; transform: scale(0.75); }
+    }
+
+    /* Numbered pairing instruction list */
+    .pairing-steps {
+      list-style: decimal;
+      padding-left: 1.4rem;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      font-size: 0.85rem;
+      color: var(--muted);
+      line-height: 1.5;
+      margin: 0;
+    }
+    .pairing-steps li::marker { color: var(--accent); font-weight: 700; }
+
+    /* Pop-in animation for done checkmark */
+    @keyframes pop-in {
+      0%   { transform: scale(0.3); opacity: 0; }
+      70%  { transform: scale(1.2); opacity: 1; }
+      100% { transform: scale(1);   opacity: 1; }
+    }
+    .done-check { animation: pop-in .45s cubic-bezier(.175, .885, .32, 1.275) both; }
 
     .ha-flow-notice {
       text-align: center;
@@ -617,10 +652,11 @@
       <span class="badge" id="step2-badge">Chrome / Edge</span>
     </h2>
     <p class="step-desc" id="step2-desc">Make sure your device is flashing rapidly (pairing mode).</p>
-    <p class="step-hint" id="step2-hint">
-      Put your Tuya device in pairing mode (factory reset or hold the pair button until
-      the indicator flashes rapidly), then click Scan &amp; Pair.
-    </p>
+    <ol class="pairing-steps" id="step2-hint" aria-label="Pairing instructions">
+      <li id="step2-hint-1">Put device in pairing mode — hold pair button 5–10 sec (or factory reset)</li>
+      <li id="step2-hint-2">Wait until the LED flashes rapidly</li>
+      <li id="step2-hint-3">Click Scan &amp; Pair below</li>
+    </ol>
 
     <!-- HTTPS warning — only shown when !isSecureContext -->
     <div id="warn-https" class="status-box status-warn hidden">
