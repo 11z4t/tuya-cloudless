@@ -83,14 +83,94 @@ async function loadLang(lang) {
 function t(key, vars) {
   let s = _strings[key];
   if (s === undefined) {
-    // Provide built-in fallbacks for critical keys so UI never shows raw key names
+    // Provide built-in fallbacks for critical keys so UI never shows raw key names.
+    // These mirror en.json so the UI is fully usable even if the i18n fetch fails.
     const fallbacks = {
-      btn_next: "Next \u2192",
-      step_x_of_y: "Step {x} of {y}",
-      wifi_scan_none: "No networks found",
-      debug_title: "Debug log",
-      help_text: "Need help?",
-      help_link_label: "Open guide \u2192",
+      // Navigation & chrome
+      title:              "Tuya Cloudless \u2014 Pair Device",
+      btn_next:           "Next \u2192",
+      btn_back:           "\u2190 Back",
+      btn_pair_another:   "\u2190 Pair Another Device",
+      btn_cancel:         "Cancel",
+      btn_scan:           "Scan & Pair",
+      btn_add_ha:         "Add to Home Assistant",
+      btn_pair_wifi_ap:   "Pair device \u2192",
+      step_x_of_y:        "Step {x} of {y}",
+      lang_picker_label:  "Language",
+      footer_github:      "GitHub",
+      footer_no_cloud:    "No cloud account required",
+      // Device discovery panel
+      device_panel_title:    "Find device",
+      device_panel_desc:     "Devices found nearby appear automatically. Or use Bluetooth to scan.",
+      looking_for_devices:   "Looking for devices\u2026",
+      no_devices_auto_found: "No Tuya devices found nearby. Use Bluetooth below, or put the device in pairing mode and try again.",
+      scan_refresh:          "Refresh",
+      pair_via_ble:          "Scan via Bluetooth",
+      pair_via_wifi_ap:      "WiFi AP",
+      // Credential step
+      step1_title:       "WiFi credentials",
+      step1_desc:        "Your device will connect to this network after pairing.",
+      ssid_label:        "Network name (SSID)",
+      ssid_placeholder:  "My Home WiFi",
+      password_label:    "Password",           // pragma: allowlist secret
+      password_placeholder: "WiFi password",   // pragma: allowlist secret
+      show_password:     "Show password",       // pragma: allowlist secret
+      hide_password:     "Hide password",       // pragma: allowlist secret
+      // BLE step
+      step2_title:  "Pair device via Bluetooth",
+      step2_badge:  "Chrome / Edge",
+      step2_desc:   "Make sure your device is flashing rapidly (pairing mode).",
+      step2_hint:   "Put your Tuya device in pairing mode (factory reset or hold the pair button until the indicator flashes rapidly), then click Scan & Pair.",
+      // Done step
+      step3_title:    "Device activated \u2713",
+      step3_ha_flow:  "Home Assistant is setting up your device. You can close this window and continue in the Home Assistant UI.",
+      label_device_id:  "Device ID",
+      label_ip:         "IP address",
+      label_local_key:  "Local key",
+      label_reveal_key: "Reveal",
+      label_hide_key:   "Hide",
+      // Status & spinners
+      spin_scanning:  "Scanning for Tuya device\u2026",
+      spin_handshake: "Handshake\u2026",
+      spin_sending:   "Sending WiFi credentials\u2026",
+      spin_waiting:   "Credentials sent \u2713 \u2014 waiting for device to activate\u2026",
+      success_activated: "\u2713 Device activated! Local key generated.",
+      // WiFi AP status
+      wifi_ap_connecting: "Connecting to device AP\u2026",
+      wifi_ap_waiting:    "Credentials sent \u2014 waiting for device to join your network\u2026",
+      wifi_ap_timeout:    "Device did not activate within 2 minutes. Check pairing mode and try again.",
+      wifi_ap_error:      "WiFi AP pairing failed. Check that the device is in pairing mode and try again.",
+      wifi_ap_in_progress: "Pairing already in progress \u2014 wait a moment and retry.",
+      wifi_ap_nmcli_missing: "WiFi control unavailable \u2014 nmcli is not installed on this Home Assistant host.",
+      // Warnings & errors
+      warn_no_ssid:           "\u26A0 Enter a WiFi network name first.",
+      warn_invalid_ssid:      "\u26A0 Invalid network name (max 32 bytes, no null characters).",
+      warn_invalid_password:  "\u26A0 Password too long (max 63 bytes for WPA2).",
+      warn_scan_cancelled:    "\u26A0 Bluetooth scan cancelled.",
+      warn_no_device_selected:"No device selected. Go back and select a device.",
+      err_sse_lost:   "Connection lost \u2014 please try again.",
+      err_pair_fail:  "Device rejected WiFi config. Check credentials and retry.",
+      // QR panel
+      qr_title:       "Open on Android Chrome",
+      qr_body:        "Web Bluetooth requires Chrome or Edge. Scan the QR code with your Android phone to open this page there.",
+      qr_unavail:     "QR image unavailable. Install: pip install 'tuya-cloudless[qr]'",
+      qr_copy_label:  "Or copy this URL and open on Chrome / Edge:",
+      qr_copy_btn:    "Copy",
+      qr_copy_done:   "Copied!",
+      // Error screens
+      error_https_required_title: "HTTPS required",
+      error_https_required_body:  "Web Bluetooth requires HTTPS. This pairing page is opened via your Home Assistant, which must be configured with HTTPS.",
+      error_https_link:           "HTTPS setup guide",
+      error_browser_title:         "Browser not supported",
+      error_browser_body:          "Web Bluetooth requires Chrome or Edge on desktop or Android.",
+      error_browser_unsupported_title: "Unsupported browser",
+      error_browser_unsupported_body:  "Web Bluetooth requires Chrome or Edge (desktop or Android).",
+      // Misc
+      wifi_scan_none:    "No networks found",
+      wifi_current_network: "Current network",
+      debug_title:       "Debug log",
+      help_text:         "Need help?",
+      help_link_label:   "Open guide \u2192",
     };
     s = fallbacks[key] !== undefined ? fallbacks[key] : key;
   }
@@ -975,6 +1055,14 @@ function setWifiApStatus(cls, html) {
   if (!el) return;
   el.className = "status-box " + cls;
   el.innerHTML = html;
+  // Errors require immediate screen-reader announcement; switch to assertive live region.
+  if (cls === "status-error") {
+    el.setAttribute("role", "alert");
+    el.setAttribute("aria-live", "assertive");
+  } else {
+    el.setAttribute("role", "status");
+    el.setAttribute("aria-live", "polite");
+  }
 }
 
 function showWifiApSpinner(msg) {
@@ -1392,6 +1480,6 @@ if (typeof module !== "undefined") {
     autoDetectDevices, showDeviceCard, selectDeviceWifiAp, selectDeviceBle,
     goToDevices, goToCredentials, showDone,
     countUtf8Bytes, reassemble, onNotify, waitForResponse, parseFrame, crc16Modbus,
-    _safePath, _safeUrl,
+    _safePath, _safeUrl, _t: t,
   };
 }

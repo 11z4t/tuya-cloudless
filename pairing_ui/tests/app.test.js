@@ -11,7 +11,7 @@ const {
   isIOS, isAndroid, chromeIntentUrl,
   saveLastSsid, loadLastSsid, SSID_TTL_MS, SSID_STORAGE_KEY,
   countUtf8Bytes, reassemble, onNotify, waitForResponse, parseFrame, crc16Modbus,
-  _safePath, _safeUrl,
+  _safePath, _safeUrl, _t,
 } = app;
 
 // ── PLAT-810 — Browser compatibility helpers ──────────────────────────────────
@@ -503,5 +503,60 @@ describe("_safeUrl", () => {
   it("returns fallback for non-string", () => {
     expect(_safeUrl(null, "fallback")).toBe("fallback");
     expect(_safeUrl(42, "fallback")).toBe("fallback");
+  });
+});
+
+// ── Round 33 — i18n fallback map coverage ─────────────────────────────────────
+// _strings is {} in the test environment (loadLang() is never called), so every
+// t() call exercises the fallback map. This guards against regressions where a
+// critical key is accidentally removed from the fallback map.
+
+describe("t() built-in fallback map", () => {
+  it("returns expected English text for navigation keys when strings not loaded", () => {
+    expect(_t("btn_next")).toBe("Next \u2192");
+    expect(_t("btn_back")).toBe("\u2190 Back");
+    expect(_t("btn_cancel")).toBe("Cancel");
+    expect(_t("btn_scan")).toBe("Scan & Pair");
+    expect(_t("btn_pair_another")).toBe("\u2190 Pair Another Device");
+  });
+
+  it("returns expected English text for credential-step keys", () => {
+    expect(_t("step1_title")).toBe("WiFi credentials");
+    expect(_t("ssid_label")).toBe("Network name (SSID)");
+    expect(_t("password_label")).toBe("Password");
+    expect(_t("show_password")).toBe("Show password");
+    expect(_t("hide_password")).toBe("Hide password");
+  });
+
+  it("returns expected English text for device discovery keys", () => {
+    expect(_t("device_panel_title")).toBe("Find device");
+    expect(_t("looking_for_devices")).toBe("Looking for devices\u2026");
+    expect(_t("pair_via_ble")).toBe("Scan via Bluetooth");
+    expect(_t("pair_via_wifi_ap")).toBe("WiFi AP");
+  });
+
+  it("returns expected English text for error and status keys", () => {
+    expect(_t("err_pair_fail")).toMatch(/Device rejected WiFi config/);
+    expect(_t("err_sse_lost")).toMatch(/Connection lost/);
+    expect(_t("success_activated")).toMatch(/Device activated/);
+    expect(_t("wifi_ap_error")).toMatch(/WiFi AP pairing failed/);
+    expect(_t("wifi_ap_timeout")).toMatch(/2 minutes/);
+  });
+
+  it("returns expected English text for spinner keys", () => {
+    expect(_t("spin_scanning")).toMatch(/Scanning/);
+    expect(_t("spin_handshake")).toMatch(/Handshake/);
+    expect(_t("spin_sending")).toMatch(/credentials/i);
+    expect(_t("spin_waiting")).toMatch(/waiting/i);
+  });
+
+  it("returns the key itself for unknown keys (raw-key safety valve)", () => {
+    expect(_t("totally_unknown_key_xyz")).toBe("totally_unknown_key_xyz");
+  });
+
+  it("interpolates {vars} using fallback string", () => {
+    // step_x_of_y = "Step {x} of {y}" — verify interpolation works with fallbacks
+    const result = _t("step_x_of_y", { x: "1", y: "3" });
+    expect(result).toBe("Step 1 of 3");
   });
 });

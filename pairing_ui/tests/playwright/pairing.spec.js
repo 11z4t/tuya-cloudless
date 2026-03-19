@@ -1925,4 +1925,42 @@ test.describe("WiFi AP pairing flow", () => {
     const liveText = await page.locator("#devices-status").textContent();
     expect(liveText.trim().length).toBeGreaterThan(0);
   });
+
+  test("wifi-ap-status uses role=alert + aria-live=assertive when showing an error", async ({ page }) => {
+    await setupRoutes(page, { tuya_aps: [{ ssid: "SmartLife_AB12" }] });
+    // POST fails → setWifiApStatus("status-error", ...) is called
+    await mockWifiApRoute(page, { postStatus: 500 });
+    await loadPage(page);
+
+    await pairViaWifiApUi(page);
+
+    // Wait for the error to appear
+    await expect(page.locator("#wifi-ap-status")).toBeVisible({ timeout: 3000 });
+    await expect(page.locator("#wifi-ap-status")).toHaveClass(/status-error/);
+
+    // Screen readers must receive immediate (assertive) announcement for errors
+    const role     = await page.locator("#wifi-ap-status").getAttribute("role");
+    const ariaLive = await page.locator("#wifi-ap-status").getAttribute("aria-live");
+    expect(role).toBe("alert");
+    expect(ariaLive).toBe("assertive");
+  });
+
+  test("wifi-ap-status reverts to role=status + aria-live=polite for non-error updates", async ({ page }) => {
+    await setupRoutes(page, { tuya_aps: [{ ssid: "SmartLife_AB12" }] });
+    // Slow SSE — spinner stays up (info/polite state)
+    await mockWifiApRoute(page, { sseEvent: null });
+    await loadPage(page);
+
+    await pairViaWifiApUi(page);
+
+    // Spinner is shown (status-info class)
+    await expect(page.locator("#wifi-ap-status")).toBeVisible({ timeout: 3000 });
+    await expect(page.locator("#wifi-ap-status")).toHaveClass(/status-info/);
+
+    // Non-error: polite live region (no urgency)
+    const role     = await page.locator("#wifi-ap-status").getAttribute("role");
+    const ariaLive = await page.locator("#wifi-ap-status").getAttribute("aria-live");
+    expect(role).toBe("status");
+    expect(ariaLive).toBe("polite");
+  });
 });
