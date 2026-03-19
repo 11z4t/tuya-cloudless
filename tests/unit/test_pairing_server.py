@@ -2611,6 +2611,31 @@ class TestSseBoundedQueues:
             server._sse_queues.clear()
             await cli.close()
 
+    async def test_sse_queue_removed_if_prepare_raises(self, server: PairingServer) -> None:
+        """Queue must be removed from _sse_queues even if response.prepare() raises.
+
+        Previously, response.prepare() was called outside the try/finally block.
+        If the client disconnected before headers were sent, the queue would remain
+        in _sse_queues forever, eventually exhausting _MAX_SSE_CONNECTIONS.
+        """
+        mock_response = MagicMock()
+        mock_response.prepare = AsyncMock(
+            side_effect=ConnectionResetError("client disconnected before prepare")
+        )
+        mock_response.write = AsyncMock()
+
+        initial_queue_count = len(server._sse_queues)
+
+        with patch(
+            "custom_components.tuya_cloudless.pairing_server.web.StreamResponse",
+            return_value=mock_response,
+        ):
+            await server._handle_sse(MagicMock())
+
+        assert len(server._sse_queues) == initial_queue_count, (
+            "Queue must be removed from _sse_queues when response.prepare() raises"
+        )
+
     async def test_sse_queue_maxsize_is_32(self, server: PairingServer) -> None:
         """Queue created in _handle_sse must have maxsize=32 (not unbounded)."""
         import asyncio as _asyncio

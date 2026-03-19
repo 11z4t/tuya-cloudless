@@ -741,9 +741,13 @@ class PairingServer:
                 "X-Accel-Buffering": "no",
             }
         )
-        await response.prepare(request)
 
+        # Include response.prepare() inside try/finally so the queue is removed
+        # even if the client disconnects before the headers are sent (race condition
+        # that would otherwise leave an orphaned entry in _sse_queues forever).
         try:
+            await response.prepare(request)
+
             # Send initial keep-alive comment
             await response.write(b": connected\n\n")
 
