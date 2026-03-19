@@ -228,8 +228,10 @@ async function mockBle(page, activation = null) {
           connected: false,
           connect: async () => { fakeDevice.gatt.connected = true; return fakeServer; },
         },
-        // Required by Round 36 fix: startPairing() attaches gattserverdisconnected listener
+        // startPairing() attaches and removes gattserverdisconnected listener.
+        // Both must be stubs to avoid TypeError on the removeEventListener call.
         addEventListener: () => {},
+        removeEventListener: () => {},
       };
 
       Object.defineProperty(navigator, "bluetooth", {
@@ -1028,6 +1030,8 @@ test.describe("Full pairing flow", () => {
         id: "fake-notify-fail",
         name: "Tuya Device",
         gatt: { connected: false, connect: async () => { fakeDevice.gatt.connected = true; return fakeServer; } },
+        addEventListener: () => {},
+        removeEventListener: () => {},
       };
       Object.defineProperty(navigator, "bluetooth", {
         value: { requestDevice: async () => fakeDevice },
@@ -1052,6 +1056,69 @@ test.describe("Full pairing flow", () => {
     await expect(page.locator("#pair-status")).toBeVisible({ timeout: 3000 });
     await expect(page.locator("#pair-status")).toHaveClass(/status-error/);
     await expect(page.locator("#btn-pair")).toBeEnabled({ timeout: 3000 });
+  });
+
+  test("gattserverdisconnected during pairing shows error and re-enables button", async ({
+    page,
+  }) => {
+    await setupRoutes(page);
+
+    // Sophisticated fakeDevice: stores the gattserverdisconnected listener and
+    // fires it after the first writeValueWithoutResponse (simulates mid-handshake dropout).
+    await page.addInitScript(() => {
+      Object.defineProperty(window, "isSecureContext", { get: () => true });
+      let _disconnectHandler = null;
+      const fakeChar = {
+        startNotifications: async () => {},
+        addEventListener: () => {},
+        removeEventListener: () => {},
+        writeValueWithoutResponse: async () => {
+          // Schedule disconnect asynchronously so it fires after waitForResponse()
+          // has set up _recvReject. The write loop completes first, then
+          // waitForResponse() is called (setting _recvReject synchronously inside
+          // its Promise constructor), and only then does setTimeout(0) fire.
+          if (_disconnectHandler) {
+            const h = _disconnectHandler;
+            _disconnectHandler = null;  // fire only once
+            setTimeout(() => h(), 0);
+          }
+        },
+      };
+      const fakeService = { getCharacteristic: async () => fakeChar };
+      const fakeServer = {
+        connected: true,
+        disconnect: () => { fakeServer.connected = false; },
+        getPrimaryService: async () => fakeService,
+      };
+      const fakeDevice = {
+        id: "fake-disconnect",
+        name: "Tuya Device",
+        gatt: { connected: false, connect: async () => { fakeDevice.gatt.connected = true; return fakeServer; } },
+        addEventListener: (evt, fn) => { if (evt === "gattserverdisconnected") _disconnectHandler = fn; },
+        removeEventListener: () => {},
+      };
+      Object.defineProperty(navigator, "bluetooth", {
+        value: { requestDevice: async () => fakeDevice },
+        configurable: true,
+      });
+      window.EventSource = class MockESNever {
+        constructor() { this.readyState = 1; }
+        addEventListener() {}
+        set onerror(_fn) {}
+        close() { this.readyState = 2; }
+      };
+    });
+
+    await loadPage(page);
+    await navigateToCredentials(page);
+    await page.locator("#ssid").fill("MyNet");
+    await page.locator("#btn-next").click();
+    await page.locator("#btn-pair").click();
+
+    // Device disconnected mid-handshake — should show error, not hang
+    await expect(page.locator("#pair-status")).toBeVisible({ timeout: 5000 });
+    await expect(page.locator("#pair-status")).toHaveClass(/status-error/);
+    await expect(page.locator("#btn-pair")).toBeEnabled();
   });
 
   test("BLE SSE timeout shows warning message and re-enables pair button", async ({ page }) => {
@@ -1158,6 +1225,8 @@ test.describe("Full pairing flow", () => {
         id: "fake-ble-pair-fail",
         name: "Tuya Device",
         gatt: { connected: false, connect: async () => { fakeDevice.gatt.connected = true; return fakeServer; } },
+        addEventListener: () => {},
+        removeEventListener: () => {},
       };
       Object.defineProperty(navigator, "bluetooth", {
         value: { requestDevice: async () => fakeDevice },

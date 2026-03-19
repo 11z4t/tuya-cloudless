@@ -1298,14 +1298,16 @@ async function startPairing() {
   const es = listenForActivation(token);
 
   let server;
-  // Hoist cleanup reference so catch block can access it even if the error
-  // occurs after the listener was added (const would be block-scoped to try).
+  let device = null;
+  // Hoist cleanup references so catch block can access them even if the error
+  // occurs after the listeners were added (const would be block-scoped to try).
   let _cleanupNotify = null;
+  let _onDisconnected = null;
 
   try {
     dbg(t("spin_scanning"));
     showSpinner(t("spin_scanning"));
-    const device = await navigator.bluetooth.requestDevice({
+    device = await navigator.bluetooth.requestDevice({
       filters: [{ services: [BLE_SERVICE] }],
       optionalServices: [BLE_SERVICE],
     });
@@ -1324,13 +1326,15 @@ async function startPairing() {
 
     // If the device disconnects mid-pairing (e.g. factory reset or link loss), fail
     // the current waitForResponse immediately rather than waiting for the 10-15s timeout.
-    device.addEventListener("gattserverdisconnected", () => {
+    // Store handler so it can be removed and not accumulate across retries.
+    _onDisconnected = () => {
       if (_recvReject) {
         const reject = _recvReject;
         _recvReject = null;
         reject(new Error("BLE device disconnected"));
       }
-    });
+    };
+    device.addEventListener("gattserverdisconnected", _onDisconnected);
 
     dbg(t("spin_handshake"));
     showSpinner(t("spin_handshake"));
@@ -1364,13 +1368,15 @@ async function startPairing() {
     dbg(t("spin_waiting"));
     showSpinner(t("spin_waiting"));
 
-    _cleanupNotify();
+    if (typeof _cleanupNotify === "function") { _cleanupNotify(); _cleanupNotify = null; }
+    if (device && _onDisconnected) { device.removeEventListener("gattserverdisconnected", _onDisconnected); _onDisconnected = null; }
     if (server && server.connected) {
       try { await server.disconnect(); } catch (_) {}
     }
 
   } catch (err) {
-    if (typeof _cleanupNotify === "function") _cleanupNotify();
+    if (typeof _cleanupNotify === "function") { _cleanupNotify(); _cleanupNotify = null; }
+    if (device && _onDisconnected) { device.removeEventListener("gattserverdisconnected", _onDisconnected); _onDisconnected = null; }
     // Disconnect GATT server if it was opened — Bluetooth is an exclusive resource
     // and leaving the connection open blocks other apps and the next pairing attempt.
     if (server && server.connected) {
