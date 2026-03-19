@@ -243,6 +243,15 @@ class PairingServer:
 
     async def stop(self) -> None:
         """Stop the HTTP server and clean up resources."""
+        # Cancel any in-progress WiFi AP pairing background tasks so they don't
+        # outlive the server (e.g. during HA restart or integration unload).
+        for task in list(self._background_tasks):
+            task.cancel()
+        if self._background_tasks:
+            await asyncio.gather(*self._background_tasks, return_exceptions=True)
+        self._background_tasks.clear()
+        self._wifi_ap_pairing_in_progress.clear()
+
         # Signal all SSE subscribers to close
         for q in list(self._sse_queues):
             await q.put(None)

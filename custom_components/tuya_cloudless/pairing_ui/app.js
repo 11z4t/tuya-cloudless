@@ -309,7 +309,9 @@ const SSID_TTL_MS = 90 * 24 * 60 * 60 * 1000; // 90 days
 function saveLastSsid(ssid) {
   try {
     localStorage.setItem(SSID_STORAGE_KEY, JSON.stringify({ ssid, saved_at: Date.now() }));
-  } catch (_) {}
+  } catch (err) {
+    dbg("SSID persistence failed (storage full?): " + err.message);
+  }
 }
 
 function loadLastSsid() {
@@ -1347,6 +1349,16 @@ function copyShareUrl() {
   document.getElementById("btn-ble-scan").addEventListener("click", selectDeviceBle);
   document.getElementById("btn-pair-another").addEventListener("click", goToDevices);
   document.getElementById("btn-refresh-scan").addEventListener("click", autoDetectDevices);
+
+  // Close any open SSE connection when the user navigates away or closes the tab.
+  // Without this, the server-side SSE queue persists until the HTTP connection drops
+  // (which may take tens of seconds on some proxies), exhausting the queue limit.
+  window.addEventListener("beforeunload", () => {
+    if (_currentEventSource) {
+      _currentEventSource.close();
+      _currentEventSource = null;
+    }
+  });
 
   // Escape key: cancel WiFi AP pairing when cancel button is visible
   document.addEventListener("keydown", (e) => {

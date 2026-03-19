@@ -1428,6 +1428,31 @@ class TestStartStop:
         await srv.stop()
         assert srv._runner is None
 
+    async def test_stop_cancels_background_wifi_ap_tasks(self) -> None:
+        """stop() must cancel any in-flight WiFi AP background tasks.
+
+        Background tasks must not outlive the server — they hold nmcli subprocess
+        handles and network state. Leaving them running after HA stops could leave
+        the host WiFi in an unknown state.
+        """
+        srv = PairingServer(_make_hass(), port=0)
+
+        async def _never_finishes() -> None:
+            await asyncio.sleep(9999)  # simulates a long-running nmcli call
+
+        task: asyncio.Task[None] = asyncio.create_task(_never_finishes())
+        srv._background_tasks.add(task)
+        srv._wifi_ap_pairing_in_progress.add("SmartLife_AB12")
+
+        await srv.stop()
+
+        # Task must be done (no longer running) and specifically cancelled
+        assert task.done(), "Background WiFi AP task must be done after stop()"
+        assert task.cancelled(), "Background WiFi AP task must be cancelled by stop()"
+        # Server state must be cleaned up
+        assert srv._background_tasks == set()
+        assert srv._wifi_ap_pairing_in_progress == set()
+
 
 # ── ha_local_url fallbacks ────────────────────────────────────────────────────
 
