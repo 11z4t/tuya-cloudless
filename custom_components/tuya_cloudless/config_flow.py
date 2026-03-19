@@ -738,7 +738,7 @@ class TuyaCloudlessConfigFlow(ConfigFlow, domain=DOMAIN):
             local_key = user_input[CONF_LOCAL_KEY].strip()
             ip_address = user_input[CONF_IP_ADDRESS].strip()
 
-            if not gw_id:
+            if not gw_id or len(gw_id) > 64:
                 errors[CONF_GW_ID] = "invalid_gw_id"
             if len(local_key) != _LOCAL_KEY_LENGTH:
                 errors[CONF_LOCAL_KEY] = "invalid_local_key"
@@ -991,12 +991,15 @@ class TuyaCloudlessConfigFlow(ConfigFlow, domain=DOMAIN):
                 ip_address = user_input.get(CONF_IP_ADDRESS, "").strip() or reauth_entry.data.get(
                     CONF_IP_ADDRESS, ""
                 )
-                reauth_version = reauth_entry.data.get(
-                    CONF_PROTOCOL_VERSION, DEFAULT_PROTOCOL_VERSION
-                )
-                errors = await self._check_connection(
-                    ip_address, local_key=local_key, version=reauth_version
-                )
+                if ip_address and not _validate_ip(ip_address):
+                    errors[CONF_IP_ADDRESS] = "invalid_ip_address"
+                else:
+                    reauth_version = reauth_entry.data.get(
+                        CONF_PROTOCOL_VERSION, DEFAULT_PROTOCOL_VERSION
+                    )
+                    errors = await self._check_connection(
+                        ip_address, local_key=local_key, version=reauth_version
+                    )
 
                 if not errors:
                     new_data = {
@@ -1082,10 +1085,9 @@ class TuyaCloudlessConfigFlow(ConfigFlow, domain=DOMAIN):
                     CONF_IP_ADDRESS,
                     default=reconfigure_entry.data.get(CONF_IP_ADDRESS, ""),
                 ): str,
-                vol.Required(
-                    CONF_LOCAL_KEY,
-                    default=reconfigure_entry.data.get(CONF_LOCAL_KEY, ""),
-                ): str,
+                # local_key is a secret — intentionally no default so the key is
+                # never pre-filled in the form or transmitted in the form JSON response.
+                vol.Required(CONF_LOCAL_KEY): str,
             }
         )
 
@@ -1216,7 +1218,9 @@ class TuyaCloudlessConfigFlow(ConfigFlow, domain=DOMAIN):
                 )
                 writer.write(query)
                 await writer.drain()
-            except OSError:
+            except (OSError, CryptoError):
+                # CryptoError is raised by encode_status_query for v3.4/v3.5 when
+                # session_key=None — skip auto-detection for those protocol versions.
                 return "Generic Switch"
 
             try:

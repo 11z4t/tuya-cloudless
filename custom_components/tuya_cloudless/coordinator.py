@@ -25,7 +25,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
-from tuya_cloudless.exceptions import TuyaCloudlessError
+from tuya_cloudless.exceptions import ProtocolError, TuyaCloudlessError
 
 from .const import (
     CONF_GW_ID,
@@ -586,12 +586,19 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Handle a decoded frame — update DPS state and notify listeners."""
         try:
             payload = frame.dps
-        except AttributeError:
-            _LOGGER.debug("[%s] Received frame without dps attribute: %s", self._gw_id, frame)
+        except (AttributeError, ProtocolError) as exc:
+            # AttributeError: frame object has no dps property (unexpected frame type)
+            # ProtocolError: frame.dps raised because payload is not valid JSON
+            _LOGGER.debug("[%s] Received undecodable frame: %s", self._gw_id, exc)
             return
 
         # Tuya frames carry DPS nested under a "dps" key: {"dps": {"1": true}}
-        dps: dict[str, Any] = payload.get("dps", {}) if isinstance(payload, dict) else {}
+        raw_dps: dict[str, Any] = payload.get("dps", {}) if isinstance(payload, dict) else {}
+        # Reject non-scalar DPS values (dict/list) — entities expect bool/int/float/str/None.
+        # A misbehaving or malicious device could send a complex JSON object as a DP value
+        # which would cause TypeErrors in entity platform code (e.g. int(coordinator.data["2"])).
+        _SCALAR = (bool, int, float, str, type(None))
+        dps = {k: v for k, v in raw_dps.items() if isinstance(v, _SCALAR)}
         if dps:
             # Accumulate DP IDs seen across all frames for auto-detection (PLAT-778).
             # Use union so DPs that arrive in later frames (e.g. a separate status

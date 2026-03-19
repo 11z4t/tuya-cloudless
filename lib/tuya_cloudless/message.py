@@ -32,6 +32,7 @@ from dataclasses import dataclass, field
 from enum import IntEnum
 from typing import Any
 
+from .const import MAX_PAYLOAD_SIZE
 from .crypto import (
     ProtocolVersion,
     crc32_bytes,
@@ -366,7 +367,10 @@ def decode_message(
             raise InvalidMessageError(msg)
     else:
         expected_checksum = crc32_bytes(checksum_input)
-        if received_checksum != expected_checksum:
+        # Use constant-time comparison per stated security principle in CLAUDE.md:
+        # "All MAC/tag verification uses constant-time comparison."
+        # CRC32 has no secret to protect via timing, but we honour the invariant.
+        if not hmac_compare(received_checksum, expected_checksum):
             msg = (
                 f"CRC32 mismatch: received 0x{received_checksum.hex()}, "
                 f"expected 0x{expected_checksum.hex()}"
@@ -505,6 +509,18 @@ class MessageBuffer:
         if payload_size < 0:
             # Invalid payload_len — discard this prefix and retry
             _LOGGER.debug("Invalid payload_len_field: %d, discarding prefix", payload_len_field)
+            del self._buffer[:4]
+            return None
+
+        # Reject implausibly large frames to prevent memory amplification from a
+        # crafted device that advertises a huge payload in the length field.
+        # (Consistent with the same guard in split_frames in protocol.py.)
+        if payload_size > MAX_PAYLOAD_SIZE:
+            _LOGGER.debug(
+                "Frame payload_size %d exceeds MAX_PAYLOAD_SIZE %d, discarding prefix",
+                payload_size,
+                MAX_PAYLOAD_SIZE,
+            )
             del self._buffer[:4]
             return None
 
