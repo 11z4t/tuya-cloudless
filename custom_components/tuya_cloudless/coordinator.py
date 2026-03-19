@@ -651,14 +651,22 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if dps:
             # Guard against a malicious device flooding the coordinator with
             # arbitrary DP key names — unbounded accumulation would exhaust memory.
+            # Only block NEW keys that would push past the cap; existing-key
+            # updates (state changes for already-known DPs) are always accepted.
             new_keys = [k for k in dps if k not in self.state.dps]
             if len(self.state.dps) + len(new_keys) > _MAX_DPS_KEYS:
+                allowed_new = _MAX_DPS_KEYS - len(self.state.dps)
+                new_key_set = set(new_keys[:allowed_new]) if allowed_new > 0 else set()
                 _LOGGER.warning(
-                    "[%s] DPS key count would exceed %d — ignoring frame",
+                    "[%s] DPS key cap (%d) reached — accepting %d new keys, "
+                    "dropping %d; existing-key updates still applied",
                     self._gw_id,
                     _MAX_DPS_KEYS,
+                    len(new_key_set),
+                    len(new_keys) - len(new_key_set),
                 )
-                return
+                # Filter frame to existing keys + the capped subset of new keys.
+                dps = {k: v for k, v in dps.items() if k in self.state.dps or k in new_key_set}
             # Accumulate DP IDs seen across all frames for auto-detection (PLAT-778).
             # Use union so DPs that arrive in later frames (e.g. a separate status
             # push after the initial DP_QUERY response) are also captured.

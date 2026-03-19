@@ -254,10 +254,7 @@ class TuyaCloudlessCover(RestoreStateMixin, TuyaCloudlessEntity, CoverEntity):
         until the device reports it.
         """
         if self._spec.dp_stop is not None:
-            try:
-                await self.async_send_dp(self._spec.dp_stop.id, True)
-            except HomeAssistantError:
-                raise
+            await self.async_send_dp(self._spec.dp_stop.id, True)
 
     async def async_set_cover_position(self, **kwargs: Any) -> None:
         """Move the cover to a specific position (0-100) with optimistic update.
