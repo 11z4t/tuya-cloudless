@@ -57,6 +57,10 @@ _MAX_BUFFER_BYTES = 65_536  # 64 KB
 #: Maximum number of distinct DP keys allowed per device (prevents memory exhaustion
 #: from a malicious device flooding the coordinator with arbitrary key names).
 _MAX_DPS_KEYS = 256
+#: Maximum byte length of a single DPS key string (Tuya DP IDs are short alphanumeric labels).
+_MAX_DPS_KEY_LEN = 64
+#: Maximum byte length of a string DP value (guards against oversized strings from rogue devices).
+_MAX_DPS_STR_VALUE_LEN = 4096
 
 #: Initial DP_QUERY retry policy (PLAT-761)
 _DP_QUERY_MAX_RETRIES: int = 3
@@ -359,6 +363,8 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         finally:
             if self._heartbeat_task and not self._heartbeat_task.done():
                 self._heartbeat_task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await self._heartbeat_task
             await self._disconnect()
 
     async def _disconnect(self) -> None:
@@ -626,8 +632,18 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # Reject non-scalar DPS values (dict/list) — entities expect bool/int/float/str/None.
         # A misbehaving or malicious device could send a complex JSON object as a DP value
         # which would cause TypeErrors in entity platform code (e.g. int(coordinator.data["2"])).
+        # Also reject oversized keys and oversized string values to prevent memory exhaustion.
         _SCALAR = (bool, int, float, str, type(None))
-        dps = {k: v for k, v in raw_dps.items() if isinstance(v, _SCALAR)}
+        dps = {
+            k: v
+            for k, v in raw_dps.items()
+            if (
+                isinstance(k, str)
+                and len(k) <= _MAX_DPS_KEY_LEN
+                and isinstance(v, _SCALAR)
+                and (not isinstance(v, str) or len(v) <= _MAX_DPS_STR_VALUE_LEN)
+            )
+        }
         if dps:
             # Guard against a malicious device flooding the coordinator with
             # arbitrary DP key names — unbounded accumulation would exhaust memory.
@@ -645,11 +661,12 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             new_ids = frozenset(dps.keys()) - self.detected_dp_ids
             if new_ids:
                 self.detected_dp_ids |= new_ids
-                _LOGGER.debug(
-                    "[%s] Auto-detected DP IDs: %s",
-                    self._gw_id,
-                    sorted(self.detected_dp_ids),
-                )
+                if _LOGGER.isEnabledFor(logging.DEBUG):
+                    _LOGGER.debug(
+                        "[%s] Auto-detected DP IDs: %s",
+                        self._gw_id,
+                        sorted(self.detected_dp_ids),
+                    )
             self.state.dps.update(dps)
             self.state.last_seen = datetime.now(UTC)
             _LOGGER.debug("[%s] DPS update: %s", self._gw_id, list(dps.keys()))
