@@ -37,6 +37,7 @@ with HA side-effects.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 import re
@@ -1452,6 +1453,16 @@ class PairingServer:
         for q in stale:
             if q in self._sse_queues:
                 self._sse_queues.remove(q)
+            # Drain the backlog and inject the close sentinel so _handle_sse exits
+            # cleanly.  Without this the handler would loop forever sending keepalive
+            # comments because no more events will ever be put into the detached queue.
+            while not q.empty():
+                try:
+                    q.get_nowait()
+                except asyncio.QueueEmpty:  # pragma: no cover
+                    break
+            with contextlib.suppress(asyncio.QueueFull):
+                q.put_nowait(None)  # best-effort; handler exits on TCP drop if queue stays full
 
     def _expire_old_results(self) -> None:
         """Remove activation results older than :const:`_RESULT_TTL_SECS`."""

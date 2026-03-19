@@ -1980,6 +1980,26 @@ class TestBroadcastSse:
         # Healthy queue should have received the message
         assert not healthy.empty()
 
+    async def test_stale_queue_receives_none_sentinel(self, server: PairingServer) -> None:
+        """Stale queue gets None (close sentinel) so _handle_sse exits instead of looping.
+
+        Without the sentinel, _handle_sse would block on queue.get() with a 25 s
+        keepalive timeout and keep the TCP connection open indefinitely.
+        """
+        stale: asyncio.Queue[str | None] = asyncio.Queue(maxsize=1)
+        await stale.put("existing-message")  # fill it so put() would block
+        server._sse_queues.append(stale)
+
+        await server._broadcast_sse("activated", "{}")
+
+        # Stale queue must have been removed from the active list
+        assert stale not in server._sse_queues
+        # The backlog was drained and None (the sentinel) was injected
+        sentinel = stale.get_nowait()
+        assert sentinel is None
+        # No more items — queue is now empty
+        assert stale.empty()
+
 
 # ── _auto_stop_after_idle ──────────────────────────────────────────────────────
 
