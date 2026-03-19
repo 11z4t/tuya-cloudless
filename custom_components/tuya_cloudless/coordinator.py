@@ -302,7 +302,10 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     self._consecutive_connection_failures > 0
                     and self._consecutive_connection_failures % _IP_REDISCOVER_THRESHOLD == 0
                 ):
-                    await self._try_rediscover_ip()
+                    try:
+                        await self._try_rediscover_ip()
+                    except asyncio.CancelledError:
+                        return
                 await asyncio.sleep(delay)
                 delay = min(delay * 2, self._reconnect_max_delay)
 
@@ -800,7 +803,7 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # Decode using ECB (no session key yet for negotiation frames)
         resp_frame = decode_frame(
             frames[0],
-            version="3.3",  # Decode negotiation frames as ECB
+            version="3.2",  # ECB decrypt without v3.3 header stripping
             local_key=self._local_key,
             session_key=None,
         )

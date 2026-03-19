@@ -275,6 +275,8 @@ class PairingServer:
         self._background_tasks: set[asyncio.Task[None]] = set()
         # APs currently being paired — prevents duplicate concurrent pairing tasks
         self._wifi_ap_pairing_in_progress: set[str] = set()
+        # Cached static HTML (file read + path rewrites) for _handle_ha_index
+        self._ha_index_html_cache: str | None = None
 
     # ── Lifecycle ──────────────────────────────────────────────────────────
 
@@ -692,6 +694,9 @@ class PairingServer:
         if product_key and not _DEVICE_ID_RE.match(product_key):
             _LOGGER.warning("Activation request rejected: invalid product_key format")
             return web.Response(status=400, text="Invalid product_key format")
+        if sw_ver and _CTRL_CHAR_RE.search(sw_ver):
+            _LOGGER.warning("Activation request rejected: control characters in sw_ver")
+            return web.Response(status=400, text="Invalid sw_ver")
 
         _LOGGER.info(
             "Tuya device activation: gw_id=%s product_key=%s token=%s… sw_ver=%s ip=%s",
@@ -1350,18 +1355,23 @@ class PairingServer:
                 headers=_SECURITY_HEADERS,
             )
 
-        html = index_path.read_text(encoding="utf-8")
+        if self._ha_index_html_cache is None:
+            html_raw = index_path.read_text(encoding="utf-8")
+            static_base = _HA_PAIRING_PREFIX + "/static"
+            provision_base = _HA_PAIRING_PREFIX + "/provision"
+            # Rewrite /static/ asset references to the HA-relative path
+            html_raw = html_raw.replace('="/static/', f'="{static_base}/')
+            # Rewrite QR image src to HA path (404 → JS error handler shows "unavailable")
+            html_raw = html_raw.replace(
+                'src="/api/provision/qr.svg"',
+                f'src="{provision_base}/qr.svg"',
+            )
+            self._ha_index_html_cache = html_raw
+
+        html = self._ha_index_html_cache
         static_base = _HA_PAIRING_PREFIX + "/static"
         provision_base = _HA_PAIRING_PREFIX + "/provision"
         activator_url = self.ha_local_url()  # Always HTTP — Tuya device cannot do TLS
-
-        # Rewrite /static/ asset references to the HA-relative path
-        html = html.replace('="/static/', f'="{static_base}/')
-        # Rewrite QR image src to HA path (404 → JS error handler shows "unavailable")
-        html = html.replace(
-            'src="/api/provision/qr.svg"',
-            f'src="{provision_base}/qr.svg"',
-        )
 
         # Inject window globals before </head> so app.js reads them on load.
         # Use _json_in_script() rather than json.dumps() directly: if any value

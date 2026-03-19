@@ -257,6 +257,22 @@ class TestActivateEndpoint:
         )
         assert resp.status == 400
 
+    async def test_sw_ver_with_control_chars_rejected(self, client: TestClient) -> None:
+        """sw_ver containing control characters must be rejected (log-injection guard)."""
+        resp = await client.post(
+            "/api/tuya/device/active",
+            json={"gw_id": "gw001", "sw_ver": "2.0\ninjected-log-line"},
+        )
+        assert resp.status == 400
+
+    async def test_sw_ver_normal_version_string_accepted(self, client: TestClient) -> None:
+        """Legitimate firmware version strings must be accepted."""
+        resp = await client.post(
+            "/api/tuya/device/active",
+            json={"gw_id": "gw001", "sw_ver": "2.4.1"},
+        )
+        assert resp.status == 200
+
     async def test_exactly_max_length_fields_accepted(self, client: TestClient) -> None:
         """Fields exactly at the length limits must still be accepted."""
         resp = await client.post(

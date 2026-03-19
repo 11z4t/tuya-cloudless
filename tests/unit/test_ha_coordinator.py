@@ -1493,3 +1493,92 @@ class TestIpAutoRecovery:
         from custom_components.tuya_cloudless.coordinator import _IP_REDISCOVER_THRESHOLD
 
         assert _IP_REDISCOVER_THRESHOLD == 3
+
+
+class TestR19Fixes:
+    """Round 19 security fixes."""
+
+    @pytest.mark.asyncio
+    async def test_rediscover_cancelled_error_exits_loop(self) -> None:
+        """R19-3: CancelledError from _try_rediscover_ip must exit the loop gracefully."""
+        from custom_components.tuya_cloudless.coordinator import _IP_REDISCOVER_THRESHOLD
+
+        coord = _make_coordinator()
+        call_count = 0
+
+        async def mock_connect() -> None:
+            nonlocal call_count
+            call_count += 1
+            raise OSError("Connection refused")
+
+        coord._connect = mock_connect
+
+        async def mock_rediscover() -> None:
+            raise asyncio.CancelledError
+
+        coord._try_rediscover_ip = mock_rediscover
+
+        with (
+            patch("asyncio.sleep", new_callable=AsyncMock),
+            patch.object(coord, "_raise_connectivity_repair_issue"),
+            patch.object(coord, "_clear_connectivity_repair_issue"),
+        ):
+            # Must return cleanly (not raise CancelledError or loop forever)
+            await coord._connection_loop()
+
+        # Loop exited after _IP_REDISCOVER_THRESHOLD failures (first rediscover)
+        assert call_count == _IP_REDISCOVER_THRESHOLD
+
+    @pytest.mark.asyncio
+    async def test_negotiate_session_key_uses_ecb_without_header_strip(self) -> None:
+        """R19-2: decode_frame must be called with version='3.2' (ECB, no header strip)."""
+        import struct
+
+        from tuya_cloudless.exceptions import TuyaCloudlessError
+
+        coord = _make_coordinator(version="3.4")
+        # Build a 16-byte header: magic + seq + cmd + payload_len=48
+        payload_len = 48
+        fake_header = b"\x00\x00\x55\xaa" + b"\x00" * 8 + struct.pack(">I", payload_len)
+        fake_rest = b"\x00" * payload_len
+        reader = AsyncMock()
+        reader.readexactly = AsyncMock(side_effect=[fake_header, fake_rest])
+        writer = MagicMock()
+        writer.write = MagicMock()
+        writer.drain = AsyncMock()
+
+        mock_keypair = MagicMock()
+        mock_keypair.public_key_bytes = b"\x42" * 32
+
+        decode_frame_calls: list[str] = []
+
+        def capturing_decode_frame(data: bytes, *, version: str, **kw: object) -> object:
+            decode_frame_calls.append(version)
+            raise TuyaCloudlessError("stop")
+
+        with (
+            patch(
+                "tuya_cloudless.crypto.generate_ecdh_keypair",
+                return_value=mock_keypair,
+            ),
+            patch(
+                "tuya_cloudless.protocol.encode_session_key_start",
+                return_value=b"start_frame",
+            ),
+            patch(
+                "tuya_cloudless.protocol.decode_frame",
+                side_effect=capturing_decode_frame,
+            ),
+            patch(
+                "tuya_cloudless.protocol.split_frames",
+                return_value=([fake_header + fake_rest], b""),
+            ),
+            pytest.raises(TuyaCloudlessError),
+        ):
+            await coord._negotiate_session_key_once(reader, writer)
+
+        # The negotiation decode must NOT use "3.3" (which triggers strip_v33_header)
+        assert decode_frame_calls, "decode_frame should have been called"
+        assert decode_frame_calls[0] == "3.2", (
+            f"Expected version='3.2' for ECB-without-header-strip; got '{decode_frame_calls[0]}'"
+        )
