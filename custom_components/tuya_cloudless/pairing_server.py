@@ -67,6 +67,11 @@ _RESULT_TTL_SECS: Final[float] = 3600.0
 #: Path to the static web UI assets (relative to this file)
 _UI_DIR: Final[Path] = Path(__file__).parent / "pairing_ui"
 
+#: Integration version read from manifest.json once at import time
+_INTEGRATION_VERSION: Final[str] = json.loads(
+    (Path(__file__).parent / "manifest.json").read_text(encoding="utf-8")
+).get("version", "unknown")
+
 #: Path to the brand assets directory (icon.png etc.)
 _BRAND_DIR: Final[Path] = Path(__file__).parent / "brand"
 
@@ -485,6 +490,7 @@ class PairingServer:
                 "result_url_template": f"{base}/api/provision/result/{{token}}",
                 "default_ssid": default_ssid,
                 "wifi_scan_available": shutil.which("nmcli") is not None,
+                "integration_version": _INTEGRATION_VERSION,
             },
             headers={"Access-Control-Allow-Origin": "*"},
         )

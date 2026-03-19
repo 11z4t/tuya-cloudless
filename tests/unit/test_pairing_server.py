@@ -2035,6 +2035,14 @@ class TestConfigEndpoint:
         data = await resp.json()
         assert data["default_ssid"] == "MyFallbackNet"
 
+    async def test_config_includes_integration_version(self, client: TestClient) -> None:
+        """integration_version key must be a non-empty string from manifest.json."""
+        resp = await client.get("/api/provision/config")
+        data = await resp.json()
+        assert "integration_version" in data
+        assert isinstance(data["integration_version"], str)
+        assert data["integration_version"] != "" and data["integration_version"] != "unknown"
+
 
 # ── /static/icon.png ──────────────────────────────────────────────────────────
 

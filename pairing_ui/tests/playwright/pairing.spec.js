@@ -3249,3 +3249,23 @@ test.describe("WiFi scan availability", () => {
     await expect(page.locator("#wifi-scan-hint")).toBeHidden();
   });
 });
+
+test.describe("Footer version display", () => {
+  test("footer shows integration_version from server config", async ({ page }) => {
+    await setupRoutes(page, {
+      config: {
+        activator_url: BASE,
+        events_url: BASE + "/api/provision/events",
+        integration_version: "9.9.9",
+      },
+    });
+    await loadPage(page);
+    await expect(page.locator("#footer-version")).toHaveText("v9.9.9");
+  });
+
+  test("footer-version is empty when config omits integration_version", async ({ page }) => {
+    await setupRoutes(page);  // default config has no integration_version
+    await loadPage(page);
+    await expect(page.locator("#footer-version")).toHaveText("");
+  });
+});

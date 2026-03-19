@@ -469,6 +469,10 @@ async function loadServerConfig() {
       _wifiScanAvailable = false;
       _applyWifiScanUnavailableUi();
     }
+    if (cfg.integration_version) {
+      const verEl = document.getElementById("footer-version");
+      if (verEl) verEl.textContent = "v" + cfg.integration_version;
+    }
   } catch (_) { /* keep defaults */ }
 }
 
