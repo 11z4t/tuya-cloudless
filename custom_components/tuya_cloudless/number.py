@@ -7,6 +7,7 @@ import logging
 from homeassistant.components.number import NumberEntity, NumberMode
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from tuya_cloudless.profiles import EntitySpec
@@ -117,4 +118,7 @@ class TuyaCloudlessNumber(TuyaCloudlessEntity, NumberEntity):
         dp_id = self._spec.dp_value.id
         scale = self._spec.dp_value.scale
         raw_value = round(value / scale)
-        await self.coordinator.async_send_dps({dp_id: raw_value})
+        try:
+            await self.coordinator.async_send_dps({dp_id: raw_value})
+        except HomeAssistantError:
+            raise

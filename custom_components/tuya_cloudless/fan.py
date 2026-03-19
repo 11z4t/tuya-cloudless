@@ -263,7 +263,11 @@ class TuyaCloudlessFan(RestoreStateMixin, TuyaCloudlessEntity, FanEntity):
         dps: dict[str, Any] = {self._spec.dp_power.id: True}
         if percentage is not None and self._spec.dp_value is not None:
             dps[self._spec.dp_value.id] = self._percentage_to_raw(percentage)
-        if preset_mode is not None and self._spec.dp_mode is not None:
+        if (
+            preset_mode is not None
+            and self._spec.dp_mode is not None
+            and preset_mode in (self._attr_preset_modes or [])
+        ):
             dps[self._spec.dp_mode.id] = preset_mode
         try:
             await self.coordinator.async_send_dps(dps)
@@ -312,6 +316,13 @@ class TuyaCloudlessFan(RestoreStateMixin, TuyaCloudlessEntity, FanEntity):
             preset_mode: Preset mode string to send to the device DP.
         """
         if self._spec.dp_mode is None:
+            return
+        if preset_mode not in (self._attr_preset_modes or []):
+            _LOGGER.warning(
+                "[%s] Preset mode '%s' not in allowed list — ignored",
+                self.coordinator.gw_id,
+                preset_mode,
+            )
             return
         self._optimistic_preset_mode = preset_mode
         self.async_write_ha_state()

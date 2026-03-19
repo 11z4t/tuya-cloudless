@@ -223,7 +223,7 @@ class TuyaCloudlessClimate(RestoreStateMixin, TuyaCloudlessEntity, ClimateEntity
         """
         if self._spec.dp_temp_set is None:
             return
-        temperature = float(kwargs.get(ATTR_TEMPERATURE, 20.0))
+        temperature = float(kwargs[ATTR_TEMPERATURE])
         scale = self._spec.dp_temp_set.scale
         raw_value = round(temperature / scale)
         self._optimistic_target_temp = round(float(raw_value) * scale, 1)

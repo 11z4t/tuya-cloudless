@@ -7,6 +7,7 @@ import logging
 from homeassistant.components.select import SelectEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from tuya_cloudless.profiles import EntitySpec
@@ -86,4 +87,7 @@ class TuyaCloudlessSelect(TuyaCloudlessEntity, SelectEntity):
         """
         if self._spec.dp_value is None:
             return
-        await self.coordinator.async_send_dps({self._spec.dp_value.id: option})
+        try:
+            await self.coordinator.async_send_dps({self._spec.dp_value.id: option})
+        except HomeAssistantError:
+            raise

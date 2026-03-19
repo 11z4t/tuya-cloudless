@@ -64,6 +64,12 @@ __all__ = [
     "DiscoveryListener",
 ]
 
+# Protect against UDP amplification / memory exhaustion from spoofed packets
+_MAX_DISCOVERED = 256
+_MAX_GW_ID_LEN = 64
+_MAX_VERSION_LEN = 16
+_MAX_PRODUCT_KEY_LEN = 64
+
 # ── Device info dataclass ─────────────────────────────────────────────────────
 
 
@@ -310,6 +316,13 @@ class DiscoveryListener:
                 device = self._parse_datagram(data, addr[0])
                 if device is not None:
                     is_new = device.gw_id not in self._discovered
+                    if is_new and len(self._discovered) >= _MAX_DISCOVERED:
+                        _LOGGER.warning(
+                            "Discovery table full (%d entries) — ignoring new device %s",
+                            _MAX_DISCOVERED,
+                            device.gw_id,
+                        )
+                        continue
                     self._discovered[device.gw_id] = device
                     self._device_event.set()
                     if is_new:
@@ -393,6 +406,19 @@ class DiscoveryListener:
 
         if not gw_id:
             _LOGGER.debug("Discovery packet missing gwId")
+            return None
+
+        if (
+            len(gw_id) > _MAX_GW_ID_LEN
+            or len(version) > _MAX_VERSION_LEN
+            or len(product_key) > _MAX_PRODUCT_KEY_LEN
+        ):
+            _LOGGER.debug(
+                "Discovery packet field too long (gwId=%d, version=%d, productKey=%d) — discarded",
+                len(gw_id),
+                len(version),
+                len(product_key),
+            )
             return None
 
         return DiscoveredDevice(
