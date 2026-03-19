@@ -847,8 +847,13 @@ function reassemble(chunks) {
 
 function parseFrame(chunks) {
   const data = reassemble(chunks);
+  // Minimum valid frame: 8 header + 0 payload + 2 CRC = 10 bytes
   if (data.length < 10) throw new Error("Frame too short");
   if (data[0] !== 0x55 || data[1] !== 0xAA) throw new Error("Bad magic");
+  // Validate CRC-16/MODBUS: last 2 bytes (LE) must match CRC of all preceding bytes
+  const receivedCrc = data[data.length - 2] | (data[data.length - 1] << 8);
+  const computedCrc = crc16Modbus(data.slice(0, -2));
+  if (receivedCrc !== computedCrc) throw new Error("Bad CRC");
   const cmd = data[3];
   const payloadLen = (data[6] << 8) | data[7];
   const payload = data.slice(8, 8 + payloadLen);
@@ -1365,6 +1370,6 @@ if (typeof module !== "undefined") {
     saveLastSsid, loadLastSsid, SSID_TTL_MS, SSID_STORAGE_KEY,
     autoDetectDevices, showDeviceCard, selectDeviceWifiAp, selectDeviceBle,
     goToDevices, goToCredentials, showDone,
-    countUtf8Bytes, reassemble, onNotify, waitForResponse,
+    countUtf8Bytes, reassemble, onNotify, waitForResponse, parseFrame, crc16Modbus,
   };
 }

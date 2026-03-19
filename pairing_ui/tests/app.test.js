@@ -10,7 +10,7 @@ const {
   isSupportedBrowser, hasWebBluetooth,
   isIOS, isAndroid, chromeIntentUrl,
   saveLastSsid, loadLastSsid, SSID_TTL_MS, SSID_STORAGE_KEY,
-  countUtf8Bytes, reassemble, onNotify, waitForResponse,
+  countUtf8Bytes, reassemble, onNotify, waitForResponse, parseFrame, crc16Modbus,
 } = app;
 
 // ── PLAT-810 — Browser compatibility helpers ──────────────────────────────────
@@ -353,5 +353,83 @@ describe("onNotify", () => {
     onNotify(makeEvent(chunk0));
 
     await expect(p).rejects.toThrow("BLE response timeout");
+  });
+});
+
+// ── crc16Modbus ───────────────────────────────────────────────────────────────
+// Verify the CRC implementation against known test vectors.
+
+describe("crc16Modbus", () => {
+  it("returns 0x34F6 for b'hello' (known MODBUS test vector)", () => {
+    const input = Buffer.from("hello");
+    expect(crc16Modbus(input)).toBe(0x34F6);
+  });
+
+  it("returns 0xFFFF for empty input (MODBUS init value)", () => {
+    expect(crc16Modbus(new Uint8Array(0))).toBe(0xFFFF);
+  });
+});
+
+// ── parseFrame — CRC validation ───────────────────────────────────────────────
+// parseFrame() must reject frames with incorrect CRC, and accept frames
+// with correct CRC.
+
+describe("parseFrame", () => {
+  function buildFrame(cmd, payloadBytes) {
+    const header = new Uint8Array(8);
+    header[0] = 0x55; header[1] = 0xAA;
+    header[2] = 0x04; // protocol version
+    header[3] = cmd;
+    // seq = 0
+    header[6] = (payloadBytes.length >> 8) & 0xff;
+    header[7] = payloadBytes.length & 0xff;
+    const body = new Uint8Array(header.length + payloadBytes.length);
+    body.set(header); body.set(payloadBytes, header.length);
+    const crc = crc16Modbus(body);
+    const frame = new Uint8Array(body.length + 2);
+    frame.set(body);
+    frame[body.length]     = crc & 0xff;
+    frame[body.length + 1] = (crc >> 8) & 0xff;
+    return frame;
+  }
+
+  function wrapChunk(frame) {
+    const chunk = new Uint8Array(2 + frame.length);
+    chunk[0] = 0; chunk[1] = 1; // chunkNo=0, total=1
+    chunk.set(frame, 2);
+    return [chunk];
+  }
+
+  it("parses a valid frame correctly", () => {
+    const frame = buildFrame(0x00, new Uint8Array([0xAA, 0xBB]));
+    const { cmd, payload } = parseFrame(wrapChunk(frame));
+    expect(cmd).toBe(0x00);
+    expect(Array.from(payload)).toEqual([0xAA, 0xBB]);
+  });
+
+  it("throws 'Bad CRC' for a frame with wrong CRC", () => {
+    const frame = buildFrame(0x00, new Uint8Array([0x01, 0x02]));
+    // Corrupt the last byte (CRC high byte)
+    frame[frame.length - 1] ^= 0xFF;
+    expect(() => parseFrame(wrapChunk(frame))).toThrow("Bad CRC");
+  });
+
+  it("throws 'Bad CRC' for a frame with zero CRC when data is non-trivial", () => {
+    const frame = buildFrame(0x01, new Uint8Array([0x10, 0x20, 0x30]));
+    // Replace CRC with zeroes
+    frame[frame.length - 2] = 0x00;
+    frame[frame.length - 1] = 0x00;
+    expect(() => parseFrame(wrapChunk(frame))).toThrow("Bad CRC");
+  });
+
+  it("throws 'Bad magic' for a frame without 0x55 0xAA header", () => {
+    const frame = buildFrame(0x00, new Uint8Array(0));
+    frame[0] = 0x00; // corrupt magic
+    expect(() => parseFrame(wrapChunk(frame))).toThrow("Bad magic");
+  });
+
+  it("throws 'Frame too short' for very short data", () => {
+    const chunk = new Uint8Array([0, 1, 0x55, 0xAA]); // only 4 bytes after chunk header
+    expect(() => parseFrame([[chunk]])).toThrow(); // too short
   });
 });

@@ -138,6 +138,17 @@ async function mockBle(page, activation = null) {
       // Build a fake BLE device that:
       //   1. Responds to handshake (CMD_HANDSHAKE=0x00) with a 16-byte nonce
       //   2. Responds to WiFi config (CMD_WIFI_CONFIG=0x01) with a simple ACK
+      function crc16Modbus(data) {
+        let crc = 0xFFFF;
+        for (const byte of data) {
+          crc ^= byte;
+          for (let i = 0; i < 8; i++) {
+            if (crc & 1) crc = (crc >>> 1) ^ 0xA001;
+            else crc >>>= 1;
+          }
+        }
+        return crc & 0xFFFF;
+      }
       function buildFrame(cmd, seq, payload) {
         const header = new Uint8Array(8);
         header[0] = 0x55; header[1] = 0xAA;
@@ -148,9 +159,12 @@ async function mockBle(page, activation = null) {
         const body = new Uint8Array(header.length + payload.length);
         body.set(header);
         body.set(payload, header.length);
-        // CRC-16/MODBUS (simplified — just append 2 zero bytes for mock)
+        // Compute real CRC-16/MODBUS and append LE
+        const crc = crc16Modbus(body);
         const frame = new Uint8Array(body.length + 2);
         frame.set(body);
+        frame[body.length]     = crc & 0xff;
+        frame[body.length + 1] = (crc >> 8) & 0xff;
         return frame;
       }
 
@@ -948,6 +962,17 @@ test.describe("Full pairing flow", () => {
     await page.addInitScript(() => {
       Object.defineProperty(window, "isSecureContext", { get: () => true });
 
+      function crc16Modbus(data) {
+        let crc = 0xFFFF;
+        for (const byte of data) {
+          crc ^= byte;
+          for (let i = 0; i < 8; i++) {
+            if (crc & 1) crc = (crc >>> 1) ^ 0xA001;
+            else crc >>>= 1;
+          }
+        }
+        return crc & 0xFFFF;
+      }
       function buildFrame(cmd, seq, payload) {
         const header = new Uint8Array(8);
         header[0] = 0x55; header[1] = 0xAA;
@@ -957,8 +982,11 @@ test.describe("Full pairing flow", () => {
         header[6] = (payload.length >> 8) & 0xff; header[7] = payload.length & 0xff;
         const body = new Uint8Array(header.length + payload.length);
         body.set(header); body.set(payload, header.length);
+        const crc = crc16Modbus(body);
         const frame = new Uint8Array(body.length + 2);
         frame.set(body);
+        frame[body.length]     = crc & 0xff;
+        frame[body.length + 1] = (crc >> 8) & 0xff;
         return frame;
       }
 
@@ -1016,6 +1044,65 @@ test.describe("Full pairing flow", () => {
         addEventListener() {}
         set onerror(_fn) {}
         close() { this.readyState = 2; }
+      };
+    });
+
+    await loadPage(page);
+    await navigateToCredentials(page);
+    await page.locator("#ssid").click();
+    await page.locator("#ssid").fill("MyNet");
+    await page.locator("#btn-next").click();
+    await page.locator("#btn-pair").click();
+
+    await expect(page.locator("#pair-status")).toBeVisible({ timeout: 5000 });
+    await expect(page.locator("#pair-status")).toHaveClass(/status-error/);
+    await expect(page.locator("#btn-pair")).toBeEnabled({ timeout: 3000 });
+  });
+
+  test("BLE frame with bad CRC shows error and re-enables pair button", async ({ page }) => {
+    await setupRoutes(page);
+    // Mock BLE device that sends a frame with a deliberately wrong CRC
+    await page.addInitScript(() => {
+      Object.defineProperty(window, "isSecureContext", { get: () => true });
+      let _notifyCb = null;
+      let _firstChunkData = null;
+      const fakeChar = {
+        startNotifications: async () => {},
+        addEventListener: (_evt, cb) => { _notifyCb = cb; },
+        removeEventListener: () => {},
+        writeValueWithoutResponse: async (chunk) => {
+          const chunkNo = chunk[0], total = chunk[1];
+          if (chunkNo === 0) _firstChunkData = chunk.slice(2);
+          if (chunkNo + 1 !== total || !_notifyCb) return;
+          // Build a handshake response frame but corrupt the CRC
+          const body = new Uint8Array(8 + 16);
+          body[0] = 0x55; body[1] = 0xAA; body[2] = 0x04; body[3] = 0x00; // cmd=handshake
+          body[6] = 0; body[7] = 16;  // payload length = 16
+          const frame = new Uint8Array(body.length + 2);
+          frame.set(body);
+          frame[body.length] = 0xAB; frame[body.length + 1] = 0xCD;  // wrong CRC
+          const respChunk = new Uint8Array(2 + frame.length);
+          respChunk[0] = 0; respChunk[1] = 1;
+          respChunk.set(frame, 2);
+          setTimeout(() => {
+            if (_notifyCb) _notifyCb({ target: { value: { buffer: respChunk.buffer } } });
+          }, 1);
+        },
+      };
+      const fakeService = { getCharacteristic: async () => fakeChar };
+      const fakeServer = { getPrimaryService: async () => fakeService };
+      const fakeDevice = {
+        id: "crc-fail-device",
+        name: "CRC Fail Device",
+        gatt: { connect: async () => fakeServer },
+        addEventListener: () => {}, removeEventListener: () => {},
+      };
+      Object.defineProperty(navigator, "bluetooth", {
+        value: { requestDevice: async () => fakeDevice }, configurable: true,
+      });
+      window.EventSource = class MockES {
+        constructor() { this.readyState = 1; }
+        addEventListener() {} set onerror(_fn) {} close() {}
       };
     });
 
