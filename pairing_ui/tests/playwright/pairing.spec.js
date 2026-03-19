@@ -718,8 +718,12 @@ test.describe("Language picker", () => {
     const titleBefore = await page.locator("#step1-title").textContent();
 
     await page.locator("#lang-select").selectOption("sv");
-    // Wait for strings to reload
-    await page.waitForTimeout(300);
+    // Wait for async i18n fetch + applyStrings() to update the DOM
+    await page.waitForFunction(
+      (before) => document.querySelector("#step1-title")?.textContent !== before,
+      titleBefore,
+      { timeout: 5000 }
+    );
 
     const titleAfter = await page.locator("#step1-title").textContent();
     // Swedish title should differ from English
@@ -734,7 +738,8 @@ test.describe("Language picker", () => {
     await loadPage(page);
 
     await page.locator("#lang-select").selectOption("de");
-    await page.waitForTimeout(200);
+    // changeLang() calls localStorage.setItem() synchronously before the async fetch —
+    // no wait needed; the value is already set when selectOption() resolves.
 
     const stored = await page.evaluate(() => localStorage.getItem("tc-lang"));
     expect(stored).toBe("de");
@@ -1999,8 +2004,10 @@ test.describe("WiFi AP pairing flow", () => {
 
     await page.locator("#btn-wifi-scan").click();
 
+    // Wait for the scan to complete (button re-enabled in finally block) — reliably
+    // signals that the HTTP 500 response has been processed before asserting the UI.
+    await expect(page.locator("#btn-wifi-scan")).toBeEnabled({ timeout: 3000 });
     // Dropdown should remain hidden on error (not show "No networks found")
-    await page.waitForTimeout(500);
     await expect(page.locator("#wifi-dropdown")).toHaveClass(/hidden/);
   });
 
@@ -2357,9 +2364,11 @@ test.describe("goToDevices auto-scan on back navigation", () => {
 
     let scanCount = 0;
     // Override quick-scan route to count calls — registered AFTER setupRoutes
-    // so this one takes priority.
-    await page.route(BASE + "/api/provision/quick-scan", (route) => {
+    // so this one takes priority. A 60ms delay ensures the scan indicator stays
+    // visible long enough for the event-based wait to observe it.
+    await page.route(BASE + "/api/provision/quick-scan", async (route) => {
       scanCount++;
+      await new Promise((r) => setTimeout(r, 60));
       route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ tuya_aps: [] }) });
     });
 
@@ -2374,8 +2383,16 @@ test.describe("goToDevices auto-scan on back navigation", () => {
     // Navigate forward then back — goToDevices() now calls autoDetectDevices()
     await navigateToCredentials(page);
     await page.click("#btn-back");
-    // Wait for the new scan to start (scanning indicator becomes visible then hides)
-    await page.waitForTimeout(500);
+    // Wait for the scan indicator to appear (new scan started), then disappear (done).
+    // The 60ms mock delay above ensures the indicator stays visible long enough.
+    await page.waitForFunction(() => {
+      const el = document.getElementById("devices-scanning");
+      return el != null && el.style.display !== "none";
+    }, { timeout: 3000 });
+    await page.waitForFunction(() => {
+      const el = document.getElementById("devices-scanning");
+      return el != null && el.style.display === "none";
+    }, { timeout: 3000 });
 
     expect(scanCount).toBeGreaterThan(countAfterInit);
   });

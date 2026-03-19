@@ -424,7 +424,8 @@ async function scanWifi() {
     // Filter Tuya provisioning APs out of the home-network dropdown — they are
     // not connectable home networks and selecting one would silently break pairing.
     const tuyaApSsids = new Set((data.tuya_aps || []).map(ap => ap.ssid));
-    const allSsids = (data.ssids || []).filter(s => !tuyaApSsids.has(s));
+    // Filter out empty strings (defensive against malformed server responses) and Tuya APs
+    const allSsids = (data.ssids || []).filter(s => s && !tuyaApSsids.has(s));
     // Cap at 20 items — prevents DOM bloat on networks with 50+ APs visible
     const ssids = allSsids.slice(0, 20);
     const current = data.current_ssid || null;
