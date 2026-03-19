@@ -290,3 +290,34 @@ class TestDecodeFrameEdgeCases:
 
         with pytest.raises(MalformedPacketError):
             decode_frame(frame, version="3.1", local_key=b"0123456789abcdef")
+
+
+class TestEncodeFrameSequenceOverflow:
+    """R21-3: encode_frame and encode_session_key_start must not raise struct.error
+    when sequence >= 2**32 (mask to 32 bits)."""
+
+    def test_encode_frame_large_sequence(self) -> None:
+        """sequence > 0xFFFFFFFF must be masked, not raise struct.error."""
+        from tuya_cloudless.protocol import encode_frame
+
+        raw = encode_frame(
+            CMD_HEARTBEAT,
+            b"",
+            sequence=2**32,
+            version=_VERSION,
+            local_key=_LOCAL_KEY,
+        )
+        _, seq, _, _ = struct.unpack_from(">4sIII", raw, 0)
+        assert seq == 0  # 2**32 & 0xFFFFFFFF == 0
+
+    def test_encode_session_key_start_large_sequence(self) -> None:
+        """encode_session_key_start must mask sequence to 32 bits."""
+        from tuya_cloudless.protocol import encode_session_key_start
+
+        raw = encode_session_key_start(
+            b"\x42" * 32,
+            sequence=2**32 + 7,
+            local_key=_LOCAL_KEY,
+        )
+        _, seq, _, _ = struct.unpack_from(">4sIII", raw, 0)
+        assert seq == 7  # (2**32 + 7) & 0xFFFFFFFF == 7

@@ -954,10 +954,13 @@ class TuyaCloudlessConfigFlow(ConfigFlow, domain=DOMAIN):
         await self.async_set_unique_id(gw_id)
         self._abort_if_unique_id_configured(updates={CONF_IP_ADDRESS: host})
 
+        raw_version = props.get("version", DEFAULT_PROTOCOL_VERSION)
         self._device = {
             CONF_GW_ID: gw_id,
             CONF_IP_ADDRESS: host,
-            CONF_PROTOCOL_VERSION: props.get("version", DEFAULT_PROTOCOL_VERSION),
+            CONF_PROTOCOL_VERSION: raw_version
+            if raw_version in PROTOCOL_VERSIONS
+            else DEFAULT_PROTOCOL_VERSION,
             "product_key": props.get("productKey") or props.get("product_key"),
         }
         self.context["title_placeholders"] = {"name": gw_id}

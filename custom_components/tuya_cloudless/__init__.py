@@ -332,7 +332,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # The inserted path was only needed for the initial import; it is safe to
     # remove once no more entries are active.
     global _INSERTED_LIB_PATH
-    if len(remaining) <= 1 and _INSERTED_LIB_PATH is not None:
+    if len(remaining) <= 1 and unload_ok and _INSERTED_LIB_PATH is not None:
         with contextlib.suppress(ValueError):
             sys.path.remove(_INSERTED_LIB_PATH)
         _INSERTED_LIB_PATH = None

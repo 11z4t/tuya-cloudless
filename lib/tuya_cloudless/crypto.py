@@ -280,7 +280,7 @@ def strip_v33_header(data: bytes) -> bytes:
         # The header is always prepended by add_v33_header for v3.3 devices.
         # The version prefix check avoids corrupting a payload that starts with
         # something other than the 12-byte header (firmware edge case).
-        return data[_AES_BLOCK - 4 :]  # 12-byte header: 3 (ver) + 1 (.) + 8 (padding)
+        return data[_AES_BLOCK - 4 :]  # 12-byte header: b"3.3" (3 bytes) + 9 null padding bytes
     return data
 
 

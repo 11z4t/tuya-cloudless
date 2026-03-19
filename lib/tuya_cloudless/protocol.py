@@ -114,7 +114,7 @@ def encode_frame(
 
     # length = encrypted_payload + CRC(4) + suffix(4)
     length = len(encrypted) + 8
-    header = _STRUCT_HEADER.pack(FRAME_PREFIX, sequence, command, length)
+    header = _STRUCT_HEADER.pack(FRAME_PREFIX, sequence & 0xFFFFFFFF, command & 0xFFFFFFFF, length)
     body = header + encrypted
     crc = compute_crc32(body)
     return body + struct.pack(">I", crc) + FRAME_SUFFIX
@@ -398,7 +398,9 @@ def encode_session_key_start(
     ecb_key = derive_ecb_key(local_key)
     encrypted = encrypt_ecb(ecb_key, public_key_bytes)
     length = len(encrypted) + 8  # +4 CRC +4 suffix
-    header = _STRUCT_HEADER.pack(FRAME_PREFIX, sequence, CMD_SESS_KEY_NEG_START, length)
+    header = _STRUCT_HEADER.pack(
+        FRAME_PREFIX, sequence & 0xFFFFFFFF, CMD_SESS_KEY_NEG_START, length
+    )
     body = header + encrypted
     crc = compute_crc32(body)
     return body + struct.pack(">I", crc) + FRAME_SUFFIX

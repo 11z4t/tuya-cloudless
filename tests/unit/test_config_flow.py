@@ -3495,3 +3495,60 @@ class TestAutoDetectProfileEdgeCases:
         # init_profiles must have been called when profiles were empty
         mock_init.assert_called_once()
         assert result == "Smart Plug"
+
+
+class TestZeroconfVersionValidation:
+    """R21-1: mDNS version TXT property must be validated against PROTOCOL_VERSIONS."""
+
+    def _make_flow(self) -> Any:
+        from custom_components.tuya_cloudless.config_flow import TuyaCloudlessConfigFlow
+
+        flow = TuyaCloudlessConfigFlow.__new__(TuyaCloudlessConfigFlow)
+        flow._discovered = []
+        flow._device = {}
+        flow.hass = MagicMock()
+        flow.context = {}
+        flow.async_show_form = MagicMock(return_value={"type": "form"})
+        flow.async_create_entry = MagicMock(return_value={"type": "create_entry"})
+        flow.async_abort = MagicMock(return_value={"type": "abort"})
+        flow.async_set_unique_id = AsyncMock()
+        flow._abort_if_unique_id_configured = MagicMock()
+        flow.async_step_discovery = AsyncMock(return_value={"type": "form"})
+        return flow
+
+    @pytest.mark.asyncio
+    async def test_invalid_version_falls_back_to_default(self) -> None:
+        """An unknown mDNS version (e.g. '9.9') must be replaced with the default."""
+        from custom_components.tuya_cloudless.const import (
+            CONF_PROTOCOL_VERSION,
+            DEFAULT_PROTOCOL_VERSION,
+        )
+
+        flow = self._make_flow()
+        _restore_method(flow, "async_step_zeroconf")
+
+        discovery_info = MagicMock()
+        discovery_info.host = "10.0.0.99"
+        discovery_info.properties = {"gwId": "devfoobar001", "version": "9.9"}
+        discovery_info.name = "devfoobar001._tuya._tcp.local."
+
+        await flow.async_step_zeroconf(discovery_info)
+
+        assert flow._device[CONF_PROTOCOL_VERSION] == DEFAULT_PROTOCOL_VERSION
+
+    @pytest.mark.asyncio
+    async def test_valid_version_preserved(self) -> None:
+        """A valid mDNS version string must be stored as-is."""
+        from custom_components.tuya_cloudless.const import CONF_PROTOCOL_VERSION
+
+        flow = self._make_flow()
+        _restore_method(flow, "async_step_zeroconf")
+
+        discovery_info = MagicMock()
+        discovery_info.host = "10.0.0.100"
+        discovery_info.properties = {"gwId": "devvalid001", "version": "3.5"}
+        discovery_info.name = "devvalid001._tuya._tcp.local."
+
+        await flow.async_step_zeroconf(discovery_info)
+
+        assert flow._device[CONF_PROTOCOL_VERSION] == "3.5"
