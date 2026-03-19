@@ -37,12 +37,14 @@ const FAKE_DEVICE = {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-/** Cached HA Bearer token (obtained via HTTP auth flow, reused across tests). */
+/** Cached HA Bearer token (obtained via HTTP auth flow, reused within a test run). */
 let _haToken = null;
 
 /**
  * Obtain a HA Bearer token via the HTTP auth flow (not browser UI).
- * Cached after first call. Returns the access_token string.
+ * Cached after first call — token is valid for 30 min, well beyond a test run.
+ * Returns the access_token string, or null if credentials are wrong.
+ * @throws {Error} if the HA server is unreachable or returns unexpected responses.
  */
 async function getHaToken() {
   if (_haToken) return _haToken;
@@ -57,26 +59,30 @@ async function getHaToken() {
       redirect_uri: `${HA_URL}/`,
     }),
   });
-  const { flow_id } = await r1.json();
+  if (!r1.ok) throw new Error(`Auth login_flow failed: ${r1.status} ${r1.statusText}`);
+  const d1 = await r1.json();
+  if (!d1.flow_id) throw new Error(`No flow_id in response: ${JSON.stringify(d1)}`);
 
   // Step 2: submit credentials
-  const r2 = await fetch(`${HA_URL}/auth/login_flow/${flow_id}`, {
+  const r2 = await fetch(`${HA_URL}/auth/login_flow/${d1.flow_id}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ client_id: `${HA_URL}/`, username: HA_USER, password: HA_PASS }),
   });
-  const { result: code, errors } = await r2.json();
-  if (!code || errors?.base) return null;  // bad credentials
+  if (!r2.ok) throw new Error(`Auth credentials step failed: ${r2.status} ${r2.statusText}`);
+  const d2 = await r2.json();
+  if (!d2.result || d2.errors?.base) return null;  // bad credentials — caller handles
 
   // Step 3: exchange code for access token
-  const params = new URLSearchParams({ grant_type: "authorization_code", code, client_id: `${HA_URL}/` });
+  const params = new URLSearchParams({ grant_type: "authorization_code", code: d2.result, client_id: `${HA_URL}/` });
   const r3 = await fetch(`${HA_URL}/auth/token`, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: params,
   });
-  const { access_token } = await r3.json();
-  _haToken = access_token || null;
+  if (!r3.ok) throw new Error(`Token exchange failed: ${r3.status} ${r3.statusText}`);
+  const d3 = await r3.json();
+  _haToken = d3.access_token || null;
   return _haToken;
 }
 
@@ -187,6 +193,9 @@ async function removeExistingEntry(page, gw_id) {
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
+
+// Clear cached token after the full suite so re-runs start fresh.
+test.afterAll(() => { _haToken = null; });
 
 test.describe("HA connectivity", () => {
   test("HA responds", async ({ page }) => {
