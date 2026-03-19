@@ -822,8 +822,7 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self._gw_id,
             _IP_REDISCOVER_TIMEOUT,
         )
-        local_key_hex = self._local_key.hex()
-        listener = DiscoveryListener(known_devices={self._gw_id: local_key_hex})
+        listener = DiscoveryListener(known_devices={self._gw_id: self._local_key})
 
         try:
             await listener.start()

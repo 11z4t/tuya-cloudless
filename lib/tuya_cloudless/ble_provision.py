@@ -273,6 +273,8 @@ def _reassemble_chunks(chunks: list[bytes]) -> bytes:
         raise PairingError(f"Incomplete BLE frame: expected {total} chunks, got {len(chunks)}")
 
     ordered = sorted(chunks, key=lambda c: c[0])
+    if len(ordered) != len({c[0] for c in ordered}):
+        raise PairingError("BLE chunk list contains duplicate chunk indices")
     for idx, chunk in enumerate(ordered):
         if chunk[0] != idx:
             raise PairingError(f"BLE chunk sequence gap: expected index {idx}, got {chunk[0]}")
@@ -608,8 +610,11 @@ class BleProvisioner:
 
                 device_nonce = resp.payload[:BLE_NONCE_SIZE]
                 session_key = derive_session_key(controller_nonce, device_nonce)
-                recv_chunks.clear()
+                # Clear event BEFORE chunks to close the TOCTOU window where a
+                # spurious notification between the two clears would leave the
+                # event set with an empty recv_chunks list.
                 notify_event.clear()
+                recv_chunks.clear()
 
                 # Step 2: Send WiFi config, encrypted with the session key
                 for chunk in build_provision_frames(payload, seq=1, session_key=session_key):

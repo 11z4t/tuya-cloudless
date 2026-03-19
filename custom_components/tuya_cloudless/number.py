@@ -117,6 +117,9 @@ class TuyaCloudlessNumber(TuyaCloudlessEntity, NumberEntity):
             return
         dp_id = self._spec.dp_value.id
         scale = self._spec.dp_value.scale
+        if scale == 0.0:
+            _LOGGER.warning("[%s] DP scale is 0 — cannot convert value", self.coordinator.gw_id)
+            return
         raw_value = round(value / scale)
         try:
             await self.coordinator.async_send_dps({dp_id: raw_value})

@@ -2971,6 +2971,7 @@ class TestPairingRedirectView:
         mock_request = MagicMock()
         mock_request.url.host = "ha.example.com"
         mock_request.url.scheme = "http"  # HA sees HTTP internally
+        mock_request.remote = "127.0.0.1"  # Trusted reverse proxy on loopback
         mock_request.headers = {"X-Forwarded-Proto": "https"}
 
         with pytest.raises(web.HTTPFound) as exc_info:
@@ -4253,3 +4254,94 @@ class TestJsonInScript:
         body = resp.text if hasattr(resp, "text") else resp.body.decode()
         # The crafted </script> must not appear verbatim inside any <script> block
         assert "</script><script>alert(1)" not in body
+
+
+# ── _get_client_ip ─────────────────────────────────────────────────────────────
+
+
+class TestGetClientIp:
+    """Tests for _get_client_ip() — proxy-aware IP extraction."""
+
+    def test_non_loopback_xff_header_ignored(self, server: PairingServer) -> None:
+        """X-Forwarded-For from a non-loopback peer must be ignored."""
+        req = MagicMock()
+        req.remote = "192.168.1.50"
+        req.headers = {"X-Forwarded-For": "10.0.0.1"}
+        assert server._get_client_ip(req) == "192.168.1.50"
+
+    def test_loopback_ipv4_trusts_xff(self, server: PairingServer) -> None:
+        """X-Forwarded-For from 127.0.0.1 is trusted (reverse proxy)."""
+        req = MagicMock()
+        req.remote = "127.0.0.1"
+        req.headers = {"X-Forwarded-For": "10.0.0.99"}
+        assert server._get_client_ip(req) == "10.0.0.99"
+
+    def test_loopback_ipv6_trusts_xff(self, server: PairingServer) -> None:
+        """::1 is treated as loopback and its X-Forwarded-For is trusted."""
+        req = MagicMock()
+        req.remote = "::1"
+        req.headers = {"X-Forwarded-For": "203.0.113.5"}
+        assert server._get_client_ip(req) == "203.0.113.5"
+
+    def test_multi_value_xff_uses_first_entry(self, server: PairingServer) -> None:
+        """Only the first X-Forwarded-For value is used."""
+        req = MagicMock()
+        req.remote = "127.0.0.1"
+        req.headers = {"X-Forwarded-For": "10.0.0.1, 172.16.0.1, 192.168.0.1"}
+        assert server._get_client_ip(req) == "10.0.0.1"
+
+    def test_missing_remote_returns_unknown(self, server: PairingServer) -> None:
+        """Empty/None request.remote falls back to 'unknown'."""
+        req = MagicMock()
+        req.remote = ""
+        req.headers = {}
+        assert server._get_client_ip(req) == "unknown"
+
+    def test_loopback_no_xff_returns_loopback(self, server: PairingServer) -> None:
+        """Loopback peer with no X-Forwarded-For returns the loopback IP."""
+        req = MagicMock()
+        req.remote = "127.0.0.1"
+        req.headers = {}
+        assert server._get_client_ip(req) == "127.0.0.1"
+
+
+# ── gw_id character validation ─────────────────────────────────────────────────
+
+
+class TestActivateGwIdValidation:
+    """Tests for gw_id and product_key character validation in /api/tuya/device/active."""
+
+    @pytest.mark.asyncio
+    async def test_valid_alphanumeric_gw_id_accepted(self, client: TestClient) -> None:
+        resp = await client.post(
+            "/api/tuya/device/active",
+            json={"gw_id": "abc123DEF456", "token": _TOKEN_A},
+        )
+        assert resp.status == 200
+
+    @pytest.mark.asyncio
+    async def test_gw_id_with_newline_rejected(self, client: TestClient) -> None:
+        """gw_id containing newline must be rejected (SSE format injection guard)."""
+        resp = await client.post(
+            "/api/tuya/device/active",
+            json={"gw_id": "gw\nevil", "token": _TOKEN_A},
+        )
+        assert resp.status == 400
+
+    @pytest.mark.asyncio
+    async def test_gw_id_with_control_char_rejected(self, client: TestClient) -> None:
+        """gw_id containing control characters must be rejected."""
+        resp = await client.post(
+            "/api/tuya/device/active",
+            json={"gw_id": "gw\x00id", "token": _TOKEN_A},
+        )
+        assert resp.status == 400
+
+    @pytest.mark.asyncio
+    async def test_product_key_unicode_rejected(self, client: TestClient) -> None:
+        """Non-ASCII product_key must be rejected."""
+        resp = await client.post(
+            "/api/tuya/device/active",
+            json={"gw_id": "gwvalid", "product_key": "pk\u0400", "token": _TOKEN_A},
+        )
+        assert resp.status == 400

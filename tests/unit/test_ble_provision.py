@@ -502,8 +502,9 @@ class TestReassembleChunksGap:
         """
         # chunk[0] = chunk_no, chunk[1] = total
         chunk_a = bytes([0, 2]) + b"A" * 10  # idx=0, total=2
-        chunk_b = bytes([0, 2]) + b"B" * 10  # idx=0 again — gap after sorting
-        with pytest.raises(PairingError, match="sequence gap"):
+        chunk_b = bytes([0, 2]) + b"B" * 10  # idx=0 again — duplicate index
+        # Now caught earlier as "duplicate chunk indices" before sequential check
+        with pytest.raises(PairingError, match="duplicate"):
             _reassemble_chunks([chunk_a, chunk_b])
 
     def test_short_chunk_raises(self) -> None:

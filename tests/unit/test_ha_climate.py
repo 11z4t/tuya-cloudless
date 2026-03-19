@@ -779,21 +779,15 @@ class TestSetTemperatureNoDpTempSet:
 
 class TestSetTemperatureScaleZero:
     @pytest.mark.asyncio
-    async def test_set_temperature_scale_zero_uses_infinity_raw(self) -> None:
-        """With scale=0, raw_value = round(temp/0) which raises ZeroDivisionError.
+    async def test_set_temperature_scale_zero_is_ignored(self) -> None:
+        """With scale=0, async_set_temperature returns early without sending.
 
-        This test documents current behavior — the production code does not
-        guard against scale=0; if it does raise, async_send_dps is never called.
+        The guard prevents ZeroDivisionError from an invalid profile configuration.
         """
         e = _make_climate({"1": True, "3": 0}, scale=0.0)
-        try:
-            await e.async_set_temperature(**{ATTR_TEMPERATURE: 22.0})
-        except (ZeroDivisionError, OverflowError, ValueError):
-            # Expected — scale=0 is an invalid profile configuration
-            e.coordinator.async_send_dps.assert_not_awaited()
-        else:
-            # If it somehow succeeded, at least verify send was called
-            e.coordinator.async_send_dps.assert_awaited_once()
+        await e.async_set_temperature(**{ATTR_TEMPERATURE: 22.0})
+        # Must not send anything — scale=0 is invalid, not a crash
+        e.coordinator.async_send_dps.assert_not_awaited()
 
 
 # ── async_set_hvac_mode when dp_power is None ─────────────────────────────────

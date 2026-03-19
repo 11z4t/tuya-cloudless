@@ -225,6 +225,11 @@ class TuyaCloudlessClimate(RestoreStateMixin, TuyaCloudlessEntity, ClimateEntity
             return
         temperature = float(kwargs[ATTR_TEMPERATURE])
         scale = self._spec.dp_temp_set.scale
+        if scale == 0.0:
+            _LOGGER.warning(
+                "[%s] Temperature scale is 0 — cannot set temperature", self.coordinator.gw_id
+            )
+            return
         raw_value = round(temperature / scale)
         self._optimistic_target_temp = round(float(raw_value) * scale, 1)
         self.async_write_ha_state()

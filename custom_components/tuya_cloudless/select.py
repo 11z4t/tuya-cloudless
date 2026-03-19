@@ -87,6 +87,13 @@ class TuyaCloudlessSelect(TuyaCloudlessEntity, SelectEntity):
         """
         if self._spec.dp_value is None:
             return
+        if option not in self._attr_options:
+            _LOGGER.warning(
+                "[%s] Option '%s' not in allowed list — ignored",
+                self.coordinator.gw_id,
+                option,
+            )
+            return
         try:
             await self.coordinator.async_send_dps({self._spec.dp_value.id: option})
         except HomeAssistantError:

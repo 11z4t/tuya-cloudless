@@ -188,7 +188,9 @@ class TuyaCloudlessCover(RestoreStateMixin, TuyaCloudlessEntity, CoverEntity):
         raw = self.get_dp(self._spec.dp_position.id)
         if raw is None:
             return None
-        return int(raw)
+        with contextlib.suppress(ValueError, TypeError):
+            return int(raw)
+        return None
 
     @property
     def current_cover_tilt_position(self) -> int | None:
@@ -203,7 +205,9 @@ class TuyaCloudlessCover(RestoreStateMixin, TuyaCloudlessEntity, CoverEntity):
         raw = self.get_dp(self._spec.dp_tilt.id)
         if raw is None:
             return None
-        return int(raw)
+        with contextlib.suppress(ValueError, TypeError):
+            return int(raw)
+        return None
 
     async def async_open_cover(self, **kwargs: Any) -> None:
         """Open the cover with optimistic state update.

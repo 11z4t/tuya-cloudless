@@ -115,6 +115,11 @@ _MAX_WIFI_AP_TASKS: Final[int] = 3
 #: nmcli argument handling even when using list-based subprocess calls.
 _CTRL_CHAR_RE: Final[re.Pattern[str]] = re.compile(r"[\x00-\x1f\x7f]")
 
+#: Allowed characters for Tuya device IDs (gwId, productKey).
+#: Alphanumeric + hyphens + underscores — matches all known Tuya ID formats.
+#: Excludes control characters and special chars that could inject into SSE/HA config.
+_DEVICE_ID_RE: Final[re.Pattern[str]] = re.compile(r"^[a-zA-Z0-9_\-]{1,64}$")
+
 #: SSID prefixes used by Tuya devices in AP/provisioning mode.
 #: Matching is case-insensitive.
 _TUYA_AP_PREFIXES: Final[tuple[str, ...]] = (
@@ -652,6 +657,15 @@ class PairingServer:
                 len(sw_ver),
             )
             return web.Response(status=400, text="Field too long")
+
+        # Validate gw_id and product_key character set — Tuya IDs are alphanumeric ASCII.
+        # Rejects control characters that could interfere with SSE format or HA config flow.
+        if gw_id and not _DEVICE_ID_RE.match(gw_id):
+            _LOGGER.warning("Activation request rejected: invalid gw_id format")
+            return web.Response(status=400, text="Invalid gw_id format")
+        if product_key and not _DEVICE_ID_RE.match(product_key):
+            _LOGGER.warning("Activation request rejected: invalid product_key format")
+            return web.Response(status=400, text="Invalid product_key format")
 
         _LOGGER.info(
             "Tuya device activation: gw_id=%s product_key=%s token=%s… sw_ver=%s ip=%s",
@@ -1732,7 +1746,15 @@ class PairingRedirectView:
         # URL and protects against any future header-injection edge cases.
         if not re.match(r"^[a-zA-Z0-9_-]{1,128}$", flow_id):
             return web.Response(status=400, text="Invalid flow_id")
-        proto = request.headers.get("X-Forwarded-Proto", request.url.scheme)
+        # Only trust X-Forwarded-Proto from the reverse proxy (loopback).
+        # A LAN device spoofing this header must not be able to hijack the redirect scheme.
+        raw_peer = request.remote or ""
+        proto_header = request.headers.get("X-Forwarded-Proto", "")
+        proto = (
+            "https"
+            if (raw_peer in ("127.0.0.1", "::1") and proto_header == "https")
+            else request.url.scheme
+        )
         if proto == "https":
             # Stay on HA's HTTPS server — the pairing UI is mirrored there.
             # Using a relative redirect keeps the correct hostname automatically.
