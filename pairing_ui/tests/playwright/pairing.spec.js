@@ -2957,4 +2957,64 @@ test.describe("WiFi AP pair — network fetch error", () => {
     expect(role).toBe("status");
     expect(live).toBe("polite");
   });
+
+  test("cancel before POST resolves — 120-second timeout does not overwrite cancelled message", async ({ page }) => {
+    // Regression guard for _wifiApDone race condition:
+    // If the user cancels while the wifi-ap-pair POST is still in flight, the POST
+    // may later complete and (before the fix) start a 120-second timeout that fires
+    // and overwrites the "cancelled" status with a "timeout" error.
+    // Fix: _wifiApDone is now module-level and set to true by the cancel handler so
+    // the in-flight POST sees the flag and does not start the timer.
+    await setupRoutes(page, { tuya_aps: [{ ssid: "SmartLife_AB12" }] });
+
+    // No-op EventSource — no SSE events will fire during this test
+    await page.addInitScript(() => {
+      window.EventSource = class MockEventSource {
+        constructor() { this.readyState = 1; }
+        addEventListener() {}
+        set onerror(fn) {}
+        close() { this.readyState = 2; }
+      };
+    });
+
+    // Block the POST until we explicitly release it (simulates slow network)
+    let releasePost;
+    await page.route(BASE + "/api/provision/wifi-ap-pair", async (route) => {
+      await new Promise((resolve) => { releasePost = resolve; });
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ token: "tok-race", events_url: BASE + "/api/provision/events" }),
+      });
+    });
+
+    await loadPage(page);
+    await pairViaWifiApUi(page);
+
+    // Wait for cancel button to appear (pairing in progress, POST still blocked)
+    await expect(page.locator("#btn-cancel-wifi-ap")).toBeVisible({ timeout: 3000 });
+
+    // Click cancel — sets _wifiApDone = true
+    await page.locator("#btn-cancel-wifi-ap").click();
+    await expect(page.locator("#wifi-ap-status")).toContainText("cancelled");
+
+    // Install fake clock AFTER cancel click so any timer started by the POST
+    // completion (if the guard were missing) runs under fake-clock control
+    await page.clock.install();
+
+    // Release the POST — it resolves in the page with a token.
+    // With the fix: _wifiApDone is true → !_wifiApDone is false → no timer started.
+    // Without the fix: timer would be started under fake clock.
+    releasePost();
+
+    // Give the page a real tick to process the response before advancing fake time
+    await page.waitForTimeout(200);
+
+    // Fast-forward 130 seconds (past SSE_TIMEOUT_MS = 120 000 ms)
+    await page.clock.fastForward(130_000);
+
+    // Cancelled message must still be shown — the 120-second timeout must NOT have fired
+    await expect(page.locator("#wifi-ap-status")).toContainText("cancelled");
+    await expect(page.locator("#wifi-ap-status")).not.toHaveClass(/status-error/);
+  });
 });

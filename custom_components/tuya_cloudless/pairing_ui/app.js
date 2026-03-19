@@ -293,6 +293,7 @@ let _pairMethod = null;       // PAIR_METHOD.BLE | PAIR_METHOD.WIFI_AP
 let _selectedApSsid = null;   // SSID of Tuya AP chosen by user
 let _currentEventSource = null; // Active EventSource — closed on panel switch
 let _activeSseTimer    = null; // setTimeout handle from listenForActivation — cleared on unload
+let _wifiApDone        = false; // dedup guard: set true when WiFi AP pair is resolved/cancelled
 
 // ── Step counter ──────────────────────────────────────────────────────────────
 let _currentStep = 1;
@@ -679,7 +680,9 @@ function goToDevices() {
   // Disable "Pair Another" to prevent double-click triggering duplicate navigation
   const pairAnotherBtn = document.getElementById("btn-pair-another");
   if (pairAnotherBtn) pairAnotherBtn.disabled = true;
-  // Close any open SSE connection when navigating back to device discovery
+  // Close any open SSE connection when navigating back to device discovery.
+  // Set _wifiApDone so any in-flight WiFi AP POST doesn't start a stale timer.
+  _wifiApDone = true;
   if (_currentEventSource) {
     _currentEventSource.close();
     _currentEventSource = null;
@@ -724,6 +727,8 @@ function goToDevices() {
 
 function goToCredentials() {
   // Defensive: close any stale SSE from a previous pairing that wasn't already cleaned up.
+  // Set _wifiApDone so any in-flight WiFi AP POST doesn't start a stale timer.
+  _wifiApDone = true;
   if (_currentEventSource) {
     _currentEventSource.close();
     _currentEventSource = null;
@@ -1160,7 +1165,7 @@ async function pairViaWifiAp() {
   _currentEventSource = es;
   let token = null;
   let wifiApTimer = null;
-  let _wifiApDone = false;  // dedup guard — first event wins
+  _wifiApDone = false;  // reset module-level guard for this invocation
 
   const wifiApCleanup = (enableBtn) => {
     if (_wifiApDone) return;  // already handled
@@ -1254,7 +1259,7 @@ async function pairViaWifiAp() {
     token = data.token;
 
     // After SSE_TIMEOUT_MS with no activation, show timeout error and re-enable button.
-    // Guard: don't start if onerror already ran before POST completed.
+    // Guard: don't start if cancel/navigation already ran before POST completed.
     if (!_wifiApDone) {
       wifiApTimer = setTimeout(() => {
         wifiApCleanup(true);
@@ -1264,10 +1269,11 @@ async function pairViaWifiAp() {
       // Track in module-level _activeSseTimer so navigation functions (goToDevices,
       // goToCredentials, beforeunload) can cancel it even though it's in a closure.
       _activeSseTimer = wifiApTimer;
+      showWifiApSpinner(t("wifi_ap_waiting"));
+      dbg("WiFi AP pair: waiting for activation SSE\u2026");
+    } else {
+      dbg("WiFi AP pair: POST completed after cancel/navigation — ignoring");
     }
-
-    showWifiApSpinner(t("wifi_ap_waiting"));
-    dbg("WiFi AP pair: waiting for activation SSE\u2026");
   } catch (err) {
     // AbortError means the 15-second fetch watchdog fired — show a friendly message
     const msg = err.name === "AbortError"
@@ -1452,7 +1458,10 @@ function copyShareUrl() {
   document.getElementById("btn-back").addEventListener("click", goToDevices);
   document.getElementById("btn-back-ble").addEventListener("click", goToCredentials);
   document.getElementById("btn-cancel-wifi-ap").addEventListener("click", () => {
-    // Close SSE + restore UI — user can retry or go back
+    // Close SSE + restore UI — user can retry or go back.
+    // Set _wifiApDone FIRST so any in-flight POST that completes after this does not
+    // start the 120-second timeout timer and overwrite the "cancelled" status message.
+    _wifiApDone = true;
     if (_currentEventSource) { _currentEventSource.close(); _currentEventSource = null; }
     // Cancel the WiFi AP timeout timer (tracked via _activeSseTimer) so it doesn't
     // overwrite the "cancelled" message with a stale "timeout" error 120 s later.
@@ -1627,6 +1636,7 @@ if (typeof module !== "undefined") {
     _safePath, _safeUrl, _t: t,
     _getRecvReject: () => _recvReject,
     _getActiveSseTimer: () => _activeSseTimer,
+    _getWifiApDone: () => _wifiApDone,
     _listenForActivation: listenForActivation,
     _updateStepCounter: updateStepCounter,
   };
