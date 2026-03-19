@@ -1144,7 +1144,10 @@ class PairingServer:
                     session.post(
                         f"http://{_TUYA_AP_GATEWAY_IP}/gw.json",
                         json=payload,
-                        timeout=_aiohttp.ClientTimeout(total=_TUYA_AP_GW_TIMEOUT),
+                        timeout=_aiohttp.ClientTimeout(
+                            total=_TUYA_AP_GW_TIMEOUT,
+                            connect=3.0,  # Limit TCP handshake phase; device switches quickly
+                        ),
                         allow_redirects=False,  # Prevent SSRF via device firmware redirect
                     ) as resp,
                 ):

@@ -1586,6 +1586,11 @@ class TestWifiApPair:
         assert captured.get("allow_redirects") is False, (
             "gw.json POST must set allow_redirects=False (SSRF prevention)"
         )
+        timeout_obj = captured.get("timeout")
+        assert timeout_obj is not None, "gw.json POST must set a timeout"
+        assert timeout_obj.connect == 3.0, (
+            "gw.json POST must limit TCP handshake to 3s (connect timeout)"
+        )
 
     async def test_unexpected_exception_emits_wifi_ap_error_sse(self) -> None:
         """An unexpected exception inside _wifi_ap_pair_task still emits wifi_ap_error SSE."""
@@ -1833,6 +1838,24 @@ class TestConfigEndpoint:
         data = await resp.json()
         assert data["default_ssid"] is None, (
             "SSID with control chars must not be returned as default_ssid"
+        )
+
+    async def test_default_ssid_with_colon_in_name(self, client: TestClient) -> None:
+        """SSIDs containing colons (e.g. 'MyNet:5G') must be returned intact.
+
+        nmcli --terse uses ':' as field separator so the output for SSID='MyNet:5G'
+        is 'yes:MyNet:5G'.  The parser uses line[4:] to skip the 'yes:' prefix,
+        correctly preserving any additional colons in the SSID.
+        """
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        mock_proc = MagicMock()
+        mock_proc.communicate = AsyncMock(return_value=(b"yes:MyNet:5G\nno:OtherNet\n", b""))
+        with patch("asyncio.create_subprocess_exec", return_value=mock_proc):
+            resp = await client.get("/api/provision/config")
+        data = await resp.json()
+        assert data["default_ssid"] == "MyNet:5G", (
+            "SSID containing a colon must be parsed correctly"
         )
 
     async def test_cors_header_present(self, client: TestClient) -> None:
