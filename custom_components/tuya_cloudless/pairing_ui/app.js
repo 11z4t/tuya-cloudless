@@ -827,6 +827,12 @@ function goToStep2() {
   document.getElementById("panel-ble").classList.remove("hidden");
   updateStepCounter(3);
   dbg("Step 3: BLE pairing");
+  // Move focus to the BLE panel heading so screen readers announce the new panel
+  const bleTitle = document.getElementById("step2-title");
+  if (bleTitle && typeof bleTitle.focus === "function") {
+    bleTitle.setAttribute("tabindex", "-1");
+    bleTitle.focus();
+  }
 }
 
 function showDone(gw_id, local_key, ip_address) {

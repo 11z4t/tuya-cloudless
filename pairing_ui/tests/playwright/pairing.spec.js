@@ -325,6 +325,25 @@ test.describe("Step 1 — WiFi credentials form", () => {
     await expect(counter).toContainText("3");
   });
 
+  test("WiFi→BLE transition moves focus to BLE panel heading (screen reader)", async ({ page }) => {
+    // WCAG 2.1 AA: panel transitions must move focus to the new panel's heading
+    // so screen reader users receive an announcement of where they are.
+    await setupRoutes(page);
+    await loadPage(page);
+    await navigateToCredentials(page);
+
+    await page.locator("#ssid").click();
+    await page.locator("#ssid").fill("FocusTestNet");
+    await page.locator("#btn-next").click();
+
+    await expect(page.locator("#panel-ble")).toBeVisible();
+    // Focus must land on the BLE panel heading span
+    const focusedId = await page.evaluate(() =>
+      document.activeElement ? document.activeElement.id : ""
+    );
+    expect(focusedId).toBe("step2-title");
+  });
+
   test("pressing Enter in SSID field submits form and advances to BLE panel", async ({ page }) => {
     // Regression: form used to have inline onsubmit (CSP violation) — now uses event listener.
     // Verifies Enter-key form submission still works after the fix.
