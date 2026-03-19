@@ -543,6 +543,17 @@ test.describe("WiFi scan dropdown", () => {
     await expect(page.locator(".wifi-option.muted")).toContainText("No networks found");
   });
 
+  test("empty scan result shows persistent hint below SSID input", async ({ page }) => {
+    await setupRoutes(page, { ssids: [] });
+    await loadPage(page);
+    await navigateToCredentials(page);
+
+    await page.locator("#btn-wifi-scan").click();
+    // Persistent hint must appear and guide user to type manually
+    await expect(page.locator("#wifi-scan-hint")).toBeVisible();
+    await expect(page.locator("#wifi-scan-hint")).not.toBeEmpty();
+  });
+
   test("clicking outside dropdown closes it", async ({ page }) => {
     await setupRoutes(page, { ssids: ["HomeNet"] });
     await loadPage(page);

@@ -516,6 +516,15 @@ async function scanWifi() {
     const current = data.current_ssid || null;
     dbg("WiFi scan: " + ssids.length + "/" + allSsids.length + " home networks shown (" + tuyaApSsids.size + " Tuya APs filtered)");
     showWifiDropdown(ssids, current, _wifiScanAvailable);
+    // When scan succeeds but returns 0 results, show the persistent hint so users
+    // know to type the network name even after the dropdown is dismissed.
+    if (ssids.length === 0) {
+      const hint = document.getElementById("wifi-scan-hint");
+      if (hint) {
+        hint.textContent = t("wifi_scan_empty");
+        hint.classList.remove("hidden");
+      }
+    }
   } catch (err) {
     dbg("WiFi scan error: " + err.message);
     // Close dropdown on error — showing "No networks found" would be misleading
