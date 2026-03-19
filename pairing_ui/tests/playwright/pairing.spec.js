@@ -416,6 +416,71 @@ test.describe("Step 1 — WiFi credentials form", () => {
     await expect(page.locator("#s1-error")).toBeVisible();
     await expect(page.locator("#panel-ble")).toBeHidden();
   });
+
+  test("SSID of exactly 32 ASCII bytes is accepted (boundary)", async ({ page }) => {
+    await setupRoutes(page);
+    await loadPage(page);
+    await navigateToCredentials(page);
+
+    // Exactly 32 bytes = the limit; must pass
+    await page.locator("#ssid").click();
+    await page.locator("#ssid").fill("a".repeat(32));
+    await page.locator("#btn-next").click();
+
+    await expect(page.locator("#panel-ble")).toBeVisible();
+    await expect(page.locator("#s1-error")).toBeHidden();
+  });
+
+  test("SSID of 16 two-byte chars (32 UTF-8 bytes) is accepted (multibyte boundary)", async ({
+    page,
+  }) => {
+    await setupRoutes(page);
+    await loadPage(page);
+    await navigateToCredentials(page);
+
+    // "é" = U+00E9 = 2 UTF-8 bytes. 16 × "é" = 32 bytes → exactly at limit, must pass.
+    await page.locator("#ssid").click();
+    await page.locator("#ssid").fill("é".repeat(16));
+    await page.locator("#btn-next").click();
+
+    await expect(page.locator("#panel-ble")).toBeVisible();
+    await expect(page.locator("#s1-error")).toBeHidden();
+  });
+
+  test("SSID of 17 two-byte chars (34 UTF-8 bytes) is rejected (multibyte over limit)", async ({
+    page,
+  }) => {
+    await setupRoutes(page);
+    await loadPage(page);
+    await navigateToCredentials(page);
+
+    // 17 × "é" = 34 UTF-8 bytes > 32 → must be rejected
+    await page.locator("#ssid").click();
+    await page.locator("#ssid").fill("é".repeat(17));
+    await page.locator("#btn-next").click();
+
+    await expect(page.locator("#s1-error")).toBeVisible();
+    await expect(page.locator("#s1-error")).toContainText("32");
+    await expect(page.locator("#panel-ble")).toBeHidden();
+  });
+
+  test("validation error element receives focus for screen-reader announcement", async ({
+    page,
+  }) => {
+    await setupRoutes(page);
+    await loadPage(page);
+    await navigateToCredentials(page);
+
+    // Trigger the "no SSID" error
+    await page.locator("#btn-next").click();
+
+    // The s1-error element should have tabindex=-1 and receive focus
+    await expect(page.locator("#s1-error")).toBeVisible();
+    const isFocused = await page.evaluate(() =>
+      document.activeElement && document.activeElement.id === "s1-error"
+    );
+    expect(isFocused).toBe(true);
+  });
 });
 
 // ── Tests: WiFi scan ──────────────────────────────────────────────────────────
