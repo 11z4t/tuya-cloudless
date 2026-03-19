@@ -119,8 +119,8 @@
         }
       },
       "ble_fallback": {
-        "title": "HTTPS krävs för BLE-parkoppling",
-        "description": "**Tuya Cloudless** kunde inte hitta en HTTPS-URL för din Home Assistant. Web Bluetooth kräver en säker anslutning (HTTPS).\n\nOm din HA är nåbar via HTTPS (t.ex. via Nabu Casa eller en omvänd proxy) väljer du **Ange URL manuellt** nedan.",
+        "title": "Välj inställningsmetod",
+        "description": "**WiFi AP-parkoppling** fungerar utan HTTPS — sätt enheten i inställningsläge och välj den nedan. BLE-parkoppling kräver HTTPS (Chrome/Edge + säker anslutning).",
         "data": {
           "setup_mode": "Inställningsmetod"
         }

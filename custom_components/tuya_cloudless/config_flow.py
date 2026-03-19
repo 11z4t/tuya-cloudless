@@ -167,6 +167,7 @@ class TuyaCloudlessConfigFlow(ConfigFlow, domain=DOMAIN):
         self._discovered: list[dict[str, Any]] = []
         self._device: dict[str, Any] = {}
         self._manual_ha_url: str | None = None
+        self._wifi_ap_http_url: str | None = None  # HTTP URL saved for WiFi-AP fallback
 
     # ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -322,6 +323,10 @@ class TuyaCloudlessConfigFlow(ConfigFlow, domain=DOMAIN):
 
                 if not _has_https:
                     self._https_unavailable = True
+                    # Save the HTTP URL so ble_fallback can offer WiFi AP pairing.
+                    # WiFi AP provisioning does not require a secure context — only
+                    # Web Bluetooth does.  The pairing UI shows its own BLE warning.
+                    self._wifi_ap_http_url = pairing_url
                     return await self.async_step_ble_fallback()
 
         server.register_flow(self.flow_id)
@@ -351,6 +356,24 @@ class TuyaCloudlessConfigFlow(ConfigFlow, domain=DOMAIN):
             Config flow result — advances to search or manual setup.
         """
         if user_input is not None:
+            if user_input.get("setup_mode") == "wifi_ap":
+                # Open the pairing UI over HTTP — WiFi AP pairing works without HTTPS.
+                # The pairing UI disables BLE and shows a hint explaining why.
+                from .pairing_server import ensure_pairing_server, get_pairing_server
+
+                try:
+                    server = await ensure_pairing_server(self.hass)
+                except OSError:
+                    server = None
+                if server is None:
+                    server = get_pairing_server(self.hass)
+                if server is not None:
+                    server.register_flow(self.flow_id)
+                    pairing_url = self._wifi_ap_http_url or server.ha_ui_url()
+                    url = f"{pairing_url}/?flow_id={self.flow_id}"
+                    return self.async_external_step(step_id="ble_pair", url=url)
+                # Pairing server unavailable — fall back to manual
+                return await self.async_step_manual()
             if user_input.get("setup_mode") == "manual":
                 return await self.async_step_manual()
             if user_input.get("setup_mode") == "provide_url":
@@ -367,15 +390,19 @@ class TuyaCloudlessConfigFlow(ConfigFlow, domain=DOMAIN):
 
         schema = vol.Schema(
             {
-                vol.Required("setup_mode", default="provide_url"): SelectSelector(
+                vol.Required("setup_mode", default="wifi_ap"): SelectSelector(
                     SelectSelectorConfig(
                         options=[
                             SelectOptionDict(
-                                value="provide_url",
-                                label="Enter my Home Assistant URL (for HTTPS setups)",
+                                value="wifi_ap",
+                                label="Pair a new device via WiFi (device in setup mode)",
                             ),
                             SelectOptionDict(value="scan", label="Search for device on network"),
                             SelectOptionDict(value="manual", label="Enter device details manually"),
+                            SelectOptionDict(
+                                value="provide_url",
+                                label="Enter my Home Assistant HTTPS URL (for BLE pairing)",
+                            ),
                         ],
                         mode=SelectSelectorMode.LIST,
                     )

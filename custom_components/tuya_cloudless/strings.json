@@ -119,8 +119,8 @@
         }
       },
       "ble_fallback": {
-        "title": "HTTPS required for BLE pairing",
-        "description": "**Tuya Cloudless** could not find an HTTPS URL for your Home Assistant. Web Bluetooth requires a secure context (HTTPS).\n\nIf your HA is reachable over HTTPS (e.g. via Nabu Casa or a reverse proxy), choose **Enter my Home Assistant URL** below.",
+        "title": "Choose setup method",
+        "description": "**WiFi AP pairing** works without HTTPS — put your device in setup mode and select it below. BLE pairing requires HTTPS (Chrome/Edge + secure context).",
         "data": {
           "setup_mode": "Setup method"
         }

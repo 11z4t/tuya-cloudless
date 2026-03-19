@@ -1494,10 +1494,12 @@ class TestBleFallbackStep:
         flow._device = {}
         flow._https_unavailable = True
         flow._manual_ha_url = None
+        flow._wifi_ap_http_url = "http://192.168.1.100:8123/api/tuya_cloudless/pairing"
         flow.hass = MagicMock()
         flow.flow_id = "fallback-flow-id"
         flow.async_abort = MagicMock(return_value={"type": "abort"})
         flow.async_show_form = MagicMock(return_value={"type": "form"})
+        flow.async_external_step = MagicMock(return_value={"type": "external"})
         return flow
 
     @pytest.mark.asyncio
@@ -1570,6 +1572,85 @@ class TestBleFallbackStep:
 
         flow.async_step_ble_ha_url.assert_awaited_once()
         assert result["step_id"] == "ble_ha_url"
+
+    @pytest.mark.asyncio
+    async def test_wifi_ap_choice_opens_pairing_ui_external_step(self) -> None:
+        """Choosing 'wifi_ap' must start the pairing server and return an external step.
+
+        WiFi AP pairing works over HTTP — only BLE needs a secure context.
+        The pairing UI handles the BLE-unavailable state itself.
+        """
+        flow = self._make_fallback_flow()
+
+        mock_server = MagicMock()
+        mock_server.ha_ui_url.return_value = "http://192.168.1.100:8123/api/tuya_cloudless/pairing"
+        mock_server.register_flow = MagicMock()
+
+        with patch(
+            "custom_components.tuya_cloudless.pairing_server.ensure_pairing_server",
+            new=AsyncMock(return_value=mock_server),
+        ):
+            result = await flow.async_step_ble_fallback(user_input={"setup_mode": "wifi_ap"})
+
+        mock_server.register_flow.assert_called_once_with("fallback-flow-id")
+        flow.async_external_step.assert_called_once()
+        call_kwargs = flow.async_external_step.call_args[1]
+        assert call_kwargs["step_id"] == "ble_pair"
+        assert "flow_id=fallback-flow-id" in call_kwargs["url"]
+        assert result["type"] == "external"
+
+    @pytest.mark.asyncio
+    async def test_wifi_ap_uses_stored_http_url(self) -> None:
+        """WiFi AP path must use _wifi_ap_http_url if set, not recompute from server."""
+        flow = self._make_fallback_flow()
+        flow._wifi_ap_http_url = "http://192.168.9.10:8123/api/tuya_cloudless/pairing"
+
+        mock_server = MagicMock()
+        mock_server.ha_ui_url.return_value = "http://other-url/api/tuya_cloudless/pairing"
+        mock_server.register_flow = MagicMock()
+
+        with patch(
+            "custom_components.tuya_cloudless.pairing_server.ensure_pairing_server",
+            new=AsyncMock(return_value=mock_server),
+        ):
+            await flow.async_step_ble_fallback(user_input={"setup_mode": "wifi_ap"})
+
+        call_kwargs = flow.async_external_step.call_args[1]
+        assert "192.168.9.10" in call_kwargs["url"]
+
+    @pytest.mark.asyncio
+    async def test_wifi_ap_falls_back_to_manual_when_server_unavailable(self) -> None:
+        """If pairing server cannot start, wifi_ap must fall back to manual entry."""
+        flow = self._make_fallback_flow()
+        flow.async_step_manual = AsyncMock(return_value={"type": "form", "step_id": "manual"})
+
+        with (
+            patch(
+                "custom_components.tuya_cloudless.pairing_server.ensure_pairing_server",
+                new=AsyncMock(side_effect=OSError("port busy")),
+            ),
+            patch(
+                "custom_components.tuya_cloudless.pairing_server.get_pairing_server",
+                return_value=None,
+            ),
+        ):
+            result = await flow.async_step_ble_fallback(user_input={"setup_mode": "wifi_ap"})
+
+        flow.async_step_manual.assert_awaited_once()
+        assert result["step_id"] == "manual"
+
+    @pytest.mark.asyncio
+    async def test_no_input_form_has_wifi_ap_as_default(self) -> None:
+        """The ble_fallback form must list 'wifi_ap' as the default option."""
+        flow = self._make_fallback_flow()
+
+        await flow.async_step_ble_fallback(user_input=None)
+
+        call_kwargs = flow.async_show_form.call_args[1]
+        schema_keys = list(call_kwargs["data_schema"].schema.keys())
+        setup_mode_key = next((k for k in schema_keys if str(k) == "setup_mode"), None)
+        assert setup_mode_key is not None
+        assert setup_mode_key.default() == "wifi_ap"
 
 
 class TestBleHaUrlStep:
