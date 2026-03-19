@@ -273,6 +273,26 @@ class TestActivateEndpoint:
         )
         assert resp.status == 200
 
+    async def test_sw_ver_unicode_line_sep_rejected(self, client: TestClient) -> None:
+        """sw_ver with Unicode line separator (U+2028) must be rejected.
+
+        U+2028 bypasses the old [\x00-\x1f\x7f] denylist but is blocked by the
+        new positive allowlist ^[a-zA-Z0-9._-]{1,32}$.
+        """
+        resp = await client.post(
+            "/api/tuya/device/active",
+            json={"gw_id": "gw001", "sw_ver": "1.0\u2028injected"},
+        )
+        assert resp.status == 400
+
+    async def test_sw_ver_space_rejected(self, client: TestClient) -> None:
+        """sw_ver with a space must be rejected (not in allowlist)."""
+        resp = await client.post(
+            "/api/tuya/device/active",
+            json={"gw_id": "gw001", "sw_ver": "1.0 beta"},
+        )
+        assert resp.status == 400
+
     async def test_exactly_max_length_fields_accepted(self, client: TestClient) -> None:
         """Fields exactly at the length limits must still be accepted."""
         resp = await client.post(
@@ -2061,9 +2081,10 @@ class TestConfigEndpoint:
         data = await resp.json()
         assert data["default_ssid"] == ssid_32, "SSID of exactly 32 bytes must be accepted"
 
-    async def test_cors_header_present(self, client: TestClient) -> None:
+    async def test_cors_header_absent(self, client: TestClient) -> None:
+        """Config endpoint must NOT send wildcard CORS (leaks internal IP/topology)."""
         resp = await client.get("/api/provision/config")
-        assert resp.headers.get("Access-Control-Allow-Origin") == "*"
+        assert resp.headers.get("Access-Control-Allow-Origin") != "*"
 
     async def test_config_includes_wifi_scan_available(self, client: TestClient) -> None:
         """wifi_scan_available key must always be present and be a bool."""
@@ -3779,15 +3800,15 @@ class TestStrictCors:
             cors = resp.headers.get("Access-Control-Allow-Origin", "")
             assert cors != "*", "SSE endpoint must not send wildcard CORS"
 
-    async def test_config_endpoint_keeps_wildcard_cors(self, client: TestClient) -> None:
-        """GET /api/provision/config is allowed to keep wildcard CORS (unchanged)."""
+    async def test_config_endpoint_no_wildcard_cors(self, client: TestClient) -> None:
+        """GET /api/provision/config must NOT send wildcard CORS (leaks internal IP)."""
         resp = await client.get("/api/provision/config")
-        assert resp.headers.get("Access-Control-Allow-Origin") == "*"
+        assert resp.headers.get("Access-Control-Allow-Origin") != "*"
 
-    async def test_wifi_scan_keeps_wildcard_cors(self, client: TestClient) -> None:
-        """GET /api/provision/wifi-scan is allowed to keep wildcard CORS (unchanged)."""
+    async def test_wifi_scan_no_wildcard_cors(self, client: TestClient) -> None:
+        """GET /api/provision/wifi-scan must NOT send wildcard CORS (leaks WiFi SSIDs)."""
         resp = await client.get("/api/provision/wifi-scan")
-        assert resp.headers.get("Access-Control-Allow-Origin") == "*"
+        assert resp.headers.get("Access-Control-Allow-Origin") != "*"
 
 
 # ── ROB-003: asyncio.create_task used in unregister_flow (PLAT-832) ──────────

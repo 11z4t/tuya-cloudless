@@ -3103,6 +3103,38 @@ class TestLocalKeyCharValidation:
         flow.async_step_confirm.assert_called_once()
 
     @pytest.mark.asyncio
+    async def test_uppercase_hex_key_accepted(self) -> None:
+        """A local_key with uppercase letters must be accepted.
+
+        Keys from the Tuya IoT Platform or third-party extraction tools may
+        contain uppercase hex or mixed alphanumeric characters.  R24 widened
+        _LOCAL_KEY_RE from ^[0-9a-f]{16}$ to ^[0-9a-zA-Z]{16}$.
+        """
+        from custom_components.tuya_cloudless.const import CONF_LOCAL_KEY, CONF_PROFILE
+
+        flow = _make_config_flow()
+        _restore_method(flow, "async_step_local_key")
+        uppercase_key = "0123456789ABCDEF"  # uppercase hex — valid
+        await flow.async_step_local_key(
+            user_input={CONF_LOCAL_KEY: uppercase_key, CONF_PROFILE: "Generic Switch"}
+        )
+        # Should advance to confirm, not show a form error
+        flow.async_step_confirm.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_special_char_in_key_rejected(self) -> None:
+        """A local_key containing '!' must still be rejected (not alphanumeric)."""
+        from custom_components.tuya_cloudless.const import CONF_LOCAL_KEY
+
+        flow = _make_config_flow()
+        _restore_method(flow, "async_step_local_key")
+        bad_key = "0123456789abcde!"  # 16 chars but '!' is not alphanumeric
+        await flow.async_step_local_key(user_input={CONF_LOCAL_KEY: bad_key})
+        flow.async_show_form.assert_called_once()
+        call_kwargs = flow.async_show_form.call_args[1]
+        assert call_kwargs.get("errors", {}).get(CONF_LOCAL_KEY) == "invalid_local_key_chars"
+
+    @pytest.mark.asyncio
     async def test_manual_step_null_byte_rejected(self) -> None:
         """async_step_manual must also reject null byte in local_key."""
         from custom_components.tuya_cloudless.config_flow import TuyaCloudlessConfigFlow

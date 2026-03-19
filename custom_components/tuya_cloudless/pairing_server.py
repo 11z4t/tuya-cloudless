@@ -138,6 +138,11 @@ _DEVICE_ID_RE: Final[re.Pattern[str]] = re.compile(r"^[a-zA-Z0-9_\-]{1,64}$")
 #: The BLE JS randomToken() uses crypto.getRandomValues(16 bytes); wifi-ap-pair uses
 #: secrets.token_hex(16).  The GET result endpoint enforces this same format.
 _TOKEN_RE: Final[re.Pattern[str]] = re.compile(r"^[0-9a-f]{32}$")
+#: Firmware version allowlist — only printable ASCII chars found in real Tuya versions
+#: like "1.0.4" or "2.3.1-beta".  A positive allowlist is safer than the ctrl-char
+#: denylist: it also blocks Unicode line terminators (U+2028/U+2029) that bypass
+#: [\x00-\x1f\x7f] and could cause issues in JSON contexts or frontend renders.
+_SW_VER_RE: Final[re.Pattern[str]] = re.compile(r"^[a-zA-Z0-9._\-]{1,32}$")
 
 #: SSID prefixes used by Tuya devices in AP/provisioning mode.
 #: Matching is case-insensitive.
@@ -531,7 +536,9 @@ class PairingServer:
                 "wifi_scan_available": shutil.which("nmcli") is not None,
                 "integration_version": _INTEGRATION_VERSION,
             },
-            headers={"Access-Control-Allow-Origin": "*"},
+            # No ACAO header — the pairing UI is served from the same origin
+            # (port 8099).  A wildcard header would let any web page on the LAN
+            # read the activator_url (HA's internal IP), leaking network topology.
         )
 
     async def _handle_icon(self, request: web.Request) -> web.Response:
@@ -603,10 +610,7 @@ class PairingServer:
         return web.Response(
             body=svg_data,
             content_type="image/svg+xml",
-            headers={
-                "Cache-Control": "no-cache",
-                "Access-Control-Allow-Origin": "*",
-            },
+            headers={"Cache-Control": "no-cache"},
         )
 
     async def _handle_activate(self, request: web.Request) -> web.Response:
@@ -695,8 +699,8 @@ class PairingServer:
         if product_key and not _DEVICE_ID_RE.match(product_key):
             _LOGGER.warning("Activation request rejected: invalid product_key format")
             return web.Response(status=400, text="Invalid product_key format")
-        if sw_ver and _CTRL_CHAR_RE.search(sw_ver):
-            _LOGGER.warning("Activation request rejected: control characters in sw_ver")
+        if sw_ver and not _SW_VER_RE.match(sw_ver):
+            _LOGGER.warning("Activation request rejected: invalid characters in sw_ver")
             return web.Response(status=400, text="Invalid sw_ver")
 
         _LOGGER.info(
@@ -748,8 +752,7 @@ class PairingServer:
                 self._results[token] = result
 
         # Notify SSE subscribers.  local_key and ip_address are intentionally
-        # excluded — both are sensitive and the stream has no per-subscriber
-        # authentication (ACAO: * for config endpoint, SSE open to all tabs).
+        # excluded — both are sensitive and the SSE stream is open to all tabs.
         # The browser retrieves the key and IP via GET /api/provision/result/{token}
         # which is only useful to the holder of the session token.
         event_data = {
@@ -1011,7 +1014,8 @@ class PairingServer:
 
         return web.json_response(
             {"ssids": ssids, "current_ssid": current_ssid, "tuya_aps": tuya_aps},
-            headers={"Access-Control-Allow-Origin": "*"},
+            # No ACAO — same-origin endpoint (port 8099).  Wildcard would let
+            # cross-origin pages read nearby WiFi SSIDs, leaking location data.
         )
 
     async def _handle_quick_scan(self, request: web.Request) -> web.Response:
@@ -1076,7 +1080,7 @@ class PairingServer:
 
         return web.json_response(
             {"tuya_aps": tuya_aps},
-            headers={"Access-Control-Allow-Origin": "*"},
+            # No ACAO — same-origin endpoint (port 8099).
         )
 
     async def _handle_wifi_ap_pair(self, request: web.Request) -> web.Response:
@@ -1181,7 +1185,6 @@ class PairingServer:
 
         return web.json_response(
             {"token": token, "events_url": "/api/provision/events"},
-            headers={"Access-Control-Allow-Origin": "*"},
         )
 
     async def _wifi_ap_pair_task(
@@ -1417,7 +1420,7 @@ class PairingServer:
                 "result_url_template": f"{provision_base}/result/{{token}}",
                 "default_ssid": default_ssid,
             },
-            headers={"Access-Control-Allow-Origin": "*"},
+            # No ACAO — the pairing UI is registered on HA's own server (same origin).
         )
 
     async def _register_ha_views(self) -> None:
