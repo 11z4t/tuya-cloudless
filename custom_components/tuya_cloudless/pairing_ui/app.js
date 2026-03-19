@@ -618,10 +618,11 @@ function selectWifi(ssid) {
   if (ddEl) ddEl.classList.add("hidden");
   const scanBtnEl = document.getElementById("btn-wifi-scan");
   if (scanBtnEl) scanBtnEl.setAttribute("aria-expanded", "false");
-  // Return focus to the SSID field so keyboard users can continue to the
-  // password field via Tab — without this, focus lands on the now-hidden
-  // dropdown item and screen reader context is lost.
-  if (ssidEl) ssidEl.focus();
+  // After picking an SSID the natural next step is entering the password —
+  // move focus there directly. Falls back to the SSID field when the password
+  // field is absent (e.g. open-network scenarios where it may be hidden).
+  const pwdEl = document.getElementById("password");
+  if (pwdEl) { pwdEl.focus(); } else if (ssidEl) { ssidEl.focus(); }
 }
 
 // ── Device discovery ───────────────────────────────────────────────────────────
