@@ -97,6 +97,11 @@ _RATE_LIMIT_WINDOW: Final[float] = 60.0
 #: Maximum concurrent SSE connections (SEC-002 / PLAT-825)
 _MAX_SSE_CONNECTIONS: Final[int] = 10
 
+#: Maximum concurrent WiFi AP background pairing tasks.
+#: Each task runs nmcli and holds a system WiFi interface. A reasonable cap
+#: prevents resource exhaustion in case many requests arrive rapidly.
+_MAX_WIFI_AP_TASKS: Final[int] = 3
+
 # ── WiFi AP discovery constants ────────────────────────────────────────────────
 
 #: Compiled pattern matching ASCII control characters (0x00-0x1F, 0x7F).
@@ -954,6 +959,12 @@ class PairingServer:
         if ap_ssid in self._wifi_ap_pairing_in_progress:
             return web.Response(
                 status=409, text="WiFi AP pairing already in progress for this device"
+            )
+
+        # Cap total concurrent tasks to prevent resource exhaustion
+        if len(self._background_tasks) >= _MAX_WIFI_AP_TASKS:
+            return web.Response(
+                status=429, text="Too many pairing operations in progress — please wait and retry"
             )
 
         # Fail fast if nmcli is unavailable — avoids silent 120s timeout for user

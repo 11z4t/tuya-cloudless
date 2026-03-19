@@ -911,6 +911,7 @@ function chunkFrame(frameBytes) {
 // ── Response parsing ──────────────────────────────────────────────────────────
 let _recvChunks = [];
 let _recvResolve = null;
+let _recvReject  = null;  // called on BLE disconnect to fail waitForResponse immediately
 
 function onNotify(event) {
   const data = new Uint8Array(event.target.value.buffer);
@@ -936,10 +937,12 @@ function waitForResponse(timeoutMs) {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
       _recvResolve = null;
+      _recvReject  = null;
       _recvChunks = [];  // clear stale chunks so retries start fresh
       reject(new Error("BLE response timeout"));
     }, timeoutMs);
-    _recvResolve = (chunks) => { clearTimeout(timer); resolve(chunks); };
+    _recvResolve = (chunks) => { clearTimeout(timer); _recvReject = null; resolve(chunks); };
+    _recvReject  = (err)    => { clearTimeout(timer); _recvResolve = null; _recvReject = null; _recvChunks = []; reject(err); };
   });
 }
 
@@ -1214,6 +1217,7 @@ async function startPairing() {
   // Reset BLE receive buffers — defensive guard against stale state from a prior attempt
   _recvChunks = [];
   _recvResolve = null;
+  _recvReject  = null;
 
   const token = randomToken();
   const activator = ACTIVATOR_URL;
@@ -1243,6 +1247,16 @@ async function startPairing() {
     await notifyChar.startNotifications();
     notifyChar.addEventListener("characteristicvaluechanged", onNotify);
     _cleanupNotify = () => notifyChar.removeEventListener("characteristicvaluechanged", onNotify);
+
+    // If the device disconnects mid-pairing (e.g. factory reset or link loss), fail
+    // the current waitForResponse immediately rather than waiting for the 10-15s timeout.
+    device.addEventListener("gattserverdisconnected", () => {
+      if (_recvReject) {
+        const reject = _recvReject;
+        _recvReject = null;
+        reject(new Error("BLE device disconnected"));
+      }
+    });
 
     dbg(t("spin_handshake"));
     showSpinner(t("spin_handshake"));
@@ -1499,5 +1513,6 @@ if (typeof module !== "undefined") {
     goToDevices, goToCredentials, showDone,
     countUtf8Bytes, reassemble, onNotify, waitForResponse, parseFrame, crc16Modbus,
     _safePath, _safeUrl, _t: t,
+    _getRecvReject: () => _recvReject,
   };
 }

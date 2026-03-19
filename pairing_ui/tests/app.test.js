@@ -11,7 +11,7 @@ const {
   isIOS, isAndroid, chromeIntentUrl,
   saveLastSsid, loadLastSsid, SSID_TTL_MS, SSID_STORAGE_KEY,
   countUtf8Bytes, reassemble, onNotify, waitForResponse, parseFrame, crc16Modbus,
-  _safePath, _safeUrl, _t,
+  _safePath, _safeUrl, _t, _getRecvReject,
 } = app;
 
 // ── PLAT-810 — Browser compatibility helpers ──────────────────────────────────
@@ -558,5 +558,53 @@ describe("t() built-in fallback map", () => {
     // step_x_of_y = "Step {x} of {y}" — verify interpolation works with fallbacks
     const result = _t("step_x_of_y", { x: "1", y: "3" });
     expect(result).toBe("Step 1 of 3");
+  });
+});
+
+// ── Round 36 — BLE disconnect fails waitForResponse immediately ───────────────
+
+describe("waitForResponse — disconnect rejection", () => {
+  it("rejects with 'BLE device disconnected' when _recvReject is called", async () => {
+    const p = waitForResponse(5000);  // long timeout — should NOT wait 5s
+
+    // Simulate gattserverdisconnected by calling the reject function
+    const rejectFn = _getRecvReject();
+    expect(rejectFn).not.toBeNull();
+    rejectFn(new Error("BLE device disconnected"));
+
+    await expect(p).rejects.toThrow("BLE device disconnected");
+  });
+
+  it("clears _recvReject after rejection so second disconnect is a no-op", async () => {
+    const p = waitForResponse(5000);
+    const rejectFn = _getRecvReject();
+    rejectFn(new Error("BLE device disconnected"));
+    await expect(p).rejects.toThrow();
+
+    // After rejection, _recvReject must be null
+    expect(_getRecvReject()).toBeNull();
+  });
+
+  it("resolves normally when chunks arrive (disconnect listener is idle)", async () => {
+    // 2-chunk frame
+    const frame = new Uint8Array([0x55, 0xAA, 0x04, 0x02, 0, 1, 0, 2, 0xAB, 0xCD]);
+    const crc = (function() {
+      let c = 0xFFFF;
+      for (const b of frame) { c ^= b; for (let i = 0; i < 8; i++) { c = (c & 1) ? (c >>> 1) ^ 0xA001 : c >>> 1; } }
+      return c & 0xFFFF;
+    })();
+    const full = new Uint8Array(frame.length + 2);
+    full.set(frame); full[frame.length] = crc & 0xff; full[frame.length + 1] = crc >> 8;
+
+    const chunk0 = new Uint8Array([0, 2, ...full.slice(0, 10)]);
+    const chunk1 = new Uint8Array([1, 2, ...full.slice(10)]);
+
+    const p = waitForResponse(5000);
+    onNotify({ target: { value: { buffer: chunk0.buffer } } });
+    onNotify({ target: { value: { buffer: chunk1.buffer } } });
+    const chunks = await p;
+    expect(chunks).toHaveLength(2);
+    // _recvReject is cleared on resolve
+    expect(_getRecvReject()).toBeNull();
   });
 });

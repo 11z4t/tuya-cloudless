@@ -1206,6 +1206,47 @@ class TestWifiApPair:
             "'password' arg must not appear for open networks"
         )
 
+    async def test_max_concurrent_tasks_returns_429(self, client: TestClient) -> None:
+        """When _MAX_WIFI_AP_TASKS background tasks are running, new request gets 429.
+
+        This prevents resource exhaustion from rapid repeated pairing requests.
+        """
+        from unittest.mock import patch
+
+        from custom_components.tuya_cloudless.pairing_server import _MAX_WIFI_AP_TASKS
+
+        async def _never_ends(*args: object, **kwargs: object) -> None:
+            await asyncio.sleep(9999)
+
+        with patch(
+            "custom_components.tuya_cloudless.pairing_server.PairingServer._wifi_ap_pair_task",
+            side_effect=_never_ends,
+        ):
+            # Fill up to the limit
+            tasks_started = 0
+            for i in range(_MAX_WIFI_AP_TASKS):
+                resp = await client.post(
+                    "/api/provision/wifi-ap-pair",
+                    json={
+                        "ap_ssid": f"SmartLife_{i:04d}",
+                        "home_ssid": "HomeNet",
+                        "home_password": "pass",
+                    },
+                )
+                if resp.status == 200:
+                    tasks_started += 1
+
+            # At capacity — next request must be rejected
+            resp_over = await client.post(
+                "/api/provision/wifi-ap-pair",
+                json={"ap_ssid": "SmartLife_9999", "home_ssid": "HomeNet", "home_password": "pass"},
+            )
+            assert resp_over.status == 429, (
+                f"Expected 429 when {_MAX_WIFI_AP_TASKS} tasks running, got {resp_over.status}"
+            )
+            body = await resp_over.text()
+            assert "too many" in body.lower() or "retry" in body.lower()
+
 
 # ── /api/provision/config ─────────────────────────────────────────────────────
 
