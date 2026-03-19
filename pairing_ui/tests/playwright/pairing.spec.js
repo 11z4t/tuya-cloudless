@@ -1085,6 +1085,33 @@ test.describe("Full pairing flow", () => {
     expect(gridText).not.toContain("undefined");
   });
 
+  test("done screen: copy-IP button is present when IP is provided", async ({ page }) => {
+    await setupRoutes(page);
+    await mockBle(page, ACTIVATION);
+    await loadPage(page);
+    await navigateToCredentials(page);
+    await page.locator("#ssid").fill("MyNet");
+    await page.locator("#btn-next").click();
+    await page.locator("#btn-pair").click();
+    await expect(page.locator("#panel-done")).toBeVisible({ timeout: 5000 });
+    // Copy IP button must appear alongside the IP address (usability)
+    await expect(page.locator("#btn-copy-ip")).toBeVisible();
+  });
+
+  test("done screen: copy-IP button absent when IP address is missing", async ({ page }) => {
+    // Some Tuya devices do not send ip_address in the activation payload
+    await setupRoutes(page);
+    await mockBle(page, { gw_id: "dev_noip", local_key: "abcdef1234567890", token: null });
+    await loadPage(page);
+    await navigateToCredentials(page);
+    await page.locator("#ssid").fill("MyNet");
+    await page.locator("#btn-next").click();
+    await page.locator("#btn-pair").click();
+    await expect(page.locator("#panel-done")).toBeVisible({ timeout: 5000 });
+    // No copy button when IP is absent (nothing to copy)
+    await expect(page.locator("#btn-copy-ip")).toBeHidden();
+  });
+
   test("successful pairing saves SSID to localStorage", async ({ page }) => {
     await setupRoutes(page);
     await mockBle(page, ACTIVATION);

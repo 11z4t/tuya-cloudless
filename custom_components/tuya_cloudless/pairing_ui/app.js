@@ -994,7 +994,15 @@ function showDone(gw_id, local_key, ip_address) {
     "<dt class=\"result-label\">" + esc(t("label_device_id")) + "</dt>" +
     "<dd class=\"result-value\">" + esc(gw_id) + "</dd>" +
     "<dt class=\"result-label\">" + esc(t("label_ip")) + "</dt>" +
-    "<dd class=\"result-value\">" + esc(ip_address) + "</dd>" +
+    "<dd class=\"result-value\" style=\"display:flex;align-items:center;gap:8px\">" +
+    esc(ip_address || "\u2014") +
+    (ip_address
+      ? "<button type=\"button\" id=\"btn-copy-ip\" class=\"btn-sm\" " +
+        "aria-label=\"" + esc(t("btn_copy_key") || "Copy") + " " + esc(t("label_ip")) + "\" " +
+        "style=\"padding:2px 8px;font-size:0.75rem;background:var(--surface-2);border:1px solid var(--border);border-radius:6px;cursor:pointer\">" +
+        esc(t("btn_copy_key") || "Copy") + "</button>"
+      : "") +
+    "</dd>" +
     "<dt class=\"result-label\">" + esc(t("label_network")) + "</dt>" +
     "<dd class=\"result-value\">" + esc(_ssid || "\u2014") + "</dd>" +
     "<dt class=\"result-label\">" + esc(t("label_local_key")) + "</dt>" +
@@ -1054,6 +1062,17 @@ function showDone(gw_id, local_key, ip_address) {
   if (copyKeyBtn && local_key) {
     copyKeyBtn.addEventListener("click", function() {
       navigator.clipboard.writeText(local_key).then(
+        () => showToast(t("copied_ok") || "Copied!"),
+        () => showToast("⚠ Copy failed")
+      );
+    });
+  }
+
+  // Wire up the copy IP button — copies ip_address to clipboard, shows toast
+  const copyIpBtn = document.getElementById("btn-copy-ip");
+  if (copyIpBtn && ip_address) {
+    copyIpBtn.addEventListener("click", function() {
+      navigator.clipboard.writeText(ip_address).then(
         () => showToast(t("copied_ok") || "Copied!"),
         () => showToast("⚠ Copy failed")
       );
