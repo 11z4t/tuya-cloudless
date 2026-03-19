@@ -928,6 +928,40 @@ test.describe("Language picker", () => {
     const stored = await page.evaluate(() => localStorage.getItem("tc-lang"));
     expect(stored).toBe("de");
   });
+
+  test("language change preserves WiFi AP button label and step description", async ({ page }) => {
+    // Regression: applyStrings() always applied BLE defaults, clobbering the WiFi AP
+    // labels set by selectDeviceWifiAp(). After the fix, applyStrings() branches on _pairMethod.
+    await setupRoutes(page, { tuya_aps: [{ ssid: "SmartLife_AB12" }] });
+    await loadPage(page);
+
+    // Navigate to WiFi credentials via WiFi AP device selection
+    await page.locator(".device-card").first().click();
+    await page.waitForSelector("#panel-wifi:not(.hidden)");
+
+    // Verify WiFi AP labels are showing (set by selectDeviceWifiAp)
+    await expect(page.locator("#btn-next-label")).toContainText("Pair device");
+    await expect(page.locator("#step1-desc")).toContainText("password and click Pair");
+
+    // Change language (en → sv) — this triggers applyStrings()
+    const labelBefore = await page.locator("#btn-next-label").textContent();
+    await page.locator("#lang-select").selectOption("sv");
+    // Wait for i18n fetch + applyStrings to complete (title text changes)
+    await page.waitForFunction(
+      () => document.querySelector("#step1-title")?.textContent !== "WiFi credentials",
+      { timeout: 5000 }
+    );
+
+    // btn-next-label must still show the WiFi AP variant (now in Swedish), not BLE "Next →"
+    const labelAfter = await page.locator("#btn-next-label").textContent();
+    // Swedish BLE label is "Nästa →" — if the bug is present, the label would change to that
+    // Instead, the WiFi AP label ("Parkoppla enhet →") must still be shown
+    expect(labelAfter).not.toMatch(/Nästa/);
+    expect(labelAfter?.trim().length).toBeGreaterThan(0);
+    // Also verify the step desc is still WiFi AP variant (not BLE "Your device will connect…")
+    const descText = await page.locator("#step1-desc").textContent();
+    expect(descText).not.toMatch(/^Your device will connect to this network\./);
+  });
 });
 
 // ── Tests: Full pairing flow (BLE + SSE) ─────────────────────────────────────

@@ -191,12 +191,18 @@ function applyStrings() {
   const el = (id) => document.getElementById(id);
   document.title = t("title");
   el("step1-title").textContent    = t("step1_title");
-  el("step1-desc").textContent     = t("step1_desc");
+  // step1-desc and btn-next-label differ between BLE and WiFi AP mode — respect current state
+  if (_pairMethod === PAIR_METHOD.WIFI_AP) {
+    el("step1-desc").textContent     = t("step1_desc_wifiap") || t("step1_desc");
+    el("btn-next-label").textContent = t("btn_pair_wifi_ap") || t("btn_next");
+  } else {
+    el("step1-desc").textContent     = t("step1_desc");
+    el("btn-next-label").textContent = t("btn_next");
+  }
   el("ssid-label").textContent     = t("ssid_label");
   el("ssid").placeholder           = t("ssid_placeholder");
   el("password-label").textContent = t("password_label");
   el("password").placeholder       = t("password_placeholder");
-  el("btn-next-label").textContent = t("btn_next");
   el("step2-title").textContent    = t("step2_title");
   el("step2-badge").textContent    = t("step2_badge");
   el("step2-desc").textContent     = t("step2_desc");
