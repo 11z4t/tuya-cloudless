@@ -2614,3 +2614,42 @@ test.describe("Copy URL button — clipboard failure feedback", () => {
     await expect(page.locator("#btn-copy")).not.toHaveText("✗", { timeout: 3000 });
   });
 });
+
+test.describe("WiFi AP pair — network fetch error", () => {
+  test("fetch AbortError shows timeout message and re-enables pair button", async ({ page }) => {
+    // Regression guard: if fetch() itself rejects with AbortError (e.g., the 15s
+    // watchdog fires), the error must be shown to the user and the Pair button must
+    // be re-enabled — the user must not be stuck in a permanent disabled state.
+    await setupRoutes(page, { tuya_aps: [{ ssid: "SmartLife_AB12" }] });
+    await page.route(BASE + "/api/provision/wifi-ap-pair", (route) =>
+      route.abort("timedout")
+    );
+    await loadPage(page);
+    await pairViaWifiApUi(page);
+
+    // Error must appear in the status area
+    const statusEl = page.locator("#wifi-ap-status");
+    await expect(statusEl).toHaveClass(/status-error/, { timeout: 5000 });
+
+    // Pair button must be re-enabled for retry
+    await expect(page.locator("#btn-next")).toBeEnabled({ timeout: 2000 });
+
+    // Done panel must not appear
+    await expect(page.locator("#panel-done")).toBeHidden();
+  });
+
+  test("done panel has role=status aria-live=polite for screen readers", async ({ page }) => {
+    // Regression guard: #panel-done must be an aria-live region so screen readers
+    // announce the device-ready state without requiring explicit focus.
+    await setupRoutes(page, { tuya_aps: [{ ssid: "SmartLife_AB12" }] });
+    await mockWifiApRoute(page);
+    await loadPage(page);
+    await pairViaWifiApUi(page);
+    await expect(page.locator("#panel-done")).toBeVisible({ timeout: 5000 });
+
+    const role = await page.locator("#panel-done").getAttribute("role");
+    const live = await page.locator("#panel-done").getAttribute("aria-live");
+    expect(role).toBe("status");
+    expect(live).toBe("polite");
+  });
+});
