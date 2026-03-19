@@ -803,9 +803,14 @@ function goToDevices() {
   document.getElementById("panel-ble").classList.add("hidden");
   document.getElementById("panel-done").classList.add("hidden");
   document.getElementById("panel-devices").classList.remove("hidden");
-  // Clear pairing status from any previous BLE or WiFi AP attempt
+  // Clear pairing status from any previous BLE or WiFi AP attempt;
+  // also reset role so stale role=alert from an error doesn't linger while hidden.
   const pairStatus = document.getElementById("pair-status");
-  if (pairStatus) pairStatus.className = "status-box hidden";
+  if (pairStatus) {
+    pairStatus.className = "status-box hidden";
+    pairStatus.setAttribute("role", "status");
+    pairStatus.setAttribute("aria-live", "polite");
+  }
   updateStepCounter(1);
   dbg("Step 1: Device discovery");
   // Move focus to panel heading for screen reader announcement
@@ -839,9 +844,14 @@ function goToCredentials() {
   // Clear stale error state from a previous visit to this panel
   const errEl = document.getElementById("s1-error");
   if (errEl) { errEl.className = "status-box hidden"; errEl.removeAttribute("tabindex"); }
-  // Clear stale WiFi AP status from a previous pairing attempt
+  // Clear stale WiFi AP status from a previous pairing attempt;
+  // also reset role so stale role=alert from an error doesn't linger while hidden.
   const apStatus = document.getElementById("wifi-ap-status");
-  if (apStatus) apStatus.className = "status-box hidden";
+  if (apStatus) {
+    apStatus.className = "status-box hidden";
+    apStatus.setAttribute("role", "status");
+    apStatus.setAttribute("aria-live", "polite");
+  }
   // Ensure cancel button is hidden and back button is visible on fresh credentials entry
   const cancelBtnG = document.getElementById("btn-cancel-wifi-ap");
   const backBtnG   = document.getElementById("btn-back");
@@ -865,9 +875,18 @@ function goToCredentials() {
   // Contextual back label: "← Back to Devices" so user knows where they're going
   const backLbl = document.getElementById("btn-back-label");
   if (backLbl) backLbl.textContent = t("back_to_devices") || "← Back to Devices";
-  // Move focus to SSID input so user can start typing immediately
+  // Re-fill SSID from storage if cleared by goToDevices() (e.g. "Pair Another Device" flow)
   const ssidEl = document.getElementById("ssid");
-  if (ssidEl) ssidEl.focus();
+  if (ssidEl) {
+    if (!ssidEl.value) {
+      const lastSsid = loadLastSsid();
+      if (lastSsid) {
+        ssidEl.value = lastSsid;
+        dbg("Restored SSID from storage: " + lastSsid + " \u2713");
+      }
+    }
+    ssidEl.focus();
+  }
 }
 
 // Called by btn-next — branches on _pairMethod
