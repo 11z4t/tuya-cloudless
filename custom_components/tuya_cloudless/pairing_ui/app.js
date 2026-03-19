@@ -1372,9 +1372,10 @@ function copyShareUrl() {
     changeLang(this.value);
   });
   document.getElementById("btn-wifi-scan").addEventListener("click", scanWifi);
-  document.getElementById("btn-next").addEventListener("click", goToStep2);
-  // Handle form submit (Enter key in ssid/password field) the same as the Next button.
-  // The inline onsubmit was removed from index.html to comply with script-src 'self' CSP.
+  // btn-next is type="submit" inside wifi-form, so clicking it fires the form submit event.
+  // We only bind the submit listener — NOT a separate click listener — to prevent
+  // goToStep2() from being called twice (click fires first, then submit event fires).
+  // In the WiFi AP path a double call would make two concurrent POST /wifi-ap-pair requests.
   document.getElementById("wifi-form").addEventListener("submit", (e) => {
     e.preventDefault();
     goToStep2();

@@ -2077,4 +2077,54 @@ test.describe("WiFi AP pairing flow", () => {
     expect(role).toBe("status");
     expect(ariaLive).toBe("polite");
   });
+
+  test("clicking btn-next exactly once triggers exactly one POST to wifi-ap-pair", async ({ page }) => {
+    // Regression guard for the double-submission bug:
+    // btn-next (type="submit") inside wifi-form used to fire BOTH a click handler
+    // AND a form submit handler, causing two concurrent POST requests.
+    // Fix: removed click listener — only the submit handler calls goToStep2().
+    let postCount = 0;
+
+    await setupRoutes(page, { tuya_aps: [{ ssid: "SmartLife_AB12" }] });
+
+    // Count POST calls; SSE never fires (we only care about the POST count).
+    await page.route(BASE + "/api/provision/wifi-ap-pair", (route) => {
+      postCount++;
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ token: "t1", events_url: BASE + "/api/provision/events" }),
+      });
+    });
+    await page.addInitScript(() => {
+      window.EventSource = class NullEventSource {
+        constructor() { this.readyState = 1; }
+        addEventListener() {}
+        set onerror(_fn) {}
+        close() { this.readyState = 2; }
+      };
+    });
+
+    await loadPage(page);
+    await pairViaWifiApUi(page);
+
+    // Wait a short tick so any delayed second POST would have arrived
+    await page.waitForTimeout(200);
+
+    expect(postCount).toBe(1);
+  });
+
+  test("refresh scan button emoji span has aria-hidden=true", async ({ page }) => {
+    // Regression guard: the 🔄 emoji in btn-refresh-scan must be wrapped in
+    // aria-hidden="true" so screen readers skip it (they would otherwise announce
+    // "clockwise arrows button" or similar platform-specific description).
+    await setupRoutes(page);
+    await loadPage(page);
+
+    const span = page.locator("#btn-refresh-scan span[aria-hidden='true']");
+    await expect(span).toHaveCount(1);
+
+    const emojiText = await span.textContent();
+    expect(emojiText).toContain("🔄");
+  });
 });

@@ -907,3 +907,18 @@ describe("t() fallback for spin_connecting", () => {
     expect(result.length).toBeGreaterThan(0);
   });
 });
+
+// ── Round 45 — Double-submit prevention & aria-hidden emoji ───────────────────
+
+describe("PAIR_METHOD constants", () => {
+  // Regression guard: goToStep2() branches on PAIR_METHOD.BLE / PAIR_METHOD.WIFI_AP.
+  // If these collapse to the same value or disappear, both code paths would be broken.
+  it("has distinct BLE and WIFI_AP string values", () => {
+    const { PAIR_METHOD } = app;
+    expect(typeof PAIR_METHOD.BLE).toBe("string");
+    expect(typeof PAIR_METHOD.WIFI_AP).toBe("string");
+    expect(PAIR_METHOD.BLE).not.toBe(PAIR_METHOD.WIFI_AP);
+    expect(PAIR_METHOD.BLE.length).toBeGreaterThan(0);
+    expect(PAIR_METHOD.WIFI_AP.length).toBeGreaterThan(0);
+  });
+});
