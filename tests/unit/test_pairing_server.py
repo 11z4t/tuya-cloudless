@@ -251,6 +251,38 @@ class TestResultEndpoint:
         body = await resp.json()
         assert "ip_address" in body
 
+    async def test_expired_token_returns_202_pending(
+        self, client: TestClient, server: PairingServer
+    ) -> None:
+        """A token that activated but has since expired must return 202 'pending'.
+
+        The API contract is: 202 means "no result available for this token" — this
+        applies equally to tokens that never activated AND to tokens whose results
+        have been garbage-collected by the TTL cleanup.  Callers should treat 202
+        as "keep waiting" or "timeout", not necessarily "never activated".
+        """
+        from custom_components.tuya_cloudless.pairing_server import _RESULT_TTL_SECS
+
+        # First, activate the device so a result exists
+        await client.post(
+            "/api/tuya/device/active",
+            json={"gw_id": "gw_expired", "token": "tok_will_expire"},
+        )
+        # Verify it's available while fresh
+        resp_ok = await client.get("/api/provision/result/tok_will_expire")
+        assert resp_ok.status == 200
+
+        # Backdate the result's timestamp past the TTL
+        result = server._results["tok_will_expire"]
+        expired_ts = time.monotonic() - (_RESULT_TTL_SECS + 10)
+        object.__setattr__(result, "timestamp", expired_ts)
+
+        # Now the result should be treated as expired → 202 pending
+        resp_expired = await client.get("/api/provision/result/tok_will_expire")
+        assert resp_expired.status == 202
+        body = await resp_expired.json()
+        assert body["status"] == "pending"
+
 
 # ── / (index page) ────────────────────────────────────────────────────────────
 

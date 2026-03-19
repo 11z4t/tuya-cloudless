@@ -1050,3 +1050,81 @@ describe("showDone — key-reveal toggle", () => {
     expect(revealed.innerHTML).toContain("&lt;script&gt;");
   });
 });
+
+// ── Round 69 — showDone deep-link gw_id + local_key validation ────────────────
+// The deep-link to /config/integrations/add is only rendered when gw_id matches
+// /^[a-zA-Z0-9_-]{1,64}$/ and local_key matches /^[a-f0-9]{16,32}$/i.
+// Invalid values must silently hide the deep-link button rather than rendering
+// a malformed URL.
+
+describe("showDone — deep-link safeGwId + safeKey validation", () => {
+  const { showDone } = app;
+  const VALID_KEY = "aabbccddeeff00112233445566778899";  // 32 hex chars
+
+  function setupDom() {
+    document.body.innerHTML = `
+      <div id="panel-devices" class="hidden"></div>
+      <div id="panel-wifi" class="hidden"></div>
+      <div id="panel-ble" class="hidden"></div>
+      <div id="panel-done" class="hidden">
+        <h2 id="step3-title" tabindex="-1"></h2>
+        <p id="ha-flow-msg" class="hidden"></p>
+        <dl id="result-grid"></dl>
+        <a id="btn-add-ha" class="hidden" href="#"></a>
+        <button id="btn-pair-another" class="hidden"></button>
+      </div>
+      <span id="step-counter"></span>
+    `;
+  }
+
+  beforeEach(setupDom);
+
+  it("shows deep-link for a valid hex-only gw_id (e.g. aabbccdd1122)", () => {
+    showDone("aabbccdd1122", VALID_KEY, "192.168.1.1");
+    const btn = document.getElementById("btn-add-ha");
+    expect(btn.classList.contains("hidden")).toBe(false);
+    expect(btn.href).toContain("aabbccdd1122");
+  });
+
+  it("shows deep-link for gw_id with underscores and hyphens", () => {
+    showDone("my_device-01", VALID_KEY, "192.168.1.1");
+    const btn = document.getElementById("btn-add-ha");
+    expect(btn.classList.contains("hidden")).toBe(false);
+  });
+
+  it("hides deep-link for gw_id containing a dot (not allowed by regex)", () => {
+    showDone("device.local", VALID_KEY, "192.168.1.1");
+    const btn = document.getElementById("btn-add-ha");
+    expect(btn.classList.contains("hidden")).toBe(true);
+  });
+
+  it("hides deep-link for empty gw_id", () => {
+    showDone("", VALID_KEY, "192.168.1.1");
+    const btn = document.getElementById("btn-add-ha");
+    expect(btn.classList.contains("hidden")).toBe(true);
+  });
+
+  it("hides deep-link for gw_id longer than 64 chars", () => {
+    showDone("a".repeat(65), VALID_KEY, "192.168.1.1");
+    const btn = document.getElementById("btn-add-ha");
+    expect(btn.classList.contains("hidden")).toBe(true);
+  });
+
+  it("shows deep-link for 16-char local_key (short key devices)", () => {
+    showDone("gw001", "aabbccddeeff0011", "192.168.1.1");  // 16 hex chars
+    const btn = document.getElementById("btn-add-ha");
+    expect(btn.classList.contains("hidden")).toBe(false);
+  });
+
+  it("hides deep-link when local_key contains non-hex characters", () => {
+    showDone("gw001", "not-a-valid-local-key!!", "192.168.1.1");
+    const btn = document.getElementById("btn-add-ha");
+    expect(btn.classList.contains("hidden")).toBe(true);
+  });
+
+  it("hides deep-link when local_key is too short (< 16 chars)", () => {
+    showDone("gw001", "aabbcc", "192.168.1.1");
+    const btn = document.getElementById("btn-add-ha");
+    expect(btn.classList.contains("hidden")).toBe(true);
+  });
+});
