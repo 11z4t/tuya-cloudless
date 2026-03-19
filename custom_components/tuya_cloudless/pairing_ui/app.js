@@ -357,6 +357,7 @@ function showWifiDropdown(ssids, currentSsid) {
       item.className = "wifi-option";
       item.setAttribute("role", "option");
       item.setAttribute("tabindex", "0");
+      item.setAttribute("aria-selected", "false");  // updated by moveFocus() on navigation
       item.textContent = ssid;
       if (ssid === currentSsid) {
         item.className += " wifi-option-current";
@@ -367,29 +368,32 @@ function showWifiDropdown(ssids, currentSsid) {
       item.addEventListener("click", pick);
       item.addEventListener("keydown", (e) => {
         if (e.key === "Enter" || e.key === " ") { e.preventDefault(); pick(); }
+        // Helper: move focus + update aria-selected so screen readers announce the new item
+        const moveFocus = (target) => {
+          if (!target) return;
+          dd.querySelectorAll("[role='option']").forEach(o => o.setAttribute("aria-selected", "false"));
+          target.setAttribute("aria-selected", "true");
+          target.focus();
+        };
         if (e.key === "ArrowDown") {
           e.preventDefault();
-          const next = item.nextElementSibling || dd.firstElementChild;
-          if (next) next.focus();
+          moveFocus(item.nextElementSibling || dd.firstElementChild);
         }
         if (e.key === "ArrowUp") {
           e.preventDefault();
-          const prev = item.previousElementSibling || dd.lastElementChild;
-          if (prev) prev.focus();
+          moveFocus(item.previousElementSibling || dd.lastElementChild);
         }
         if (e.key === "PageDown") {
           e.preventDefault();
           const items = Array.from(dd.querySelectorAll("[tabindex='0']"));
           const idx = items.indexOf(item);
-          const target = items[Math.min(idx + 5, items.length - 1)];
-          if (target) target.focus();
+          moveFocus(items[Math.min(idx + 5, items.length - 1)]);
         }
         if (e.key === "PageUp") {
           e.preventDefault();
           const items = Array.from(dd.querySelectorAll("[tabindex='0']"));
           const idx = items.indexOf(item);
-          const target = items[Math.max(idx - 5, 0)];
-          if (target) target.focus();
+          moveFocus(items[Math.max(idx - 5, 0)]);
         }
         if (e.key === "Escape") {
           dd.classList.add("hidden");
@@ -1065,6 +1069,10 @@ async function startPairing() {
   btn.disabled = true;
   const backBtn = document.getElementById("btn-back-ble");
   if (backBtn) backBtn.disabled = true;
+
+  // Reset BLE receive buffers — defensive guard against stale state from a prior attempt
+  _recvChunks = [];
+  _recvResolve = null;
 
   const token = randomToken();
   const activator = ACTIVATOR_URL;

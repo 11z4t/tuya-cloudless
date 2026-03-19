@@ -867,6 +867,53 @@ test.describe("Full pairing flow", () => {
     await expect(page.locator("#btn-pair")).toBeEnabled();
   });
 
+  test("startNotifications() failure shows error and re-enables pair button", async ({ page }) => {
+    await setupRoutes(page);
+
+    await page.addInitScript(() => {
+      Object.defineProperty(window, "isSecureContext", { get: () => true });
+      const fakeChar = {
+        startNotifications: async () => { throw new Error("Notifications not supported"); },
+        addEventListener: () => {},
+        removeEventListener: () => {},
+        writeValueWithoutResponse: async () => {},
+      };
+      const fakeService = { getCharacteristic: async () => fakeChar };
+      const fakeServer = {
+        connected: true,
+        disconnect: () => { fakeServer.connected = false; },
+        getPrimaryService: async () => fakeService,
+      };
+      const fakeDevice = {
+        id: "fake-notify-fail",
+        name: "Tuya Device",
+        gatt: { connected: false, connect: async () => { fakeDevice.gatt.connected = true; return fakeServer; } },
+      };
+      Object.defineProperty(navigator, "bluetooth", {
+        value: { requestDevice: async () => fakeDevice },
+        configurable: true,
+      });
+      window.EventSource = class MockESNever {
+        constructor() { this.readyState = 1; }
+        addEventListener() {}
+        set onerror(_fn) {}
+        close() { this.readyState = 2; }
+      };
+    });
+
+    await loadPage(page);
+    await navigateToCredentials(page);
+    await page.locator("#ssid").click();
+    await page.locator("#ssid").fill("MyNet");
+    await page.locator("#btn-next").click();
+    await page.locator("#btn-pair").click();
+
+    // Should show an error and re-enable the pair button
+    await expect(page.locator("#pair-status")).toBeVisible({ timeout: 3000 });
+    await expect(page.locator("#pair-status")).toHaveClass(/status-error/);
+    await expect(page.locator("#btn-pair")).toBeEnabled({ timeout: 3000 });
+  });
+
   test("BLE SSE timeout shows warning message and re-enables pair button", async ({ page }) => {
     await setupRoutes(page);
     // BLE mock with no activation payload — SSE "activated" never fires
