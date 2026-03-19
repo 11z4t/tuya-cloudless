@@ -2897,6 +2897,61 @@ test.describe("BLE SSE malformed JSON — immediate error", () => {
   });
 });
 
+test.describe("pair-status ARIA live region role", () => {
+  test("pair-status uses role=alert + aria-live=assertive when showing a BLE error", async ({ page }) => {
+    // Regression guard: setPairStatus("status-error") must switch to role=alert so screen
+    // readers announce BLE errors immediately (assertive) rather than waiting (polite).
+    await setupRoutes(page);
+    await mockBle(page, null);  // BLE hardware OK; onerror fires → setPairStatus("status-error")
+    await page.addInitScript(() => {
+      window.EventSource = class OnerrorEventSource {
+        constructor() { this.readyState = 1; this._cbs = {}; }
+        addEventListener(evt, cb) {
+          if (!this._cbs[evt]) this._cbs[evt] = [];
+          this._cbs[evt].push(cb);
+        }
+        set onerror(fn) { setTimeout(() => fn && fn({}), 150); }
+        close() { this.readyState = 2; }
+      };
+    });
+
+    await loadPage(page);
+    await navigateToCredentials(page);
+    await page.locator("#ssid").fill("MyNet");
+    await page.locator("#btn-next").click();
+    await expect(page.locator("#panel-ble")).toBeVisible();
+    await page.locator("#btn-pair").click();
+
+    await expect(page.locator("#pair-status")).toHaveClass(/status-error/, { timeout: 2000 });
+    const role     = await page.locator("#pair-status").getAttribute("role");
+    const ariaLive = await page.locator("#pair-status").getAttribute("aria-live");
+    expect(role).toBe("alert");
+    expect(ariaLive).toBe("assertive");
+  });
+
+  test("pair-status uses role=status + aria-live=polite for scan-in-progress updates", async ({ page }) => {
+    // Freeze BLE scan at step 1/4 (status-info / polite) by never resolving requestDevice.
+    await setupRoutes(page);
+    await page.addInitScript(() => {
+      Object.defineProperty(window, "isSecureContext", { get: () => true });
+      navigator.bluetooth = { requestDevice: () => new Promise(() => {}) };
+    });
+
+    await loadPage(page);
+    await navigateToCredentials(page);
+    await page.locator("#ssid").fill("MyNet");
+    await page.locator("#btn-next").click();
+    await expect(page.locator("#panel-ble")).toBeVisible();
+    await page.locator("#btn-pair").click();
+
+    await expect(page.locator("#pair-status")).toHaveClass(/status-info/, { timeout: 2000 });
+    const role     = await page.locator("#pair-status").getAttribute("role");
+    const ariaLive = await page.locator("#pair-status").getAttribute("aria-live");
+    expect(role).toBe("status");
+    expect(ariaLive).toBe("polite");
+  });
+});
+
 test.describe("XSS guard — HTML in SSE payload is escaped on done screen", () => {
   test("malicious HTML in gw_id and local_key from SSE appears as escaped text", async ({ page }) => {
     // If the server (or a MITM) sends HTML/JS in activation fields, the done screen
