@@ -37,9 +37,51 @@ const FAKE_DEVICE = {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+/** Cached HA Bearer token (obtained via HTTP auth flow, reused across tests). */
+let _haToken = null;
+
 /**
- * Navigate to HA and log in.
- * HA's auth page uses real <input> elements (not Shadow DOM) at /auth/authorize.
+ * Obtain a HA Bearer token via the HTTP auth flow (not browser UI).
+ * Cached after first call. Returns the access_token string.
+ */
+async function getHaToken() {
+  if (_haToken) return _haToken;
+
+  // Step 1: start login flow
+  const r1 = await fetch(`${HA_URL}/auth/login_flow`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      client_id: `${HA_URL}/`,
+      handler: ["homeassistant", null],
+      redirect_uri: `${HA_URL}/`,
+    }),
+  });
+  const { flow_id } = await r1.json();
+
+  // Step 2: submit credentials
+  const r2 = await fetch(`${HA_URL}/auth/login_flow/${flow_id}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ client_id: `${HA_URL}/`, username: HA_USER, password: HA_PASS }),
+  });
+  const { result: code, errors } = await r2.json();
+  if (!code || errors?.base) return null;  // bad credentials
+
+  // Step 3: exchange code for access token
+  const params = new URLSearchParams({ grant_type: "authorization_code", code, client_id: `${HA_URL}/` });
+  const r3 = await fetch(`${HA_URL}/auth/token`, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: params,
+  });
+  const { access_token } = await r3.json();
+  _haToken = access_token || null;
+  return _haToken;
+}
+
+/**
+ * Navigate to HA and log in (browser UI).
  * @param {import('@playwright/test').Page} page
  */
 async function login(page) {
@@ -51,7 +93,7 @@ async function login(page) {
 
   // Check if already logged in (dashboard page)
   if (!url.includes("/auth/") && !url.includes("onboarding")) {
-    return;  // Already logged in
+    return true;  // Already logged in
   }
 
   // HA auth page has real <input name="username"> and <input name="password">
@@ -94,7 +136,7 @@ async function loginOrSkip(page) {
 }
 
 /**
- * Make an authenticated HA API call using the browser's session cookie.
+ * Make an authenticated HA API call using a Bearer token.
  * Returns parsed JSON or throws on HTTP error.
  *
  * @param {import('@playwright/test').Page} page
@@ -104,12 +146,15 @@ async function loginOrSkip(page) {
  * @returns {Promise<any>}
  */
 async function haApi(page, method, path, body) {
+  const token = await getHaToken();
   return page.evaluate(
-    async ([method, path, body, haUrl]) => {
+    async ([method, path, body, haUrl, token]) => {
       const init = {
         method,
-        headers: { "Content-Type": "application/json" },
-        credentials: "same-origin",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { "Authorization": `Bearer ${token}` } : {}),
+        },
       };
       if (body !== undefined) init.body = JSON.stringify(body);
       const resp = await fetch(haUrl + path, init);
@@ -117,7 +162,7 @@ async function haApi(page, method, path, body) {
       if (!resp.ok) throw new Error(`${resp.status} ${resp.statusText}: ${text}`);
       try { return JSON.parse(text); } catch { return text; }
     },
-    [method, path, body, HA_URL]
+    [method, path, body, HA_URL, token]
   );
 }
 
@@ -359,7 +404,7 @@ test.describe("Config flow — pair step (pre-paired device)", () => {
     // If ble_fallback form: select manual entry
     if (flow.step_id === "ble_fallback") {
       const next = await haApi(page, "POST", `/api/config/config_entries/flow/${flowId}`, {
-        next_step: "manual",
+        setup_mode: "manual",
       });
       console.log("ble_fallback result:", JSON.stringify(next).slice(0, 200));
 
