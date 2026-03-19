@@ -134,6 +134,23 @@ def _is_tuya_ap(ssid: str) -> bool:
     return any(lower.startswith(p) for p in _TUYA_AP_PREFIXES)
 
 
+def _json_in_script(value: object) -> str:
+    """JSON-encode *value* safe for embedding inside an HTML ``<script>`` block.
+
+    ``json.dumps`` alone does not escape ``</``, so a string containing
+    ``</script>`` would prematurely close the ``<script>`` element and allow
+    injection of arbitrary HTML.  Replacing ``</`` with the equivalent
+    escaped sequence ``<\\/`` prevents this while remaining valid JS.
+
+    Args:
+        value: Any JSON-serialisable value.
+
+    Returns:
+        JSON string with ``</`` replaced by ``<\\/``.
+    """
+    return json.dumps(value).replace("</", r"<\/")
+
+
 # ── Security constants ─────────────────────────────────────────────────────
 
 #: Security headers added to every response from the pairing UI (PLAT-725).
@@ -1174,12 +1191,15 @@ class PairingServer:
             f'src="{provision_base}/qr.svg"',
         )
 
-        # Inject window globals before </head> so app.js reads them on load
+        # Inject window globals before </head> so app.js reads them on load.
+        # Use _json_in_script() rather than json.dumps() directly: if any value
+        # contains "</script>" the raw sequence would close the tag and allow
+        # arbitrary HTML injection.
         globals_script = (
             "<script>\n"
-            f"window._TUYA_ACTIVATOR_BASE={json.dumps(activator_url)};\n"
-            f"window._TUYA_PROVISION_BASE={json.dumps(provision_base)};\n"
-            f"window._TUYA_STATIC_BASE={json.dumps(static_base)};\n"
+            f"window._TUYA_ACTIVATOR_BASE={_json_in_script(activator_url)};\n"
+            f"window._TUYA_PROVISION_BASE={_json_in_script(provision_base)};\n"
+            f"window._TUYA_STATIC_BASE={_json_in_script(static_base)};\n"
             "</script>\n"
         )
         html = html.replace("</head>", globals_script + "</head>", 1)

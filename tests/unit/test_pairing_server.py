@@ -29,6 +29,7 @@ from custom_components.tuya_cloudless.pairing_server import (  # noqa: E402
     PairingRedirectView,
     PairingServer,
     _is_tuya_ap,
+    _json_in_script,
     ensure_pairing_server,
     get_pairing_server,
     register_redirect_view,
@@ -3212,3 +3213,58 @@ class TestHaStaticView:
         req = MagicMock()
         resp = await static_view.get(req, path="nonexistent.js")  # type: ignore[union-attr]
         assert resp.status == 404
+
+
+# ── Round 44: _json_in_script helper ──────────────────────────────────────────
+
+
+class TestJsonInScript:
+    """Tests for _json_in_script() — HTML-safe JSON encoding for <script> blocks."""
+
+    def test_normal_string_unchanged(self) -> None:
+        """Plain strings are JSON-encoded normally."""
+        result = _json_in_script("http://192.168.1.10:8099")
+        assert result == '"http://192.168.1.10:8099"'
+
+    def test_script_close_tag_escaped(self) -> None:
+        """</script> in a string value is escaped to prevent premature tag close."""
+        crafted = "http://evil.example.com/</script><script>alert(1)//"
+        result = _json_in_script(crafted)
+        assert "</script>" not in result
+        assert r"<\/" in result  # replacement sequence is present
+
+    def test_nested_close_tag_escaped(self) -> None:
+        """Multiple occurrences of </script> are all replaced."""
+        crafted = "a</script>b</script>c"
+        result = _json_in_script(crafted)
+        assert result.count("</") == 0
+
+    def test_non_string_values(self) -> None:
+        """Works for non-string values like int and None."""
+        assert _json_in_script(8099) == "8099"
+        assert _json_in_script(None) == "null"
+
+    def test_ha_index_script_block_safe_with_crafted_hostname(self, tmp_path: Path) -> None:
+        """_handle_ha_index does not expose </script> in the injected <script> block."""
+        ui_dir = tmp_path / "ui"
+        ui_dir.mkdir()
+        index_html = ui_dir / "index.html"
+        index_html.write_text("<html><head></head><body></body></html>", encoding="utf-8")
+
+        hass = MagicMock()
+        srv = PairingServer(hass, port=8099)
+
+        # Simulate a hostname that contains the </script> sequence
+        crafted_url = "http://host-</script><script>alert(1)//:8099"
+        with (
+            patch.object(srv, "ha_local_url", return_value=crafted_url),
+            patch("custom_components.tuya_cloudless.pairing_server._UI_DIR", ui_dir),
+        ):
+            import asyncio
+
+            req = MagicMock()
+            resp = asyncio.get_event_loop().run_until_complete(srv._handle_ha_index(req))
+
+        body = resp.text if hasattr(resp, "text") else resp.body.decode()
+        # The crafted </script> must not appear verbatim inside any <script> block
+        assert "</script><script>alert(1)" not in body

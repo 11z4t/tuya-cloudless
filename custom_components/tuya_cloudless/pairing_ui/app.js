@@ -130,8 +130,9 @@ function t(key, vars) {
       label_reveal_key: "Reveal",
       label_hide_key:   "Hide",
       // Status & spinners
-      spin_scanning:  "Scanning for Tuya device\u2026",
-      spin_handshake: "Handshake\u2026",
+      spin_scanning:    "Scanning for Tuya device\u2026",
+      spin_connecting:  "Connecting to {name}\u2026",
+      spin_handshake:   "Handshake\u2026",
       spin_sending:   "Sending WiFi credentials\u2026",
       spin_waiting:   "Credentials sent \u2713 \u2014 waiting for device to activate\u2026",
       success_activated: "\u2713 Device activated! Local key generated.",
@@ -295,6 +296,8 @@ const _TOTAL_STEPS = 3;
 function updateStepCounter(step) {
   _currentStep = step;
   const el = document.getElementById("step-counter");
+  // Guard: element may be absent in test environments or during early init
+  if (!el) return;
   if (step > _TOTAL_STEPS) {
     el.classList.add("hidden");
     return;
@@ -508,16 +511,20 @@ function showWifiDropdown(ssids, currentSsid) {
     }
   }
   dd.classList.remove("hidden");
-  document.getElementById("btn-wifi-scan").setAttribute("aria-expanded", "true");
+  const scanBtnExpand = document.getElementById("btn-wifi-scan");
+  if (scanBtnExpand) scanBtnExpand.setAttribute("aria-expanded", "true");
   // Move focus into the first item for keyboard users
   const first = dd.querySelector("[tabindex='0']");
   if (first) first.focus();
 }
 
 function selectWifi(ssid) {
-  document.getElementById("ssid").value = ssid;
-  document.getElementById("wifi-dropdown").classList.add("hidden");
-  document.getElementById("btn-wifi-scan").setAttribute("aria-expanded", "false");
+  const ssidEl = document.getElementById("ssid");
+  if (ssidEl) ssidEl.value = ssid;
+  const ddEl = document.getElementById("wifi-dropdown");
+  if (ddEl) ddEl.classList.add("hidden");
+  const scanBtnEl = document.getElementById("btn-wifi-scan");
+  if (scanBtnEl) scanBtnEl.setAttribute("aria-expanded", "false");
 }
 
 // ── Device discovery ───────────────────────────────────────────────────────────
@@ -1055,7 +1062,9 @@ function listenForActivation(token) {
         // PLAT-811: Persist the SSID used for successful activation (with 90-day TTL)
         if (_ssid) { saveLastSsid(_ssid); }
         showDone(d.gw_id, d.local_key, d.ip_address || "");
-        document.getElementById("btn-pair").disabled = false;
+        // Guard: btn-pair may be absent in test environments (onerror handler also guards)
+        const pairBtnActivated = document.getElementById("btn-pair");
+        if (pairBtnActivated) pairBtnActivated.disabled = false;
       } else if (d.gw_id === undefined || d.local_key === undefined) {
         dbg("SSE activated: missing gw_id or local_key");
       }
@@ -1549,5 +1558,6 @@ if (typeof module !== "undefined") {
     _getRecvReject: () => _recvReject,
     _getActiveSseTimer: () => _activeSseTimer,
     _listenForActivation: listenForActivation,
+    _updateStepCounter: updateStepCounter,
   };
 }

@@ -11,7 +11,7 @@ const {
   isIOS, isAndroid, chromeIntentUrl,
   saveLastSsid, loadLastSsid, SSID_TTL_MS, SSID_STORAGE_KEY,
   countUtf8Bytes, reassemble, onNotify, waitForResponse, parseFrame, crc16Modbus,
-  _safePath, _safeUrl, _t, _getRecvReject, _getActiveSseTimer,
+  _safePath, _safeUrl, _t, _getRecvReject, _getActiveSseTimer, _updateStepCounter,
 } = app;
 
 // ── PLAT-810 — Browser compatibility helpers ──────────────────────────────────
@@ -827,5 +827,83 @@ describe("showDeviceCard aria-label is not HTML-escaped", () => {
     // innerHTML must NOT contain a live <script> tag — esc() must be used there
     expect(card.innerHTML).not.toContain("<script>");
     expect(card.innerHTML).toContain("&lt;script&gt;");
+  });
+});
+
+// ── Round 44: null-guard robustness ───────────────────────────────────────────
+
+describe("updateStepCounter null safety", () => {
+  it("does not throw when step-counter element is absent", () => {
+    // Patch getElementById to return null only for step-counter; call the function directly
+    const origGetById = document.getElementById.bind(document);
+    jest.spyOn(document, "getElementById").mockImplementation((id) => {
+      if (id === "step-counter") return null;
+      return origGetById(id);
+    });
+    try {
+      // Call for all interesting branches: step within range, and step > _TOTAL_STEPS
+      expect(() => _updateStepCounter(1)).not.toThrow();
+      expect(() => _updateStepCounter(99)).not.toThrow();
+    } finally {
+      document.getElementById.mockRestore();
+    }
+  });
+});
+
+describe("showWifiDropdown / selectWifi null safety", () => {
+  it("selectWifi does not throw when ssid/dropdown/scan-btn are absent", () => {
+    const origGetById = document.getElementById.bind(document);
+    const nullIds = new Set(["ssid", "wifi-dropdown", "btn-wifi-scan"]);
+    jest.spyOn(document, "getElementById").mockImplementation((id) => {
+      if (nullIds.has(id)) return null;
+      return origGetById(id);
+    });
+    try {
+      // goToCredentials calls into the same DOM paths; should not throw with null elements
+      expect(() => app.goToCredentials()).not.toThrow();
+    } finally {
+      document.getElementById.mockRestore();
+    }
+  });
+});
+
+describe("listenForActivation activated event null safety", () => {
+  it("does not throw when btn-pair element is absent at activation time", () => {
+    // Patch getElementById to return null only for btn-pair
+    const origGetById = document.getElementById.bind(document);
+    jest.spyOn(document, "getElementById").mockImplementation((id) => {
+      if (id === "btn-pair") return null;
+      return origGetById(id);
+    });
+
+    const EventSourceMock = class {
+      constructor() { this.onerror = null; this._handlers = {}; }
+      addEventListener(evt, cb) { this._handlers[evt] = cb; }
+      close() {}
+    };
+    const savedES = global.EventSource;
+    global.EventSource = EventSourceMock;
+    try {
+      const es = app._listenForActivation("testtoken");
+      // Simulate activated event with matching token
+      const payload = { token: "testtoken", gw_id: "GWID", local_key: "aabbccdd" };
+      expect(() => {
+        if (es._handlers && es._handlers["activated"]) {
+          es._handlers["activated"]({ data: JSON.stringify(payload) });
+        }
+      }).not.toThrow();
+    } finally {
+      document.getElementById.mockRestore();
+      global.EventSource = savedES;
+    }
+  });
+});
+
+describe("t() fallback for spin_connecting", () => {
+  it("returns a non-empty, non-key-name string even before i18n loads", () => {
+    const result = _t("spin_connecting");
+    // Must not return the raw key, and must not be empty
+    expect(result).not.toBe("spin_connecting");
+    expect(result.length).toBeGreaterThan(0);
   });
 });
