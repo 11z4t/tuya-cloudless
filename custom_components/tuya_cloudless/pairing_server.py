@@ -687,10 +687,15 @@ class PairingServer:
             "ip_address": client_ip,
             "product_key": product_key,
         }
+
+        async def _resume_flow(fid: str) -> None:
+            try:
+                await self._hass.config_entries.flow.async_configure(fid, flow_data)
+            except Exception:  # flow may have been cancelled or removed by user
+                _LOGGER.debug("Flow %s no longer active — skipping resume", fid)
+
         for flow_id in list(self._pending_flows):
-            self._hass.async_create_task(
-                self._hass.config_entries.flow.async_configure(flow_id, flow_data)
-            )
+            self._hass.async_create_task(_resume_flow(flow_id))
 
         # Respond in Tuya cloud activation format
         response_body = {

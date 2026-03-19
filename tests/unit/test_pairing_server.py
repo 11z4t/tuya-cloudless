@@ -2473,6 +2473,40 @@ class TestActivateFlowResume:
         finally:
             await cli.close()
 
+    async def test_cancelled_flow_does_not_crash_activation(self) -> None:
+        """If async_configure raises (flow cancelled), activation still returns 200."""
+        hass = _make_hass()
+        # async_configure raises RuntimeError simulating a cancelled/missing flow
+        configure_coro_called: list[bool] = []
+
+        async def failing_configure(flow_id: str, data: dict) -> None:
+            configure_coro_called.append(True)
+            raise RuntimeError("Unknown flow")
+
+        hass.config_entries = MagicMock()
+        hass.config_entries.flow.async_configure = failing_configure
+        # Use real async_create_task so the coroutine actually runs
+        hass.async_create_task = lambda coro: asyncio.get_event_loop().create_task(coro)
+
+        fresh_server = PairingServer(hass, port=0)
+        fresh_server._pending_flows.add("cancelled-flow-999")
+
+        ts = TestServer(fresh_server._app)
+        cli = TestClient(ts)
+        await cli.start_server()
+        try:
+            resp = await cli.post(
+                "/api/tuya/device/active",
+                json={"gw_id": "gw_cancel", "token": "tok_cancel"},
+            )
+            # Activation must succeed even though async_configure raised
+            assert resp.status == 200
+            # Allow the task to run
+            await asyncio.sleep(0)
+            assert configure_coro_called, "async_configure coroutine was never executed"
+        finally:
+            await cli.close()
+
 
 # ── _handle_sse ────────────────────────────────────────────────────────────────
 
