@@ -119,6 +119,10 @@ class TuyaCloudlessSensor(TuyaCloudlessEntity, SensorEntity):
         if raw is None:
             return None
         scale = self._spec.dp_value.scale
+        # bool must be checked before str/int because bool is a subclass of int;
+        # a boolean DP sent to a numeric sensor is a mismatch — return None.
+        if isinstance(raw, bool):
+            return None
         if isinstance(raw, str):
             return raw
         result = float(raw) if scale == 1.0 else round(float(raw) * scale, 3)

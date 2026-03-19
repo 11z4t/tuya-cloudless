@@ -890,13 +890,13 @@ class TestReconfigureFlow:
         flow.async_update_reload_and_abort = MagicMock(return_value={"type": "abort"})
 
         mock_entry = MagicMock()
-        mock_entry.data = {CONF_IP_ADDRESS: "10.0.0.1", CONF_LOCAL_KEY: "old_key_12345678"}
+        mock_entry.data = {CONF_IP_ADDRESS: "10.0.0.1", CONF_LOCAL_KEY: "a1b2c3d4e5f6a1b2"}
         mock_entry.title = "Test Device"
         flow._get_reconfigure_entry = MagicMock(return_value=mock_entry)
 
         await flow.async_step_reconfigure(
             user_input={
-                CONF_LOCAL_KEY: "newkey12345678ab",
+                CONF_LOCAL_KEY: "1a2b3c4d5e6f7a8b",
                 CONF_IP_ADDRESS: "10.0.0.2",
             }
         )

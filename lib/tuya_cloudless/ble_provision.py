@@ -276,6 +276,10 @@ def _reassemble_chunks(chunks: list[bytes]) -> bytes:
     total = chunks[0][1]
     if len(chunks) != total:
         raise PairingError(f"Incomplete BLE frame: expected {total} chunks, got {len(chunks)}")
+    # Verify all chunks agree on the total — a peripheral sending inconsistent
+    # total bytes would otherwise smuggle a frame through the length check.
+    if any(c[1] != total for c in chunks):
+        raise PairingError("BLE chunks have inconsistent total_chunks values")
 
     ordered = sorted(chunks, key=lambda c: c[0])
     if len(ordered) != len({c[0] for c in ordered}):
