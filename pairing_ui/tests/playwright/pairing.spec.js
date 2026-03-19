@@ -1112,6 +1112,25 @@ test.describe("Full pairing flow", () => {
     await expect(page.locator("#btn-copy-ip")).toBeHidden();
   });
 
+  test("done screen: copy-key button shows ✓ after click then reverts", async ({ page }) => {
+    await setupRoutes(page);
+    await mockBle(page, ACTIVATION);
+    await loadPage(page);
+    await navigateToCredentials(page);
+    await page.locator("#ssid").fill("MyNet");
+    await page.locator("#btn-next").click();
+    await page.locator("#btn-pair").click();
+    await expect(page.locator("#panel-done")).toBeVisible({ timeout: 5000 });
+    // Stub clipboard.writeText to always succeed (clipboard unavailable in headless)
+    await page.evaluate(() => { navigator.clipboard = { writeText: () => Promise.resolve() }; });
+    const copyKeyBtn = page.locator("#btn-copy-key");
+    await copyKeyBtn.click();
+    // Button text changes to ✓ immediately after click
+    await expect(copyKeyBtn).toHaveText("\u2713");
+    // After ~1.8 s it reverts to the original label
+    await expect(copyKeyBtn).not.toHaveText("\u2713", { timeout: 3000 });
+  });
+
   test("successful pairing saves SSID to localStorage", async ({ page }) => {
     await setupRoutes(page);
     await mockBle(page, ACTIVATION);

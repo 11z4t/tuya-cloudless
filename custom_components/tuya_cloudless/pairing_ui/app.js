@@ -1057,24 +1057,28 @@ function showDone(gw_id, local_key, ip_address) {
     }, { once: false });
   }
 
-  // Wire up the copy key button — copies local_key to clipboard, shows toast
+  // Wire up the copy key button — brief button-text feedback (consistent with copyShareUrl)
   const copyKeyBtn = document.getElementById("btn-copy-key");
   if (copyKeyBtn && local_key) {
     copyKeyBtn.addEventListener("click", function() {
+      const self = this;
+      const origText = t("btn_copy_key") || "Copy";
       navigator.clipboard.writeText(local_key).then(
-        () => showToast(t("copied_ok") || "Copied!"),
-        () => showToast("⚠ Copy failed")
+        () => { self.textContent = "\u2713"; setTimeout(() => { self.textContent = origText; }, 1800); },
+        () => { self.textContent = "\u2717"; setTimeout(() => { self.textContent = origText; }, 1800); }
       );
     });
   }
 
-  // Wire up the copy IP button — copies ip_address to clipboard, shows toast
+  // Wire up the copy IP button — brief button-text feedback
   const copyIpBtn = document.getElementById("btn-copy-ip");
   if (copyIpBtn && ip_address) {
     copyIpBtn.addEventListener("click", function() {
+      const self = this;
+      const origText = t("btn_copy_key") || "Copy";
       navigator.clipboard.writeText(ip_address).then(
-        () => showToast(t("copied_ok") || "Copied!"),
-        () => showToast("⚠ Copy failed")
+        () => { self.textContent = "\u2713"; setTimeout(() => { self.textContent = origText; }, 1800); },
+        () => { self.textContent = "\u2717"; setTimeout(() => { self.textContent = origText; }, 1800); }
       );
     });
   }
