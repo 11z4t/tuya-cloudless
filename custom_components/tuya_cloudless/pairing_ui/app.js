@@ -1062,7 +1062,8 @@ function listenForActivation(token) {
         clearTimeout(sseTimer); _activeSseTimer = null;
         es.close();
         setPairStatus("status-success", esc(t("success_activated")));
-        dbg("Device activated: " + esc(d.gw_id) + " \u2713");
+        // dbg() uses textContent → auto-escapes; do not call esc() here (would double-escape)
+        dbg("Device activated: " + d.gw_id + " \u2713");
         // PLAT-811: Persist the SSID used for successful activation (with 90-day TTL)
         if (_ssid) { saveLastSsid(_ssid); }
         showDone(d.gw_id, d.local_key, d.ip_address || "");
@@ -1150,7 +1151,8 @@ async function pairViaWifiAp() {
         wifiApCleanup(true);
         if (_ssid) saveLastSsid(_ssid);  // save only on confirmed activation
         setWifiApStatus("status-success", esc(t("success_activated")));
-        dbg("Device activated: " + esc(d.gw_id) + " \u2713");
+        // dbg() uses textContent → auto-escapes; do not call esc() here (would double-escape)
+        dbg("Device activated: " + d.gw_id + " \u2713");
         showDone(d.gw_id, d.local_key, d.ip_address || "");
       } else if (d.gw_id === undefined || d.local_key === undefined) {
         dbg("SSE activated: missing gw_id or local_key in payload");
@@ -1195,11 +1197,13 @@ async function pairViaWifiAp() {
       clearTimeout(fetchTimeout);
     }
     if (!r.ok) {
+      // Log the raw HTTP status for diagnostics; show a localized message to the user.
+      dbg("wifi-ap-pair: server returned HTTP " + r.status);
       const msg = r.status === 409
         ? (t("wifi_ap_in_progress") || "Pairing already in progress — wait and retry.")
         : r.status === 503
           ? (t("wifi_ap_nmcli_missing") || "WiFi control unavailable — nmcli is not installed on the HA host.")
-          : "wifi-ap-pair HTTP " + r.status;
+          : (t("wifi_ap_error") || "WiFi AP pairing failed.");
       wifiApCleanup(true);
       throw new Error(msg);
     }

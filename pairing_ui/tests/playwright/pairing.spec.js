@@ -1706,7 +1706,9 @@ test.describe("WiFi AP pairing flow", () => {
     await pairViaWifiApUi(page);
 
     await expect(page.locator("#wifi-ap-status")).toBeVisible({ timeout: 3000 });
-    await expect(page.locator("#wifi-ap-status")).toContainText("500");
+    // Status must show an error — the raw "HTTP 500" developer text is no longer
+    // shown to the user; a localized fallback (wifi_ap_error) is used instead.
+    await expect(page.locator("#wifi-ap-status")).toHaveClass(/status-error/);
     await expect(page.locator("#btn-next")).toBeEnabled();
   });
 
@@ -2175,5 +2177,32 @@ test.describe("WiFi scan button aria-label", () => {
     const label = await page.locator("#btn-wifi-scan").getAttribute("aria-label");
     expect(label).toBeTruthy();
     expect(label.length).toBeGreaterThan(0);
+  });
+});
+
+// ── Round 49 — Localized error for unexpected HTTP status ─────────────────────
+test.describe("WiFi AP pair — unexpected HTTP error shows localized message", () => {
+  test("HTTP 500 shows localized wifi_ap_error, not raw status code string", async ({ page }) => {
+    // Regression guard: previously the fallback message was "wifi-ap-pair HTTP 500"
+    // (raw developer text). Now it must use a localized string from t("wifi_ap_error").
+    await setupRoutes(page, { tuya_aps: [{ ssid: "SmartLife_AB12" }] });
+
+    // Override the wifi-ap-pair route to return HTTP 500
+    await page.route("**/api/provision/wifi-ap-pair", (route) => {
+      route.fulfill({ status: 500, body: "Internal Server Error" });
+    });
+
+    await loadPage(page);
+    await pairViaWifiApUi(page);
+
+    const statusEl = page.locator("#wifi-ap-status");
+    await expect(statusEl).toBeVisible({ timeout: 5000 });
+    const text = await statusEl.textContent();
+
+    // Must NOT contain raw "HTTP 500" (developer text)
+    expect(text).not.toContain("HTTP 500");
+    expect(text).not.toContain("wifi-ap-pair");
+    // Must contain some error text (localized fallback)
+    expect(text.trim().length).toBeGreaterThan(0);
   });
 });
