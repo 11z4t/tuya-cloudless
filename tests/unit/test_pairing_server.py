@@ -163,6 +163,26 @@ class TestActivateEndpoint:
         resp = await client.post("/api/tuya/device/active", json={})
         assert resp.status == 200
 
+    async def test_empty_token_not_stored_in_results(
+        self, client: TestClient, server: PairingServer
+    ) -> None:
+        """Activations with an empty token must NOT be stored in _results.
+
+        An empty token means the device is operating outside a provisioning session
+        (e.g., sending a background ping).  Storing empty-key entries would cause
+        collision if multiple such devices arrive simultaneously, so the server skips
+        storage while still returning a successful activation response.
+        """
+        resp = await client.post(
+            "/api/tuya/device/active",
+            json={"gw_id": "no_token_gw", "token": ""},
+        )
+        assert resp.status == 200
+        # Empty-token result must not be in _results (guarded by `if token:`)
+        assert "" not in server._results, (
+            "Empty token must not be stored in _results to avoid collision"
+        )
+
     async def test_each_activation_generates_unique_key(self, client: TestClient) -> None:
         resp1 = await client.post("/api/tuya/device/active", json={"gw_id": "gw1", "token": "t1"})
         resp2 = await client.post("/api/tuya/device/active", json={"gw_id": "gw2", "token": "t2"})

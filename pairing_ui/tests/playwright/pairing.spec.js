@@ -2138,6 +2138,23 @@ test.describe("WiFi AP pairing flow", () => {
     await expect(page.locator("#btn-next")).toBeEnabled();
   });
 
+  test("quick-scan network error (fetch throws) falls back to no-devices without blocking UI", async ({ page }) => {
+    // Regression guard: if the quick-scan request itself fails (network down, connection
+    // refused) the catch block must still clear the spinner and re-enable the refresh button.
+    // This is distinct from an HTTP 5xx error — the fetch throws rather than returning a response.
+    await setupRoutes(page);
+    // Abort the connection entirely (simulates network-down / ECONNREFUSED)
+    await page.route(BASE + "/api/provision/quick-scan", (route) => route.abort("connectionfailed"));
+    await loadPage(page);
+
+    // Spinner must clear even though fetch threw, not just returned a bad status
+    await expect(page.locator("#no-devices-msg")).toBeVisible({ timeout: 5000 });
+    // Refresh button must be re-enabled for retry
+    await expect(page.locator("#btn-refresh-scan")).toBeEnabled({ timeout: 3000 });
+    // BLE scan button must remain visible (page not broken)
+    await expect(page.locator("#btn-ble-scan")).toBeVisible();
+  });
+
   test("quick-scan server error falls back to no-devices message without blocking UI", async ({ page }) => {
     await setupRoutes(page);
     // Override quick-scan to return a server error
