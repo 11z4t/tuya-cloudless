@@ -989,6 +989,16 @@ class PairingServer:
                 status=400, text="SSID/password must not contain control characters"
             )
 
+        # Per-IP rate limit — spawns nmcli + background task: 5/min per IP.
+        # Applied after input validation so 400 errors are not penalised.
+        client_ip = request.remote or "unknown"
+        if self._is_rate_limited(client_ip, max_requests=5, window=60.0):
+            return web.Response(
+                status=429,
+                text="Too Many Requests",
+                headers={"Retry-After": "12"},
+            )
+
         # Prevent duplicate concurrent pairing tasks for the same AP
         if ap_ssid in self._wifi_ap_pairing_in_progress:
             return web.Response(

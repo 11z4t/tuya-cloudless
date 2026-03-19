@@ -957,3 +957,96 @@ describe("PAIR_METHOD constants", () => {
     expect(PAIR_METHOD.WIFI_AP.length).toBeGreaterThan(0);
   });
 });
+
+// ── Round 52 — showDone key-reveal toggle ─────────────────────────────────────
+// The local_key is shown as "•••• (hidden)" by default. Clicking the reveal button
+// toggles display, updates button text and aria-label, and can toggle back.
+
+describe("showDone — key-reveal toggle", () => {
+  const { showDone } = app;
+
+  function setupDom() {
+    document.body.innerHTML = `
+      <div id="panel-devices" class="hidden"></div>
+      <div id="panel-wifi" class="hidden"></div>
+      <div id="panel-ble" class="hidden"></div>
+      <div id="panel-done" class="hidden">
+        <h2 id="step3-title" tabindex="-1"></h2>
+        <p id="ha-flow-msg" class="hidden"></p>
+        <dl id="result-grid"></dl>
+        <a id="btn-add-ha" class="hidden" href="#"></a>
+        <button id="btn-pair-another" class="hidden"></button>
+      </div>
+      <span id="step-counter"></span>
+    `;
+  }
+
+  beforeEach(() => {
+    setupDom();
+    // Simulate no flow_id (so deep-link logic runs, not the HA config flow branch)
+    // _haFlowId is read from URL params at module load — null in jsdom default env
+  });
+
+  it("reveals local key when reveal button is clicked", () => {
+    showDone("dev001", "aabbccddeeff00112233445566778899", "192.168.1.5");
+
+    const revealBtn = document.getElementById("btn-reveal-key");
+    const masked    = document.getElementById("key-masked");
+    const revealed  = document.getElementById("key-revealed");
+
+    expect(revealBtn).not.toBeNull();
+    // Initially: masked visible, revealed hidden
+    expect(masked.style.display).not.toBe("none");
+    expect(revealed.style.display).toBe("none");
+
+    // Click reveal
+    revealBtn.click();
+
+    // After click: masked hidden, revealed visible
+    expect(masked.style.display).toBe("none");
+    expect(revealed.style.display).not.toBe("none");
+    // Key value is shown
+    expect(revealed.textContent).toContain("aabbccddeeff00112233445566778899");
+  });
+
+  it("hides local key again when reveal button is clicked a second time", () => {
+    showDone("dev002", "aabbccddeeff00112233445566778899", "192.168.1.5");
+
+    const revealBtn = document.getElementById("btn-reveal-key");
+    const masked    = document.getElementById("key-masked");
+    const revealed  = document.getElementById("key-revealed");
+
+    revealBtn.click();  // reveal
+    revealBtn.click();  // hide again
+
+    expect(masked.style.display).not.toBe("none");
+    expect(revealed.style.display).toBe("none");
+  });
+
+  it("updates reveal button aria-label when toggling", () => {
+    showDone("dev003", "aabbccddeeff00112233445566778899", "192.168.1.5");
+
+    const revealBtn = document.getElementById("btn-reveal-key");
+    const initialAriaLabel = revealBtn.getAttribute("aria-label");
+    // Initial label should reference "Reveal" (not "Hide")
+    expect(initialAriaLabel.toLowerCase()).toContain("reveal");
+
+    revealBtn.click();
+    // After reveal, label should reference "Hide"
+    const revealedAriaLabel = revealBtn.getAttribute("aria-label");
+    expect(revealedAriaLabel.toLowerCase()).toContain("hide");
+
+    revealBtn.click();
+    // After hiding again, label reverts
+    expect(revealBtn.getAttribute("aria-label").toLowerCase()).toContain("reveal");
+  });
+
+  it("HTML-escapes the local key in the revealed span (XSS guard)", () => {
+    // A crafted local_key with angle brackets must not inject HTML
+    showDone("dev004", "<script>alert(1)</script>", "192.168.1.5");
+    const revealed = document.getElementById("key-revealed");
+    // innerHTML must not contain a live <script> tag
+    expect(revealed.innerHTML).not.toContain("<script>");
+    expect(revealed.innerHTML).toContain("&lt;script&gt;");
+  });
+});

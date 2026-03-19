@@ -1023,6 +1023,73 @@ class TestWifiApPair:
         assert resp.status == 400
         assert "control" in (await resp.text()).lower()
 
+    @pytest.mark.parametrize(
+        "field,value,expected_status",
+        [
+            # WiFi SSID limit: 32 bytes
+            ("ap_ssid", "S" * 33, 400),
+            ("home_ssid", "H" * 33, 400),
+            # WPA2 password limit: 63 bytes
+            ("home_password", "p" * 64, 400),
+            # Exactly at limit — must be accepted
+            ("ap_ssid", "S" * 32, 200),
+            ("home_ssid", "H" * 32, 200),
+            ("home_password", "p" * 63, 200),
+        ],
+    )
+    async def test_field_length_limits(
+        self, client: TestClient, field: str, value: str, expected_status: int
+    ) -> None:
+        """SSID ≤ 32 bytes and password ≤ 63 bytes are enforced per WiFi spec."""
+        from unittest.mock import patch
+
+        body = {"ap_ssid": "SmartLife_AB12", "home_ssid": "HomeNet", "home_password": "pass"}
+        body[field] = value
+
+        with patch(
+            "custom_components.tuya_cloudless.pairing_server.PairingServer._wifi_ap_pair_task"
+        ):
+            resp = await client.post("/api/provision/wifi-ap-pair", json=body)
+
+        assert resp.status == expected_status
+
+    async def test_wifi_ap_pair_rate_limited(self, server: PairingServer) -> None:
+        """wifi-ap-pair returns 429 after 5 requests from same IP within 60 seconds."""
+        ts = TestServer(server._app)
+        cli = TestClient(ts)
+        await cli.start_server()
+        try:
+            # Pre-fill rate limit bucket to just below capacity (max=5 for wifi-ap-pair)
+            now = time.monotonic()
+            server._rate_limit["127.0.0.1"] = [now] * 4
+
+            # 5th request should still succeed (control char check rejected before rate limit)
+            # Use valid body so it actually reaches the rate-limit check
+            from unittest.mock import patch
+
+            with patch(
+                "custom_components.tuya_cloudless.pairing_server.PairingServer._wifi_ap_pair_task"
+            ):
+                resp = await cli.post(
+                    "/api/provision/wifi-ap-pair",
+                    json={
+                        "ap_ssid": "SmartLife_AB12",
+                        "home_ssid": "HomeNet",
+                        "home_password": "pass",
+                    },
+                )
+            assert resp.status == 200
+
+            # 6th request should be rate-limited
+            resp = await cli.post(
+                "/api/provision/wifi-ap-pair",
+                json={"ap_ssid": "SmartLife_AB12", "home_ssid": "HomeNet", "home_password": "x"},
+            )
+            assert resp.status == 429
+            assert "Retry-After" in resp.headers
+        finally:
+            await cli.close()
+
     async def test_rate_limit_dict_does_not_grow_unbounded(self, server: PairingServer) -> None:
         """Old IPs are cleaned from _rate_limit after each activation request."""
         ts = TestServer(server._app)
