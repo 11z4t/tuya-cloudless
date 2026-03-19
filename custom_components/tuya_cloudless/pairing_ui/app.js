@@ -1345,7 +1345,7 @@ async function startPairing() {
     // Cancel the SSE timeout so it doesn't overwrite the error message after 60 s
     if (_activeSseTimer !== null) { clearTimeout(_activeSseTimer); _activeSseTimer = null; }
     if (err.name === "NotFoundError" || err.name === "AbortError") {
-      setPairStatus("status-warn", t("warn_scan_cancelled"));
+      setPairStatus("status-warn", esc(t("warn_scan_cancelled")));
       dbg("BLE scan cancelled");
     } else {
       setPairStatus("status-error", "\u274C " + esc(err.message));

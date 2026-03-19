@@ -1878,6 +1878,50 @@ test.describe("WiFi AP pairing flow", () => {
     await expect(page.locator("#btn-next")).toBeEnabled();
   });
 
+  test("WiFi AP activation timeout shows error on status panel and re-enables pair button", async ({ page }) => {
+    await setupRoutes(page, { tuya_aps: [{ ssid: "SmartLife_AB12" }] });
+
+    // Mock POST — returns token immediately so timer starts; no SSE event fires
+    await page.route(BASE + "/api/provision/wifi-ap-pair", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          token: "timeout-test-token",
+          events_url: BASE + "/api/provision/events",
+        }),
+      })
+    );
+
+    // Replace EventSource with a silent stub that never fires any event.
+    // mockWifiApRoute uses `sseEvent ?? "activated"` so null triggers the default;
+    // use a fresh stub here to avoid that footgun.
+    await page.addInitScript(() => {
+      window.EventSource = class SilentEventSource {
+        constructor() { this.readyState = 1; }
+        addEventListener() {}
+        set onerror(_) {}
+        close() { this.readyState = 2; }
+      };
+    });
+
+    // Speed up all long timers (> 100 ms) so SSE_TIMEOUT_MS fires quickly
+    await page.addInitScript(() => {
+      const orig = window.setTimeout;
+      window.setTimeout = (fn, delay, ...args) =>
+        orig(fn, delay > 100 ? 50 : delay, ...args);
+    });
+
+    await loadPage(page);
+    await pairViaWifiApUi(page);
+
+    // After timeout the error message should appear on wifi-ap-status
+    await expect(page.locator("#wifi-ap-status")).toBeVisible({ timeout: 5000 });
+    await expect(page.locator("#wifi-ap-status")).toHaveClass(/status-error/);
+    // Pair button must be re-enabled so user can retry
+    await expect(page.locator("#btn-next")).toBeEnabled({ timeout: 3000 });
+  });
+
   test("WiFi scan error closes dropdown instead of showing misleading empty state", async ({ page }) => {
     await setupRoutes(page, { tuya_aps: [{ ssid: "SmartLife_AB12" }] });
     await loadPage(page);
