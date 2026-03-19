@@ -2169,6 +2169,41 @@ class TestPairingRedirectView:
         assert "8099" in location
         assert "flow-xyz" in location
 
+    async def test_get_rejects_invalid_flow_id(self) -> None:
+        """flow_id with special characters must return HTTP 400 (injection prevention)."""
+        view = PairingRedirectView(port=8099)
+        mock_request = MagicMock()
+        mock_request.url.host = "ha.local"
+        mock_request.url.scheme = "http"
+        mock_request.headers = {}
+
+        for bad_flow_id in [
+            "../../etc/passwd",
+            "flow\r\nX-Injected: evil",
+            "<script>alert(1)</script>",
+            "a" * 129,  # too long
+            "",
+        ]:
+            resp = await view.get(mock_request, bad_flow_id)
+            assert resp.status == 400, f"Expected 400 for flow_id={bad_flow_id!r}"
+
+    async def test_get_accepts_valid_flow_id_formats(self) -> None:
+        """Valid flow_id formats (UUID, alphanumeric, hyphens) must redirect normally."""
+        view = PairingRedirectView(port=8099)
+        mock_request = MagicMock()
+        mock_request.url.host = "ha.local"
+        mock_request.url.scheme = "http"
+        mock_request.headers = {}
+
+        for good_flow_id in [
+            "a1b2c3d4-e5f6-7890-abcd-ef1234567890",  # UUID
+            "abc123",
+            "flow_id-99",
+            "A" * 128,  # max length
+        ]:
+            with pytest.raises(web.HTTPFound):
+                await view.get(mock_request, good_flow_id)
+
 
 # ── register_redirect_view ────────────────────────────────────────────────────
 

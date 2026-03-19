@@ -372,29 +372,27 @@ async function loadServerConfig() {
       dbg("WARNING: Server config unavailable (HTTP " + r.status + ") — using defaults");
       return;
     }
-    if (r.ok) {
-      const cfg = await r.json();
-      if (cfg.activator_url) ACTIVATOR_URL = _safeUrl(cfg.activator_url, ACTIVATOR_URL);
-      if (cfg.events_url)    EVENTS_URL    = _safeUrl(cfg.events_url,    EVENTS_URL);
-      dbg("Server: " + ACTIVATOR_URL + " \u2713");
-      if (cfg.default_ssid) {
-        // Server-provided SSID takes highest priority (HA knows the active network)
+    const cfg = await r.json();
+    if (cfg.activator_url) ACTIVATOR_URL = _safeUrl(cfg.activator_url, ACTIVATOR_URL);
+    if (cfg.events_url)    EVENTS_URL    = _safeUrl(cfg.events_url,    EVENTS_URL);
+    dbg("Server: " + ACTIVATOR_URL + " \u2713");
+    if (cfg.default_ssid) {
+      // Server-provided SSID takes highest priority (HA knows the active network)
+      const ssidEl = document.getElementById("ssid");
+      if (ssidEl && !ssidEl.value) {
+        ssidEl.removeAttribute("readonly"); // readonly trick — field already has value
+        ssidEl.value = cfg.default_ssid;
+        dbg("Auto-filled SSID: " + cfg.default_ssid + " \u2713");
+      }
+    } else {
+      // Fall back to last successfully paired SSID from localStorage (PLAT-811)
+      const lastSsid = loadLastSsid();
+      if (lastSsid) {
         const ssidEl = document.getElementById("ssid");
         if (ssidEl && !ssidEl.value) {
-          ssidEl.removeAttribute("readonly"); // readonly trick — field already has value
-          ssidEl.value = cfg.default_ssid;
-          dbg("Auto-filled SSID: " + cfg.default_ssid + " \u2713");
-        }
-      } else {
-        // Fall back to last successfully paired SSID from localStorage (PLAT-811)
-        const lastSsid = loadLastSsid();
-        if (lastSsid) {
-          const ssidEl = document.getElementById("ssid");
-          if (ssidEl && !ssidEl.value) {
-            ssidEl.removeAttribute("readonly");
-            ssidEl.value = lastSsid;
-            dbg("Restored SSID from storage: " + lastSsid + " \u2713");
-          }
+          ssidEl.removeAttribute("readonly");
+          ssidEl.value = lastSsid;
+          dbg("Restored SSID from storage: " + lastSsid + " \u2713");
         }
       }
     }
@@ -634,8 +632,10 @@ function selectDeviceBle() {
 // Close dropdown when clicking outside
 document.addEventListener("click", (e) => {
   const dd = document.getElementById("wifi-dropdown");
-  const ssidInput = document.getElementById("ssid");
   const scanBtn = document.getElementById("btn-wifi-scan");
+  // Guard: elements may be absent in test environments or during late-load
+  if (!dd || !scanBtn) return;
+  const ssidInput = document.getElementById("ssid");
   if (!dd.contains(e.target) && e.target !== ssidInput && e.target !== scanBtn) {
     dd.classList.add("hidden");
     scanBtn.setAttribute("aria-expanded", "false");
@@ -1115,6 +1115,8 @@ async function pairViaWifiAp() {
     _wifiApDone = true;
     es.close();
     clearTimeout(wifiApTimer);
+    // Clear module-level tracking so navigation functions don't double-clear
+    _activeSseTimer = null;
     if (cancelBtn) cancelBtn.classList.add("hidden");
     if (backBtn) backBtn.classList.remove("hidden");
     if (enableBtn) btn.disabled = false;
@@ -1196,6 +1198,9 @@ async function pairViaWifiAp() {
         setWifiApStatus("status-error", "\u274C " + esc(t("wifi_ap_timeout") || t("wifi_ap_error")));
         dbg("WiFi AP pair: activation timeout after " + (SSE_TIMEOUT_MS / 1000) + "s");
       }, SSE_TIMEOUT_MS);
+      // Track in module-level _activeSseTimer so navigation functions (goToDevices,
+      // goToCredentials, beforeunload) can cancel it even though it's in a closure.
+      _activeSseTimer = wifiApTimer;
     }
 
     showWifiApSpinner(t("wifi_ap_waiting"));
@@ -1361,6 +1366,9 @@ function copyShareUrl() {
   document.getElementById("btn-cancel-wifi-ap").addEventListener("click", () => {
     // Close SSE + restore UI — user can retry or go back
     if (_currentEventSource) { _currentEventSource.close(); _currentEventSource = null; }
+    // Cancel the WiFi AP timeout timer (tracked via _activeSseTimer) so it doesn't
+    // overwrite the "cancelled" message with a stale "timeout" error 120 s later.
+    if (_activeSseTimer !== null) { clearTimeout(_activeSseTimer); _activeSseTimer = null; }
     const cancelBtnEl = document.getElementById("btn-cancel-wifi-ap");
     const backBtnEl   = document.getElementById("btn-back");
     const pairBtnEl   = document.getElementById("btn-next");

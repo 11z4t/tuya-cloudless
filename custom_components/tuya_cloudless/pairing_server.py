@@ -1537,6 +1537,12 @@ class PairingRedirectView:
         Checks ``X-Forwarded-Proto`` first so reverse-proxy HTTPS setups are
         handled correctly even when ``external_url`` is not configured in HA.
         """
+        # Validate flow_id before embedding it in a Location header.
+        # HA flow IDs are UUIDs; we accept alphanumeric + hyphens + underscores
+        # (max 128 chars). This prevents injecting arbitrary data into the redirect
+        # URL and protects against any future header-injection edge cases.
+        if not re.match(r"^[a-zA-Z0-9_-]{1,128}$", flow_id):
+            return web.Response(status=400, text="Invalid flow_id")
         proto = request.headers.get("X-Forwarded-Proto", request.url.scheme)
         if proto == "https":
             # Stay on HA's HTTPS server — the pairing UI is mirrored there.
