@@ -2907,6 +2907,36 @@ class TestHaStaticView:
         resp = await static_view.get(req, path="../secret.txt")  # type: ignore[union-attr]
         assert resp.status == 403
 
+    async def test_adjacent_dir_traversal_blocked(self, tmp_path: Path) -> None:
+        """Adjacent directory with a shared name prefix cannot be accessed.
+
+        A string-based startswith() check on "/tmp/ui" would also match
+        "/tmp/ui-evil". Path.is_relative_to() does not have this flaw.
+        """
+        ui_dir = tmp_path / "ui"
+        ui_dir.mkdir()
+        evil_dir = tmp_path / "ui-evil"
+        evil_dir.mkdir()
+        (evil_dir / "secret.txt").write_text("top secret", encoding="utf-8")
+
+        hass = MagicMock()
+        srv = PairingServer(hass, port=8099)
+        captured_views: list[object] = []
+        hass.http.register_view.side_effect = captured_views.append
+
+        with patch("custom_components.tuya_cloudless.pairing_server._UI_DIR", ui_dir):
+            await srv._register_ha_views()
+
+        static_view = next(
+            (v for v in captured_views if hasattr(v, "url") and "static" in str(v.url)),
+            None,
+        )
+        assert static_view is not None
+        req = MagicMock()
+        # "../ui-evil/secret.txt" resolves to tmp/ui-evil/secret.txt — outside ui/
+        resp = await static_view.get(req, path="../ui-evil/secret.txt")  # type: ignore[union-attr]
+        assert resp.status == 403
+
     async def test_missing_file_returns_404(self, tmp_path: Path) -> None:
         """A path that does not exist returns 404."""
         ui_dir = tmp_path / "ui"

@@ -10,7 +10,7 @@ const {
   isSupportedBrowser, hasWebBluetooth,
   isIOS, isAndroid, chromeIntentUrl,
   saveLastSsid, loadLastSsid, SSID_TTL_MS, SSID_STORAGE_KEY,
-  countUtf8Bytes, reassemble,
+  countUtf8Bytes, reassemble, onNotify, waitForResponse,
 } = app;
 
 // ── PLAT-810 — Browser compatibility helpers ──────────────────────────────────
@@ -293,5 +293,65 @@ describe("reassemble", () => {
     const chunks = makeChunks(payloads.map(p => Array.from(p)));
     const result = reassemble(chunks);
     expect(result.length).toBe(90);
+  });
+});
+
+// ── onNotify — BLE chunk deduplication ───────────────────────────────────────
+// onNotify accumulates incoming BLE notification chunks and resolves the
+// promise registered by waitForResponse() when all unique chunks have arrived.
+
+describe("onNotify", () => {
+  function makeChunk(chunkNo, total, payload) {
+    const chunk = new Uint8Array(2 + payload.length);
+    chunk[0] = chunkNo;
+    chunk[1] = total;
+    chunk.set(payload, 2);
+    return chunk;
+  }
+
+  function makeEvent(chunk) {
+    return { target: { value: { buffer: chunk.buffer } } };
+  }
+
+  it("resolves with 2 unique chunks when a duplicate arrives", async () => {
+    const p = waitForResponse(500);
+    const chunk0 = makeChunk(0, 2, [0xAA, 0xBB]);
+    const chunk1 = makeChunk(1, 2, [0xCC, 0xDD]);
+
+    onNotify(makeEvent(chunk0));
+    onNotify(makeEvent(chunk0));   // duplicate of chunk 0 — must be ignored
+    onNotify(makeEvent(chunk1));   // this should trigger resolution
+
+    const chunks = await p;
+    expect(chunks).toHaveLength(2);
+    // Both chunks should have distinct indices (0 and 1, not two zeros)
+    const indices = chunks.map(c => c[0]).sort();
+    expect(indices).toEqual([0, 1]);
+  });
+
+  it("resolves normally when chunks arrive in order with no duplicates", async () => {
+    const p = waitForResponse(500);
+    const chunk0 = makeChunk(0, 3, [0x01]);
+    const chunk1 = makeChunk(1, 3, [0x02]);
+    const chunk2 = makeChunk(2, 3, [0x03]);
+
+    onNotify(makeEvent(chunk0));
+    onNotify(makeEvent(chunk1));
+    onNotify(makeEvent(chunk2));
+
+    const chunks = await p;
+    expect(chunks).toHaveLength(3);
+  });
+
+  it("does not resolve prematurely when all chunks are duplicates of one index", async () => {
+    // total=3 but only chunk index 0 arrives (duplicated twice) → should NOT resolve
+    const p = waitForResponse(100);
+    const chunk0 = makeChunk(0, 3, [0xAA]);
+
+    onNotify(makeEvent(chunk0));
+    onNotify(makeEvent(chunk0));
+    onNotify(makeEvent(chunk0));
+
+    await expect(p).rejects.toThrow("BLE response timeout");
   });
 });

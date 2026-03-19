@@ -806,10 +806,15 @@ let _recvResolve = null;
 
 function onNotify(event) {
   const data = new Uint8Array(event.target.value.buffer);
+  const chunkNo = data[0];
+  const total   = data[1];
+  // Drop duplicate chunk indices — BLE may redeliver on link-layer noise.
+  // Without this guard, a duplicate chunk would cause premature resolve with
+  // length === total but missing one of the original indices.
+  if (_recvChunks.some(c => c[0] === chunkNo)) return;
   _recvChunks.push(data);
   // Trigger when all expected chunks have arrived, regardless of arrival order.
   // reassemble() sorts by chunk index so out-of-order delivery is handled.
-  const total = data[1];
   if (_recvChunks.length === total && _recvResolve) {
     const resolve = _recvResolve;
     _recvResolve = null;
@@ -910,7 +915,10 @@ function listenForActivation(token) {
   es.addEventListener("activated", (e) => {
     try {
       const d = JSON.parse(e.data);
-      if ((!token || d.token === token || !d.token) && d.gw_id && d.local_key) {
+      // Accept if token matches, OR if the event has no token (null/undefined = backward
+      // compat with old server builds that omit the field). Reject events with a
+      // different non-null token — they belong to a concurrent pairing session.
+      if ((d.token == null || d.token === token) && d.gw_id && d.local_key) {
         clearTimeout(sseTimer);
         es.close();
         setPairStatus("status-success", esc(t("success_activated")));
@@ -981,7 +989,11 @@ async function pairViaWifiAp() {
   es.addEventListener("activated", (e) => {
     try {
       const d = JSON.parse(e.data);
-      if ((!token || d.token === token || !d.token) && d.gw_id && d.local_key) {
+      // !token: POST hasn't returned yet — accept any activation in the brief window
+      // before our token is known (device activation takes 15-20s so this rarely fires).
+      // d.token == null: backward compat — server omitted token field.
+      // Reject events with a non-null token that doesn't match ours.
+      if ((!token || d.token == null || d.token === token) && d.gw_id && d.local_key) {
         wifiApCleanup(true);
         if (_ssid) saveLastSsid(_ssid);  // save only on confirmed activation
         setWifiApStatus("status-success", esc(t("success_activated")));
@@ -1353,6 +1365,6 @@ if (typeof module !== "undefined") {
     saveLastSsid, loadLastSsid, SSID_TTL_MS, SSID_STORAGE_KEY,
     autoDetectDevices, showDeviceCard, selectDeviceWifiAp, selectDeviceBle,
     goToDevices, goToCredentials, showDone,
-    countUtf8Bytes, reassemble,
+    countUtf8Bytes, reassemble, onNotify, waitForResponse,
   };
 }

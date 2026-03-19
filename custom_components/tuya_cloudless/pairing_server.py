@@ -1267,18 +1267,20 @@ class PairingServer:
                 self, request: web.Request, path: str
             ) -> web.Response:
                 file_path = (ui_dir / path).resolve()
-                # Security: prevent path traversal outside the UI directory
+                # Security: prevent path traversal outside the UI directory.
+                # Use Path.is_relative_to() — avoids the prefix-collision bug
+                # where "/ui-evil" would incorrectly match a startswith("/ui") check.
                 try:
                     ui_resolved = ui_dir.resolve()
                     brand_resolved = _BRAND_DIR.resolve()
-                    if not str(file_path).startswith(str(ui_resolved)):
+                    if not file_path.is_relative_to(ui_resolved):
                         return web.Response(status=403, text="Forbidden")
                 except (ValueError, OSError):
                     return web.Response(status=400, text="Bad request")
                 if not file_path.is_file():
                     # Fallback: serve brand assets (icon.png, logo.png, etc.)
                     brand_path = (_BRAND_DIR / path).resolve()
-                    if str(brand_path).startswith(str(brand_resolved)) and brand_path.is_file():
+                    if brand_path.is_relative_to(brand_resolved) and brand_path.is_file():
                         file_path = brand_path
                     else:
                         return web.Response(status=404, text="Not found")

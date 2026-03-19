@@ -1477,6 +1477,30 @@ test.describe("WiFi AP pairing flow", () => {
     await expect(page.locator("#panel-done")).toContainText("1122334455667788990011223344556677");
   });
 
+  test("SSE activated event with wrong token does not complete WiFi AP pairing", async ({ page }) => {
+    // Server sends an "activated" event with a DIFFERENT token — must be ignored.
+    // Pairing should time out (SSE_TIMEOUT_MS), not show the done screen.
+    const ourToken = "correct-token-abc";
+    const wrongToken = "wrong-token-xyz";
+    await setupRoutes(page, { tuya_aps: [{ ssid: "SmartLife_AB12" }] });
+    await mockWifiApRoute(page, {
+      token: ourToken,
+      activation: {
+        token: wrongToken,       // ← deliberately wrong token
+        gw_id: "baddevice",
+        local_key: "aabbccddeeff00112233445566778899",
+        ip_address: "10.0.0.99",
+      },
+    });
+    await loadPage(page);
+    await pairViaWifiApUi(page);
+
+    // Done screen must NOT appear — the wrong token event should be silently ignored
+    await expect(page.locator("#panel-done")).toBeHidden({ timeout: 600 });
+    // The pairing UI should still be on the credentials panel
+    await expect(page.locator("#panel-wifi")).toBeVisible();
+  });
+
   test("POST 500 error shows error status and re-enables pair button", async ({ page }) => {
     await setupRoutes(page, { tuya_aps: [{ ssid: "SmartLife_AB12" }] });
     await mockWifiApRoute(page, { postStatus: 500, sseEvent: null });
