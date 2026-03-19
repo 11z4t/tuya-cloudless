@@ -1170,6 +1170,14 @@ function setPairStatus(cls, html) {
   if (!el) return;
   el.className = "status-box " + cls;
   el.innerHTML = html;
+  // Errors require immediate screen-reader announcement; switch to assertive live region.
+  if (cls === "status-error") {
+    el.setAttribute("role", "alert");
+    el.setAttribute("aria-live", "assertive");
+  } else {
+    el.setAttribute("role", "status");
+    el.setAttribute("aria-live", "polite");
+  }
 }
 
 function makeSpinnerHtml(msg) {
@@ -1698,6 +1706,21 @@ function copyShareUrl() {
       cancelBtn.click();
     }
   });
+
+  // Debug log — copy all entries to clipboard
+  const debugCopyBtn = document.getElementById("btn-debug-copy");
+  if (debugCopyBtn) {
+    debugCopyBtn.addEventListener("click", () => {
+      const logEl = document.getElementById("debug-log");
+      if (!logEl) return;
+      const text = Array.from(logEl.children).map(el => el.textContent).join("\n");
+      if (!text.trim()) { showToast("(empty)"); return; }
+      navigator.clipboard.writeText(text).then(
+        () => showToast(t("copied_ok") || "Copied!"),
+        () => showToast("⚠ Copy failed")
+      );
+    });
+  }
 
   // Password show/hide toggle
   document.getElementById("btn-pwd-toggle").addEventListener("click", function() {
