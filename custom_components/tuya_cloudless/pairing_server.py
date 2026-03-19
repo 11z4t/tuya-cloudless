@@ -38,6 +38,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import ipaddress
 import json
 import logging
 import re
@@ -63,6 +64,10 @@ PAIRING_SERVER_PORT: Final[int] = 8099
 #: Maximum seconds an activation result is kept in memory (1 hour — covers
 #: users who step away briefly after pairing and return to complete HA setup)
 _RESULT_TTL_SECS: Final[float] = 3600.0
+
+#: Hard cap on stored activation results to prevent memory exhaustion from
+#: repeated activations across multiple source IPs on large LAN segments.
+_MAX_STORED_RESULTS: Final[int] = 256
 
 #: Path to the static web UI assets (relative to this file)
 _UI_DIR: Final[Path] = Path(__file__).parent / "pairing_ui"
@@ -702,8 +707,15 @@ class PairingServer:
             )
 
             if token:
-                self._results[token] = result
                 self._expire_old_results()
+                if len(self._results) >= _MAX_STORED_RESULTS:
+                    _LOGGER.warning(
+                        "Activation result table full (%d entries) — discarding oldest entry",
+                        _MAX_STORED_RESULTS,
+                    )
+                    oldest = min(self._results, key=lambda t: self._results[t].timestamp)
+                    del self._results[oldest]
+                self._results[token] = result
 
         # Notify SSE subscribers.  local_key and ip_address are intentionally
         # excluded — both are sensitive and the stream has no per-subscriber
@@ -1046,9 +1058,12 @@ class PairingServer:
             return web.Response(status=415, text="Content-Type must be application/json")
 
         try:
-            body: dict[str, object] = await request.json()
+            body = await request.json()
         except (json.JSONDecodeError, ValueError, UnicodeDecodeError):
             return web.Response(status=400, text="Invalid JSON body")
+
+        if not isinstance(body, dict):
+            return web.Response(status=400, text="Request body must be a JSON object")
 
         ap_ssid = str(body.get("ap_ssid") or "").strip()
         home_ssid = str(body.get("home_ssid") or "").strip()
@@ -1414,6 +1429,9 @@ class PairingServer:
             async def get(  # type: ignore[override]
                 self, request: web.Request, token: str
             ) -> web.Response:
+                # HA injects token as a keyword arg from its URL routing.
+                # Inject it into match_info so _handle_get_result can read it.
+                request.match_info["token"] = token
                 return await server._handle_get_result(request)
 
         class _PairingWifiScanView(HomeAssistantView):
@@ -1567,7 +1585,11 @@ class PairingServer:
         if peer in ("127.0.0.1", "::1"):
             forwarded = request.headers.get("X-Forwarded-For", "").split(",")[0].strip()
             if forwarded:
-                return forwarded
+                try:
+                    ipaddress.ip_address(forwarded)
+                    return forwarded
+                except ValueError:
+                    _LOGGER.debug("Invalid X-Forwarded-For value ignored: %r", forwarded)
         return peer or "unknown"
 
     def _is_rate_limited(
@@ -1614,6 +1636,8 @@ class PairingServer:
         """
         if "\n" in event or "\r" in event:
             raise ValueError(f"SSE event name must not contain newlines: {event!r}")
+        if "\n" in data or "\r" in data:
+            raise ValueError(f"SSE data must not contain raw newlines: {data[:50]!r}")
         message = f"event: {event}\ndata: {data}\n\n"
         stale: list[asyncio.Queue[str | None]] = []
         for q in list(self._sse_queues):

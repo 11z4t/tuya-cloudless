@@ -120,13 +120,21 @@ def encode_frame(
     return body + struct.pack(">I", crc) + FRAME_SUFFIX
 
 
-def encode_heartbeat(*, sequence: int, version: str, local_key: bytes) -> bytes:
+def encode_heartbeat(
+    *,
+    sequence: int,
+    version: str,
+    local_key: bytes,
+    session_key: bytes | None = None,
+) -> bytes:
     """Encode a heartbeat (keepalive) frame.
 
     Args:
         sequence: Frame sequence number.
         version: Protocol version string.
         local_key: Device local key (used for encryption in v3.2+).
+        session_key: Active session key for v3.4/v3.5 GCM encryption.
+                     Must be provided for v3.4/v3.5 devices.
 
     Returns:
         Wire-format heartbeat frame.
@@ -137,6 +145,7 @@ def encode_heartbeat(*, sequence: int, version: str, local_key: bytes) -> bytes:
         sequence=sequence,
         version=version,
         local_key=local_key,
+        session_key=session_key,
     )
 
 

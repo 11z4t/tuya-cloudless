@@ -67,6 +67,8 @@ def _ha_to_tuya_brightness(ha_value: int, min_raw: int, max_raw: int) -> int:
 
 def _tuya_to_ha_saturation(raw: int, max_raw: int) -> float:
     """Map Tuya saturation 0-max_raw to HA 0-100."""
+    if max_raw == 0:
+        return 0.0
     return round(raw / max_raw * 100, 1)
 
 
@@ -273,8 +275,13 @@ class TuyaCloudlessLight(RestoreStateMixin, TuyaCloudlessEntity, LightEntity):
             return None
         hue_max = hue_spec.max_raw if hue_spec.max_raw is not None else _TUYA_HUE_MAX
         sat_max = sat_spec.max_raw if sat_spec.max_raw is not None else _TUYA_SAT_DEFAULT_MAX
-        # Clamp to valid HA ranges in case the device reports an out-of-range value
-        hue = max(0.0, min(360.0, round(int(raw_hue) / hue_max * _TUYA_HUE_MAX, 1)))
+        # Clamp to valid HA ranges in case the device reports an out-of-range value.
+        # Guard against hue_max=0 (invalid profile) to prevent ZeroDivisionError.
+        hue = (
+            max(0.0, min(360.0, round(int(raw_hue) / hue_max * _TUYA_HUE_MAX, 1)))
+            if hue_max != 0
+            else 0.0
+        )
         sat = max(0.0, min(100.0, _tuya_to_ha_saturation(int(raw_sat), sat_max)))
         return (hue, sat)
 

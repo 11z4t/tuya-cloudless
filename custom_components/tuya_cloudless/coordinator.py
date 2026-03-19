@@ -25,7 +25,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
-from tuya_cloudless.exceptions import ProtocolError, TuyaCloudlessError
+from tuya_cloudless.exceptions import CryptoError, ProtocolError, TuyaCloudlessError
 
 from .const import (
     CONF_GW_ID,
@@ -421,11 +421,12 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     sequence=self._next_sequence(),
                     version=self._version,
                     local_key=self._local_key,
+                    session_key=self._session_key,
                 )
                 self._writer.write(frame)
                 await self._writer.drain()
                 _LOGGER.debug("[%s] Heartbeat sent", self._gw_id)
-            except OSError as exc:
+            except (OSError, CryptoError) as exc:
                 _LOGGER.warning("[%s] Heartbeat failed: %s — closing connection", self._gw_id, exc)
                 if self._writer is not None:
                     self._writer.close()
