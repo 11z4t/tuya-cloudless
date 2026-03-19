@@ -11,6 +11,7 @@ const {
   isIOS, isAndroid, chromeIntentUrl,
   saveLastSsid, loadLastSsid, SSID_TTL_MS, SSID_STORAGE_KEY,
   countUtf8Bytes, reassemble, onNotify, waitForResponse, parseFrame, crc16Modbus,
+  _safePath,
 } = app;
 
 // ── PLAT-810 — Browser compatibility helpers ──────────────────────────────────
@@ -431,5 +432,42 @@ describe("parseFrame", () => {
   it("throws 'Frame too short' for very short data", () => {
     const chunk = new Uint8Array([0, 1, 0x55, 0xAA]); // only 4 bytes after chunk header
     expect(() => parseFrame([[chunk]])).toThrow(); // too short
+  });
+});
+
+// ── _safePath — base URL validation ───────────────────────────────────────────
+// _safePath() validates injected server URLs to prevent off-origin redirects.
+
+describe("_safePath", () => {
+  it("accepts valid relative path", () => {
+    expect(_safePath("/api/provision", "/fallback")).toBe("/api/provision");
+  });
+
+  it("accepts path with multiple segments", () => {
+    expect(_safePath("/api/tuya_cloudless/pairing/provision", "/fallback"))
+      .toBe("/api/tuya_cloudless/pairing/provision");
+  });
+
+  it("rejects protocol-relative URL", () => {
+    expect(_safePath("//evil.com/api", "/fallback")).toBe("/fallback");
+  });
+
+  it("rejects absolute URL with scheme", () => {
+    expect(_safePath("https://evil.com/api", "/fallback")).toBe("/fallback");
+  });
+
+  it("rejects javascript: pseudo-URL", () => {
+    expect(_safePath("javascript:alert(1)", "/fallback")).toBe("/fallback");
+  });
+
+  it("rejects path with query string or hash", () => {
+    expect(_safePath("/api?foo=bar", "/fallback")).toBe("/fallback");
+    expect(_safePath("/api#hash", "/fallback")).toBe("/fallback");
+  });
+
+  it("returns fallback for non-string input", () => {
+    expect(_safePath(null, "/fallback")).toBe("/fallback");
+    expect(_safePath(42, "/fallback")).toBe("/fallback");
+    expect(_safePath(undefined, "/fallback")).toBe("/fallback");
   });
 });

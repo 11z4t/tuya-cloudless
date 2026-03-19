@@ -1588,6 +1588,34 @@ test.describe("WiFi AP pairing flow", () => {
     await expect(page.locator("#panel-wifi")).toBeVisible();
   });
 
+  test("'Pair Another Device' button is enabled after second pairing via WiFi AP", async ({ page }) => {
+    // Regression: goToDevices() disabled btn-pair-another but showDone() didn't re-enable it.
+    // On second pairing, the button would be visible but permanently disabled.
+    const token = "tok-pair-another";
+    await setupRoutes(page, { tuya_aps: [{ ssid: "SmartLife_AB12" }] });
+    await mockWifiApRoute(page, {
+      token,
+      activation: { token, gw_id: "dev1", local_key: "aabbccddeeff00112233445566778899" },
+    });
+    await loadPage(page);
+
+    // First pairing — reach done screen
+    await pairViaWifiApUi(page);
+    await page.waitForSelector("#panel-done:not(.hidden)", { timeout: 5000 });
+
+    // Click "Pair Another Device" — goes back to device panel
+    await page.locator("#btn-pair-another").click();
+    await page.waitForSelector("#panel-devices:not(.hidden)");
+
+    // Second pairing
+    await pairViaWifiApUi(page);
+    await page.waitForSelector("#panel-done:not(.hidden)", { timeout: 5000 });
+
+    // The "Pair Another Device" button must be enabled (not disabled from first round)
+    await expect(page.locator("#btn-pair-another")).toBeEnabled();
+    await expect(page.locator("#btn-pair-another")).toBeVisible();
+  });
+
   test("POST 500 error shows error status and re-enables pair button", async ({ page }) => {
     await setupRoutes(page, { tuya_aps: [{ ssid: "SmartLife_AB12" }] });
     await mockWifiApRoute(page, { postStatus: 500, sseEvent: null });

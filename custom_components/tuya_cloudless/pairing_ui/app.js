@@ -249,10 +249,22 @@ function loadLastSsid() {
 // When served via HA HTTPS these are injected as window globals by the server.
 // When accessed directly at http://ha-host:8099/ the globals are undefined and
 // the defaults resolve correctly against the page origin.
-const _PROVISION_BASE = (typeof window._TUYA_PROVISION_BASE !== "undefined")
-  ? window._TUYA_PROVISION_BASE : "/api/provision";
-const _STATIC_BASE = (typeof window._TUYA_STATIC_BASE !== "undefined")
-  ? window._TUYA_STATIC_BASE : "/static";
+//
+// Validation: only accept relative paths that start with "/" and contain safe
+// URL-path characters. Rejects protocol-relative URLs (//evil.com), javascript:
+// pseudo-URLs, and anything that could redirect API calls off-origin.
+function _safePath(raw, fallback) {
+  if (typeof raw !== "string") return fallback;
+  return /^\/[a-zA-Z0-9/_-]*$/.test(raw) ? raw : fallback;
+}
+const _PROVISION_BASE = _safePath(
+  typeof window._TUYA_PROVISION_BASE !== "undefined" ? window._TUYA_PROVISION_BASE : undefined,
+  "/api/provision"
+);
+const _STATIC_BASE = _safePath(
+  typeof window._TUYA_STATIC_BASE !== "undefined" ? window._TUYA_STATIC_BASE : undefined,
+  "/static"
+);
 
 // ── Server config ─────────────────────────────────────────────────────────────
 let ACTIVATOR_URL = (typeof window._TUYA_ACTIVATOR_BASE !== "undefined")
@@ -726,7 +738,8 @@ function showDone(gw_id, local_key, ip_address) {
       document.getElementById("btn-add-ha").classList.remove("hidden");
     }
   }
-  document.getElementById("btn-pair-another").classList.remove("hidden");
+  const pairAnotherBtn = document.getElementById("btn-pair-another");
+  if (pairAnotherBtn) { pairAnotherBtn.disabled = false; pairAnotherBtn.classList.remove("hidden"); }
 
   // Move focus to the done title so screen readers announce the success state
   const doneTitle = document.getElementById("step3-title");
@@ -1371,5 +1384,6 @@ if (typeof module !== "undefined") {
     autoDetectDevices, showDeviceCard, selectDeviceWifiAp, selectDeviceBle,
     goToDevices, goToCredentials, showDone,
     countUtf8Bytes, reassemble, onNotify, waitForResponse, parseFrame, crc16Modbus,
+    _safePath,
   };
 }
