@@ -174,7 +174,6 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._writer: asyncio.StreamWriter | None = None
         self._connect_task: asyncio.Task[None] | None = None
         self._heartbeat_task: asyncio.Task[None] | None = None
-        self._read_task: asyncio.Task[None] | None = None
 
     # ── Lifecycle ─────────────────────────────────────────────────────────────
 
@@ -194,7 +193,7 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     async def async_stop(self) -> None:
         """Stop the coordinator and close the TCP connection."""
         _LOGGER.info("[%s] Stopping coordinator", self._gw_id)
-        for task in (self._connect_task, self._heartbeat_task, self._read_task):
+        for task in (self._connect_task, self._heartbeat_task):
             if task and not task.done():
                 task.cancel()
                 with contextlib.suppress(asyncio.CancelledError):
@@ -505,6 +504,7 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 )
                 if self._writer is not None:
                     self._writer.close()
+                    self._writer = None
                 return
             msg_buf.feed(chunk)
 
@@ -551,6 +551,7 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                         # Close TCP stream to trigger reconnect loop
                         if self._writer is not None:
                             self._writer.close()
+                            self._writer = None
                         return
 
             # Also count frame-level decode errors from MessageBuffer (e.g. CRC
@@ -574,6 +575,7 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     self._raise_auth_repair_issue()
                     if self._writer is not None:
                         self._writer.close()
+                        self._writer = None
                     return
 
             # Reset consecutive error counter only after the entire batch

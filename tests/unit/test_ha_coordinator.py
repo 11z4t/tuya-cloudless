@@ -423,7 +423,7 @@ class TestAsyncStop:
         async def noop() -> None:
             await asyncio.sleep(100)
 
-        for attr in ("_connect_task", "_heartbeat_task", "_read_task"):
+        for attr in ("_connect_task", "_heartbeat_task"):
             task = asyncio.create_task(noop())
             setattr(coord, attr, task)
 
@@ -432,7 +432,7 @@ class TestAsyncStop:
         coord._disconnect.assert_awaited_once()
 
         # All tasks should be cancelled
-        for attr in ("_connect_task", "_heartbeat_task", "_read_task"):
+        for attr in ("_connect_task", "_heartbeat_task"):
             task = getattr(coord, attr)
             assert task.cancelled()
 

@@ -363,3 +363,37 @@ class TestCryptoHelpers:
 
     def test_hmac_sha256_different_key(self) -> None:
         assert hmac_sha256(b"k1", b"d") != hmac_sha256(b"k2", b"d")
+
+
+class TestMessageBufferCorruptLengthErrors:
+    """R22-3: _try_extract prefix discards for invalid/oversized length must
+    increment _error_count so coordinator consecutive-error reconnect fires."""
+
+    def test_negative_effective_payload_size_counted(self) -> None:
+        """A payload_len_field yielding payload_size < 0 must increment error count."""
+        buf = MessageBuffer(ProtocolVersion.V33)
+        # Craft a frame with FRAME_PREFIX but payload_len_field=3 (too small for
+        # chk_size+suffix, yielding payload_size < 0 for v3.3 which has chk_size=4)
+        # struct ">4sIII": prefix(4) + seq(4) + cmd(4) + len(4)
+        bad_frame = struct.pack(">4sIII", b"\x00\x00\x55\xaa", 1, 0, 3)
+        buf.feed(bad_frame)
+        buf.messages()  # trigger _try_extract
+        assert buf.pop_error_count() >= 1
+
+    def test_oversized_payload_counted(self) -> None:
+        """A payload_len_field exceeding MAX_PAYLOAD_SIZE must increment error count."""
+        buf = MessageBuffer(ProtocolVersion.V33)
+        oversized_len = 65537 + 8  # > MAX_PAYLOAD_SIZE + chk_size + suffix
+        bad_frame = struct.pack(">4sIII", b"\x00\x00\x55\xaa", 1, 0, oversized_len)
+        buf.feed(bad_frame)
+        buf.messages()
+        assert buf.pop_error_count() >= 1
+
+    def test_valid_frame_not_counted(self) -> None:
+        """A valid frame must not increment the error count."""
+        msg = TuyaMessage(sequence=1, command=CommandType.HEART_BEAT, payload=b"")
+        encoded = encode_message(msg, ProtocolVersion.V33)
+        buf = MessageBuffer(ProtocolVersion.V33)
+        buf.feed(encoded)
+        buf.messages()
+        assert buf.pop_error_count() == 0

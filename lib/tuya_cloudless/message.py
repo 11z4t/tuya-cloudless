@@ -514,8 +514,11 @@ class MessageBuffer:
         payload_len_field = struct.unpack(">I", self._buffer[12:16])[0]
         payload_size = payload_len_field - self._chk_size - SUFFIX_SIZE
         if payload_size < 0:
-            # Invalid payload_len — discard this prefix and retry
+            # Invalid payload_len — discard this prefix and count as decode error
+            # so the coordinator's consecutive-error reconnect threshold fires on
+            # a stream of crafted frames with corrupt length fields.
             _LOGGER.debug("Invalid payload_len_field: %d, discarding prefix", payload_len_field)
+            self._error_count += 1
             del self._buffer[:4]
             return None
 
@@ -528,6 +531,7 @@ class MessageBuffer:
                 payload_size,
                 MAX_PAYLOAD_SIZE,
             )
+            self._error_count += 1
             del self._buffer[:4]
             return None
 
