@@ -634,6 +634,23 @@ test.describe("WiFi dropdown keyboard navigation", () => {
     await expect(page.locator("#wifi-dropdown")).toBeHidden();
   });
 
+  test("Enter selection returns focus to SSID field (keyboard accessibility)", async ({ page }) => {
+    await setupRoutes(page, { ssids: ["FocusNet"] });
+    await loadPage(page);
+    await navigateToCredentials(page);
+
+    await page.locator("#btn-wifi-scan").click();
+    const option = page.locator(".wifi-option[tabindex='0']").first();
+    await option.focus();
+    await page.keyboard.press("Enter");
+
+    // Dropdown must close and SSID value must be set
+    await expect(page.locator("#wifi-dropdown")).toBeHidden();
+    await expect(page.locator("#ssid")).toHaveValue("FocusNet");
+    // Focus must return to SSID field — without this, keyboard users lose context
+    await expect(page.locator("#ssid")).toBeFocused();
+  });
+
   test("Tab from a dropdown item closes dropdown (no need to tab through all options)", async ({ page }) => {
     await setupRoutes(page, { ssids: ["Net-A", "Net-B", "Net-C"] });
     await loadPage(page);

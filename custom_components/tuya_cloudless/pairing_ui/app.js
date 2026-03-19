@@ -540,6 +540,10 @@ function selectWifi(ssid) {
   if (ddEl) ddEl.classList.add("hidden");
   const scanBtnEl = document.getElementById("btn-wifi-scan");
   if (scanBtnEl) scanBtnEl.setAttribute("aria-expanded", "false");
+  // Return focus to the SSID field so keyboard users can continue to the
+  // password field via Tab — without this, focus lands on the now-hidden
+  // dropdown item and screen reader context is lost.
+  if (ssidEl) ssidEl.focus();
 }
 
 // ── Device discovery ───────────────────────────────────────────────────────────
