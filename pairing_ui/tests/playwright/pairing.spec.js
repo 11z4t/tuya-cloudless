@@ -354,6 +354,68 @@ test.describe("Step 1 — WiFi credentials form", () => {
     await expect(page.locator("#panel-wifi")).toBeHidden();
     await expect(page.locator("#panel-ble")).toBeVisible();
   });
+
+  test("SSID exceeding 32 UTF-8 bytes shows validation warning and blocks Next", async ({
+    page,
+  }) => {
+    await setupRoutes(page);
+    await loadPage(page);
+    await navigateToCredentials(page);
+
+    // "a" × 33 = 33 ASCII bytes > 32 byte limit
+    await page.locator("#ssid").click();
+    await page.locator("#ssid").fill("a".repeat(33));
+    await page.locator("#btn-next").click();
+
+    // Warning must appear, panels must NOT advance
+    await expect(page.locator("#s1-error")).toBeVisible();
+    await expect(page.locator("#s1-error")).toContainText("32");
+    await expect(page.locator("#panel-wifi")).toBeVisible();
+    await expect(page.locator("#panel-ble")).toBeHidden();
+  });
+
+  test("password exceeding 63 UTF-8 bytes shows validation warning and blocks Next", async ({
+    page,
+  }) => {
+    await setupRoutes(page);
+    await loadPage(page);
+    await navigateToCredentials(page);
+
+    await page.locator("#ssid").click();
+    await page.locator("#ssid").fill("ValidNet");
+    await page.locator("#password").click();
+    // 64 ASCII bytes exceeds 63-byte WPA2 limit
+    await page.locator("#password").fill("a".repeat(64));
+    await page.locator("#btn-next").click();
+
+    await expect(page.locator("#s1-error")).toBeVisible();
+    await expect(page.locator("#s1-error")).toContainText("63");
+    await expect(page.locator("#panel-wifi")).toBeVisible();
+    await expect(page.locator("#panel-ble")).toBeHidden();
+  });
+
+  test("SSID with null byte shows validation warning", async ({ page }) => {
+    await setupRoutes(page);
+    await loadPage(page);
+    await navigateToCredentials(page);
+
+    // Null bytes are illegal in SSIDs — check the guard
+    // Note: fill() may strip null bytes in some browsers; use evaluate to inject directly
+    await page.locator("#ssid").click();
+    await page.evaluate(() => {
+      const el = document.getElementById("ssid");
+      if (el) el.removeAttribute("readonly");
+    });
+    await page.locator("#ssid").fill("Valid");
+    await page.evaluate(() => {
+      const el = document.getElementById("ssid");
+      if (el) { el.value = "Net\x00work"; el.removeAttribute("readonly"); }
+    });
+    await page.locator("#btn-next").click();
+
+    await expect(page.locator("#s1-error")).toBeVisible();
+    await expect(page.locator("#panel-ble")).toBeHidden();
+  });
 });
 
 // ── Tests: WiFi scan ──────────────────────────────────────────────────────────
