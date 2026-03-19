@@ -1835,7 +1835,7 @@ test.describe("Password visibility", () => {
 async function mockWifiApRoute(page, opts = {}) {
   const postStatus = opts.postStatus ?? 200;
   const token = opts.token ?? "wifi-ap-token-xyz";
-  const sseEvent = opts.sseEvent ?? "activated";
+  const sseEvent = "sseEvent" in opts ? opts.sseEvent : "activated";
   const activation = opts.activation ?? {
     token,
     gw_id: "aabbccdd1122",
@@ -2321,8 +2321,6 @@ test.describe("WiFi AP pairing flow", () => {
     );
 
     // Replace EventSource with a silent stub that never fires any event.
-    // mockWifiApRoute uses `sseEvent ?? "activated"` so null triggers the default;
-    // use a fresh stub here to avoid that footgun.
     await page.addInitScript(() => {
       window.EventSource = class SilentEventSource {
         constructor() { this.readyState = 1; }

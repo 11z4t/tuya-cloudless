@@ -1346,6 +1346,7 @@ async function pairViaWifiAp() {
   };
 
   es.addEventListener("activated", (e) => {
+    if (_wifiApDone) return;  // guard: stale events after cancel / navigation
     try {
       const d = JSON.parse(e.data);
       // d.token == null: backward compat — old server omitted token field; accept.
