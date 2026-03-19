@@ -1377,6 +1377,10 @@ async function startPairing() {
   } catch (err) {
     if (typeof _cleanupNotify === "function") { _cleanupNotify(); _cleanupNotify = null; }
     if (device && _onDisconnected) { device.removeEventListener("gattserverdisconnected", _onDisconnected); _onDisconnected = null; }
+    // Clear BLE receive buffers so stale chunks don't contaminate the next pairing attempt.
+    // (waitForResponse's reject handler clears them in timeout/disconnect paths, but
+    // exceptions thrown directly from the try block may skip that handler.)
+    _recvChunks = []; _recvResolve = null; _recvReject = null;
     // Disconnect GATT server if it was opened — Bluetooth is an exclusive resource
     // and leaving the connection open blocks other apps and the next pairing attempt.
     if (server && server.connected) {

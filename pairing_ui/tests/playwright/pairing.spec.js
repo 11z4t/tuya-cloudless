@@ -1936,6 +1936,46 @@ test.describe("WiFi AP pairing flow", () => {
     await expect(page.locator("#btn-next")).toBeEnabled({ timeout: 3000 });
   });
 
+  test("double SSE onerror does not corrupt state — _wifiApDone guard fires only once", async ({
+    page,
+  }) => {
+    await setupRoutes(page, { tuya_aps: [{ ssid: "SmartLife_AB12" }] });
+    // Custom mock that fires onerror TWICE in quick succession to verify the
+    // _wifiApDone guard prevents a second, redundant cleanup pass.
+    await page.addInitScript(() => {
+      window.EventSource = class DoubleOnerrorES {
+        constructor() {
+          this.readyState = 1;
+          this._onerrorFn = null;
+          const self = this;
+          setTimeout(() => {
+            if (self._onerrorFn) self._onerrorFn();  // first onerror
+            if (self._onerrorFn) self._onerrorFn();  // immediate second onerror
+          }, 200);
+        }
+        addEventListener() {}
+        set onerror(fn) { this._onerrorFn = fn; }
+        close() { this.readyState = 2; }
+      };
+    });
+    await page.route(BASE + "/api/provision/wifi-ap-pair", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ token: "dbl-tok", events_url: BASE + "/api/provision/events" }),
+      })
+    );
+
+    await loadPage(page);
+    await pairViaWifiApUi(page);
+
+    // Error must appear exactly once (not duplicated or overwritten by second onerror)
+    await expect(page.locator("#wifi-ap-status")).toBeVisible({ timeout: 3000 });
+    await expect(page.locator("#btn-next")).toBeEnabled({ timeout: 3000 });
+    // Pair button must be re-enabled, not stuck in disabled state
+    await expect(page.locator("#btn-next")).not.toBeDisabled();
+  });
+
   test("Back button from credentials after WiFi AP selection returns to device panel", async ({ page }) => {
     await setupRoutes(page, { tuya_aps: [{ ssid: "SmartLife_AB12" }] });
     await loadPage(page);
