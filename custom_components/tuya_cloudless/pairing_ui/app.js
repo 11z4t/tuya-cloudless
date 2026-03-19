@@ -1870,12 +1870,39 @@ function copyShareUrl() {
 
     if (isIOS()) {
       // iOS — Web Bluetooth not available in any iOS browser (Apple restriction).
-      // Show a tailored message instead of a useless QR code.
+      // Show a tailored message in the BLE panel — users reach it by trying the
+      // BLE flow, at which point they learn that WiFi AP pairing works in Safari.
+      // Also offer a "Copy URL" button so users can share the link to a desktop
+      // or Android device where BLE is available.
       dbg("iOS detected — Web Bluetooth not supported on this platform.");
       document.getElementById("warn-browser").classList.remove("hidden");
       document.getElementById("err-browser-body").textContent =
         t("err_ios_no_webbluetooth") ||
-        "Web Bluetooth is not available on iOS. Please open this page on a computer or Android device using Chrome or Edge.";
+        "Bluetooth pairing is not available on iOS. WiFi AP pairing works in Safari — put your device in pairing mode and select it from the device list.";
+      // Add a "Copy URL" button so users can open the page on a computer/Android for BLE
+      const copyUrlBtn = document.createElement("button");
+      copyUrlBtn.type = "button";
+      copyUrlBtn.id = "btn-ios-copy-url";
+      copyUrlBtn.className = "btn btn-sm";
+      copyUrlBtn.style.marginTop = "10px";
+      copyUrlBtn.textContent = t("btn_copy_url") || "Copy page URL";
+      copyUrlBtn.addEventListener("click", function() {
+        const self = this;
+        const url = window.location.href;
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(url).then(
+            () => { self.textContent = "\u2713 " + (t("copied_ok") || "Copied!"); setTimeout(() => { self.textContent = t("btn_copy_url") || "Copy page URL"; }, 2000); },
+            () => { self.textContent = "\u2717"; setTimeout(() => { self.textContent = t("btn_copy_url") || "Copy page URL"; }, 2000); }
+          );
+        } else {
+          // Clipboard API unavailable — select all in a temporary input
+          const tmp = document.createElement("input");
+          tmp.value = url; document.body.appendChild(tmp); tmp.select(); document.execCommand("copy"); document.body.removeChild(tmp);
+          self.textContent = "\u2713 " + (t("copied_ok") || "Copied!");
+          setTimeout(() => { self.textContent = t("btn_copy_url") || "Copy page URL"; }, 2000);
+        }
+      });
+      document.getElementById("warn-browser").appendChild(copyUrlBtn);
     } else if (isAndroid()) {
       // Android with a non-Chrome browser — offer a direct link to open in Chrome.
       dbg("Android detected — showing Chrome deep link.");
