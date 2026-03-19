@@ -1968,6 +1968,36 @@ class TestConfigEndpoint:
             "SSID containing a colon must be parsed correctly"
         )
 
+    async def test_default_ssid_skips_oversized_utf8_ssid(self, client: TestClient) -> None:
+        """SSID > 32 UTF-8 bytes must be skipped (IEEE 802.11 max is 32 bytes)."""
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        # 11 x 'あ' = 33 UTF-8 bytes (each 'あ' is 3 bytes) -- over the 32-byte limit
+        long_ssid = "\u3042" * 11
+        nmcli_output = f"yes:{long_ssid}\nno:ShortNet\n".encode()
+        mock_proc = MagicMock()
+        mock_proc.communicate = AsyncMock(return_value=(nmcli_output, b""))
+        with patch("asyncio.create_subprocess_exec", return_value=mock_proc):
+            resp = await client.get("/api/provision/config")
+        data = await resp.json()
+        assert data["default_ssid"] is None, (
+            "SSID exceeding 32 UTF-8 bytes must not be returned as default_ssid"
+        )
+
+    async def test_default_ssid_accepts_exactly_32_utf8_bytes(self, client: TestClient) -> None:
+        """SSID of exactly 32 UTF-8 bytes is accepted (boundary value)."""
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        # Note: 16 x 'あ' = 48 bytes (too long); use ASCII for a clean 32-byte example
+        # Use ASCII so byte count == char count: 32 'a' chars = 32 bytes
+        ssid_32 = "a" * 32
+        mock_proc = MagicMock()
+        mock_proc.communicate = AsyncMock(return_value=(f"yes:{ssid_32}\n".encode(), b""))
+        with patch("asyncio.create_subprocess_exec", return_value=mock_proc):
+            resp = await client.get("/api/provision/config")
+        data = await resp.json()
+        assert data["default_ssid"] == ssid_32, "SSID of exactly 32 bytes must be accepted"
+
     async def test_cors_header_present(self, client: TestClient) -> None:
         resp = await client.get("/api/provision/config")
         assert resp.headers.get("Access-Control-Allow-Origin") == "*"
@@ -2452,6 +2482,39 @@ class TestActivateResponseStructure:
         key1 = (await resp1.json())["result"]["localKey"]
         key2 = (await resp2.json())["result"]["localKey"]
         assert key1 != key2, "Different gw_id with same token must NOT share the idempotency key"
+
+    async def test_result_endpoint_reflects_latest_gw_id_after_token_reuse(
+        self, client: TestClient
+    ) -> None:
+        """GET /result/{token} must return the LATEST gw_id when a token is reused.
+
+        If two different devices activate with the same token (edge case — e.g.
+        firmware bug or test harness), the second activation overwrites the result.
+        The result endpoint must reflect the second device's gw_id and local_key.
+        """
+        # First activation
+        resp1 = await client.post(
+            "/api/tuya/device/active",
+            json={"gw_id": "device-first", "token": "reuse-tok"},
+        )
+        key1 = (await resp1.json())["result"]["localKey"]
+
+        # Second activation: same token, different gw_id
+        await client.post(
+            "/api/tuya/device/active",
+            json={"gw_id": "device-second", "token": "reuse-tok"},
+        )
+
+        # Result endpoint must reflect the second activation
+        result_resp = await client.get("/api/provision/result/reuse-tok")
+        assert result_resp.status == 200
+        result = await result_resp.json()
+        assert result["gw_id"] == "device-second", (
+            "Result must show the latest gw_id after token reuse"
+        )
+        assert result["local_key"] != key1, (
+            "Result must have the new local_key, not the one from the first activation"
+        )
 
     async def test_timezone_falls_back_to_utc_when_not_string(self, client: TestClient) -> None:
         """When hass.config.time_zone is not a string, timezone defaults to 'UTC'."""

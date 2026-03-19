@@ -1222,7 +1222,12 @@ async function pairViaWifiAp() {
   es.addEventListener("wifi_ap_error", (e) => {
     try {
       const d = JSON.parse(e.data);
-      if (d.token == null || d.token === token) {
+      // Require our token to be known before accepting any wifi_ap_error.
+      // During the brief pre-POST window (token=null), a concurrent session's
+      // error with a null token (backward compat) would otherwise look identical
+      // to our own.  Once we have our token, accept null-token events (old server
+      // backward compat) or matching-token events.
+      if (token !== null && (d.token == null || d.token === token)) {
         wifiApCleanup(true);
         setWifiApStatus("status-error", "\u274C " + esc(t("wifi_ap_error")));
         dbg("WiFi AP error: " + (d.error || "unknown"));
