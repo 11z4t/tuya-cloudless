@@ -1374,7 +1374,7 @@ class PairingServer:
             for line in stdout.decode(errors="replace").splitlines():
                 if line.startswith("yes:"):
                     ssid = line[4:].strip()
-                    if ssid and ssid != "--":
+                    if ssid and ssid != "--" and not _CTRL_CHAR_RE.search(ssid):
                         return ssid
         except (FileNotFoundError, TimeoutError, OSError) as exc:
             _LOGGER.debug("Default SSID lookup unavailable: %s", exc)

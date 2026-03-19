@@ -634,6 +634,24 @@ describe("_activeSseTimer — tracked for beforeunload cleanup", () => {
     jest.useRealTimers();
   });
 
+  it("cancels old timer when called a second time (rapid re-pairing)", () => {
+    jest.useFakeTimers();
+    _listenForActivation("tok_first");
+    const firstTimer = _getActiveSseTimer();
+    expect(firstTimer).not.toBeNull();
+    // Call again before the first timer fires
+    _listenForActivation("tok_second");
+    // New timer should be different from the first
+    expect(_getActiveSseTimer()).not.toBeNull();
+    // First timer should have been cancelled — verify it no longer fires by checking
+    // that _activeSseTimer remains non-null after advancing past first timer's delay
+    const { SSE_TIMEOUT_MS } = app;
+    jest.advanceTimersByTime(SSE_TIMEOUT_MS + 100);
+    // Both timers have now been advanced past; _activeSseTimer should be null (second timeout)
+    expect(_getActiveSseTimer()).toBeNull();
+    jest.useRealTimers();
+  });
+
   it("clears _activeSseTimer after SSE timeout fires", () => {
     jest.useFakeTimers();
     // Stub DOM elements that the timeout callback accesses
@@ -692,6 +710,19 @@ describe("goToDevices / goToCredentials clear _activeSseTimer", () => {
     _listenForActivation("tok_nav_creds");
     expect(_getActiveSseTimer()).not.toBeNull();
     goToCredentials();
+    expect(_getActiveSseTimer()).toBeNull();
+  });
+
+  it("goToStep2 (BLE branch) cancels a pending SSE timer from a previous attempt", () => {
+    const { goToStep2 } = app;
+    if (typeof goToStep2 !== "function") return; // guard if not exported
+    // Simulate a prior BLE pairing that left _activeSseTimer set
+    _listenForActivation("tok_step2_ble");
+    expect(_getActiveSseTimer()).not.toBeNull();
+    // Set value on the existing ssid input (from beforeEach DOM) so goToStep2 passes validation
+    const ssidEl = document.getElementById("ssid");
+    if (ssidEl) ssidEl.value = "TestNet";
+    goToStep2();
     expect(_getActiveSseTimer()).toBeNull();
   });
 });

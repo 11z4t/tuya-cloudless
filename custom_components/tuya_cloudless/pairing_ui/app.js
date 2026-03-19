@@ -779,6 +779,7 @@ function goToStep2() {
 
   // BLE: close any stale SSE connection from a previous WiFi AP attempt, then navigate
   if (_currentEventSource) { _currentEventSource.close(); _currentEventSource = null; }
+  if (_activeSseTimer !== null) { clearTimeout(_activeSseTimer); _activeSseTimer = null; }
   // Clear any status message from a previous BLE pairing attempt
   const pairStatusEl = document.getElementById("pair-status");
   if (pairStatusEl) pairStatusEl.className = "status-box hidden";
@@ -1022,6 +1023,9 @@ function listenForActivation(token) {
     _currentEventSource.close();
     _currentEventSource = null;
   }
+  // Cancel any previous SSE timer before starting a new one — prevents
+  // a stale timer from firing and corrupting state on rapid re-pairing.
+  if (_activeSseTimer !== null) { clearTimeout(_activeSseTimer); _activeSseTimer = null; }
   const es = new EventSource(EVENTS_URL);
   _currentEventSource = es;
   const sseTimer = setTimeout(() => {
@@ -1522,7 +1526,7 @@ if (typeof module !== "undefined") {
     isIOS, isAndroid, chromeIntentUrl,
     saveLastSsid, loadLastSsid, SSID_TTL_MS, SSID_STORAGE_KEY,
     autoDetectDevices, showDeviceCard, selectDeviceWifiAp, selectDeviceBle,
-    goToDevices, goToCredentials, showDone,
+    goToDevices, goToCredentials, goToStep2, showDone,
     countUtf8Bytes, reassemble, onNotify, waitForResponse, parseFrame, crc16Modbus,
     _safePath, _safeUrl, _t: t,
     _getRecvReject: () => _recvReject,

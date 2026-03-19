@@ -1371,6 +1371,20 @@ class TestConfigEndpoint:
         data = await resp.json()
         assert data["default_ssid"] is None
 
+    async def test_default_ssid_filters_control_chars(self, client: TestClient) -> None:
+        """default_ssid must be None when the active SSID contains control characters."""
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        mock_proc = MagicMock()
+        # SSID with embedded null byte — must not be returned as default_ssid
+        mock_proc.communicate = AsyncMock(return_value=(b"yes:Bad\x00SSID\nno:GoodNet\n", b""))
+        with patch("asyncio.create_subprocess_exec", return_value=mock_proc):
+            resp = await client.get("/api/provision/config")
+        data = await resp.json()
+        assert data["default_ssid"] is None, (
+            "SSID with control chars must not be returned as default_ssid"
+        )
+
     async def test_cors_header_present(self, client: TestClient) -> None:
         resp = await client.get("/api/provision/config")
         assert resp.headers.get("Access-Control-Allow-Origin") == "*"
