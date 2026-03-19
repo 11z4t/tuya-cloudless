@@ -971,6 +971,31 @@ class TestQuickScan:
         data = await resp.json()
         assert data["tuya_aps"] == [], "Non-zero nmcli exit must fall back to empty list"
 
+    async def test_nmcli_timeout_kills_process_and_returns_empty(self, client: TestClient) -> None:
+        """quick-scan: when nmcli hangs past 5s, proc.kill() is called and
+        the endpoint returns HTTP 200 with an empty tuya_aps list."""
+        from unittest.mock import MagicMock, patch
+
+        mock_proc = MagicMock()
+        kill_called = False
+
+        def _kill() -> None:
+            nonlocal kill_called
+            kill_called = True
+
+        mock_proc.kill = _kill
+
+        with (
+            patch("asyncio.create_subprocess_exec", return_value=mock_proc),
+            patch("asyncio.wait_for", side_effect=asyncio.TimeoutError),
+        ):
+            resp = await client.get("/api/provision/quick-scan")
+
+        assert resp.status == 200
+        data = await resp.json()
+        assert data["tuya_aps"] == []
+        assert kill_called, "proc.kill() must be called when quick-scan nmcli times out"
+
     async def test_quick_scan_rate_limited(self, server: PairingServer) -> None:
         """quick-scan returns 429 when per-IP rate limit (10/min) is exceeded."""
         ts = TestServer(server._app)
