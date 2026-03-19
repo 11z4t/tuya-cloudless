@@ -1361,6 +1361,12 @@ function copyShareUrl() {
   });
   document.getElementById("btn-wifi-scan").addEventListener("click", scanWifi);
   document.getElementById("btn-next").addEventListener("click", goToStep2);
+  // Handle form submit (Enter key in ssid/password field) the same as the Next button.
+  // The inline onsubmit was removed from index.html to comply with script-src 'self' CSP.
+  document.getElementById("wifi-form").addEventListener("submit", (e) => {
+    e.preventDefault();
+    goToStep2();
+  });
   document.getElementById("btn-back").addEventListener("click", goToDevices);
   document.getElementById("btn-back-ble").addEventListener("click", goToCredentials);
   document.getElementById("btn-cancel-wifi-ap").addEventListener("click", () => {

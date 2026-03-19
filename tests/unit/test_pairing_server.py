@@ -362,6 +362,28 @@ class TestCsrfProtection:
         assert resp.headers.get("Referrer-Policy") == "strict-origin-when-cross-origin"
 
     @pytest.mark.asyncio
+    async def test_csp_forbids_unsafe_inline_scripts(self, client: TestClient) -> None:
+        """CSP script-src must NOT contain 'unsafe-inline' (inline onsubmit was removed).
+
+        Regression guard: if the inline onsubmit is accidentally re-added to the HTML
+        and 'unsafe-inline' is added to the CSP to compensate, this test fails and
+        the reviewer knows to remove both changes.
+        """
+        resp = await client.get("/")
+        assert resp.status in (200, 404)
+        csp = resp.headers.get("Content-Security-Policy", "")
+        # Find the script-src directive
+        script_src = next(
+            (d.strip() for d in csp.split(";") if d.strip().startswith("script-src")),
+            "",
+        )
+        assert "script-src" in csp, "CSP must have a script-src directive"
+        assert "'unsafe-inline'" not in script_src, (
+            "script-src must not contain 'unsafe-inline' — "
+            "use addEventListener() instead of inline onsubmit/onclick"
+        )
+
+    @pytest.mark.asyncio
     async def test_api_json_endpoint_also_rejects_form(self, client: TestClient) -> None:
         """The /api.json alias endpoint has the same CSRF protection."""
         resp = await client.post(

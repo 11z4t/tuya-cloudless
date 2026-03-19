@@ -322,6 +322,36 @@ test.describe("Step 1 — WiFi credentials form", () => {
     // Device discovery = step 1, credentials = step 2, BLE = step 3
     await expect(counter).toContainText("3");
   });
+
+  test("pressing Enter in SSID field submits form and advances to BLE panel", async ({ page }) => {
+    // Regression: form used to have inline onsubmit (CSP violation) — now uses event listener.
+    // Verifies Enter-key form submission still works after the fix.
+    await setupRoutes(page);
+    await loadPage(page);
+    await navigateToCredentials(page);
+
+    await page.locator("#ssid").click();
+    await page.locator("#ssid").fill("EnterTestNet");
+    await page.locator("#ssid").press("Enter");
+
+    await expect(page.locator("#panel-wifi")).toBeHidden();
+    await expect(page.locator("#panel-ble")).toBeVisible();
+  });
+
+  test("pressing Enter in password field submits form and advances to BLE panel", async ({ page }) => {
+    await setupRoutes(page);
+    await loadPage(page);
+    await navigateToCredentials(page);
+
+    await page.locator("#ssid").click();
+    await page.locator("#ssid").fill("EnterNetPwd");
+    await page.locator("#password").click();
+    await page.locator("#password").fill("secret123");
+    await page.locator("#password").press("Enter");
+
+    await expect(page.locator("#panel-wifi")).toBeHidden();
+    await expect(page.locator("#panel-ble")).toBeVisible();
+  });
 });
 
 // ── Tests: WiFi scan ──────────────────────────────────────────────────────────

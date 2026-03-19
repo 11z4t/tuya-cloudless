@@ -487,7 +487,7 @@
     <h2 class="step-title" id="step1-title">WiFi credentials</h2>
     <p class="step-desc" id="step1-desc">Your device will connect to this network after pairing.</p>
 
-    <form id="wifi-form" onsubmit="event.preventDefault(); goToStep2();" novalidate>
+    <form id="wifi-form" novalidate>
       <div>
         <label for="ssid" id="ssid-label">Network name (SSID)</label>
         <div class="ssid-row">
@@ -577,7 +577,7 @@
         <p id="qr-unavail" style="display:none;font-size:.78rem;color:var(--muted);text-align:center;"></p>
       </div>
       <div>
-        <label id="qr-copy-label">Or copy this URL and open on Chrome / Edge:</label>
+        <label id="qr-copy-label" for="share-url">Or copy this URL and open on Chrome / Edge:</label>
         <div class="url-row">
           <input type="text" id="share-url" readonly>
           <button class="btn btn-primary btn-sm" id="btn-copy" type="button">Copy</button>
