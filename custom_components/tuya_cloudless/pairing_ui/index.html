@@ -502,6 +502,19 @@
       outline-offset: 2px;
     }
 
+    /* Refresh button: spin the emoji icon while scan is in progress (button is disabled) */
+    #btn-refresh-scan:disabled span[aria-hidden="true"] {
+      display: inline-block;
+      animation: spin .7s linear infinite;
+    }
+
+    /* "Scan & Pair" button: subtle attention pulse when BLE panel first opens */
+    @keyframes btn-pulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(249,115,22,.0); }
+      50%       { box-shadow: 0 0 0 8px rgba(249,115,22,.25); }
+    }
+    #btn-pair.btn-ready { animation: btn-pulse 1.8s ease-in-out 0.8s 3; }
+
     /* Inline "Try Again" button inside status-box */
     .status-box .btn-retry {
       display: inline-block;

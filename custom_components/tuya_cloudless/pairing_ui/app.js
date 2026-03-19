@@ -704,10 +704,9 @@ async function autoDetectDevices() {
         }
       }
       dbg("Found " + aps.length + " Tuya AP(s)");
-      if (noDevEl) {
-        noDevEl.textContent = t("devices_found", { count: aps.length });
-        noDevEl.className = "status-box status-success";
-      }
+      // Keep status box hidden — device cards are the visual confirmation of found devices.
+      // Only update the aria-live region so screen readers announce the count.
+      if (noDevEl) noDevEl.className = "status-box status-info hidden";
       if (statusLive) statusLive.textContent = t("devices_found", { count: aps.length });
     }
   } catch (err) {
@@ -945,6 +944,9 @@ function goToStep2() {
       bleNetworkInfo.classList.add("hidden");
     }
   }
+  // Add attention-pulse animation on the Scan & Pair button to guide the user's next action
+  const pairBtnReady = document.getElementById("btn-pair");
+  if (pairBtnReady) pairBtnReady.classList.add("btn-ready");
   // Move focus to the BLE panel heading so screen readers announce the new panel
   const bleTitle = document.getElementById("step2-title");
   if (bleTitle && typeof bleTitle.focus === "function") {
@@ -1464,6 +1466,7 @@ async function startPairing() {
 
   const btn = document.getElementById("btn-pair");
   btn.disabled = true;
+  btn.classList.remove("btn-ready");  // stop attention pulse once user has clicked
   const backBtn = document.getElementById("btn-back-ble");
   if (backBtn) backBtn.disabled = true;
 
