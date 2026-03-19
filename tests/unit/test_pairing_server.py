@@ -3331,6 +3331,41 @@ class TestRateLimiting:
         # IP B should still be allowed
         assert server._is_rate_limited("10.0.0.2") is False
 
+    async def test_rate_limit_consecutive_blocked_requests_both_return_429(
+        self, server: PairingServer
+    ) -> None:
+        """Two consecutive requests past the limit must BOTH return 429 (N+1 and N+2).
+
+        Regression guard: blocked requests must not be recorded in the bucket.
+        If they were, only the first over-limit request would fail (the bucket
+        would grow back below the threshold after stale cleanup), but here all
+        timestamps are fresh so the second request must also be rejected.
+        """
+        from custom_components.tuya_cloudless.pairing_server import _RATE_LIMIT_MAX
+
+        ts = TestServer(server._app)
+        cli = TestClient(ts)
+        await cli.start_server()
+        try:
+            now = time.monotonic()
+            server._rate_limit["127.0.0.1"] = [now] * _RATE_LIMIT_MAX
+
+            # N+1: first over-limit request — must be blocked
+            resp1 = await cli.post(
+                "/api/tuya/device/active",
+                json={"gw_id": "gw-n1", "token": "tok-n1"},
+            )
+            assert resp1.status == 429, f"N+1 expected 429, got {resp1.status}"
+
+            # N+2: second over-limit request — bucket unchanged (blocked reqs not recorded)
+            resp2 = await cli.post(
+                "/api/tuya/device/active",
+                json={"gw_id": "gw-n2", "token": "tok-n2"},
+            )
+            assert resp2.status == 429, f"N+2 expected 429, got {resp2.status}"
+        finally:
+            await cli.close()
+
 
 # ── SEC-002: Bounded SSE queues (PLAT-825) ───────────────────────────────────
 

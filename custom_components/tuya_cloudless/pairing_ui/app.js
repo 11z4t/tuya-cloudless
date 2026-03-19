@@ -339,7 +339,9 @@ function loadLastSsid() {
       try { localStorage.removeItem(SSID_STORAGE_KEY); } catch (e) { dbg("SSID cache clear failed: " + e.message); }
       return null;
     }
-    return ssid;
+    const trimmed = (typeof ssid === "string" ? ssid : "").trim();
+    if (!trimmed || trimmed.length > 255) return null;
+    return trimmed;
   } catch (_) { return null; }
 }
 

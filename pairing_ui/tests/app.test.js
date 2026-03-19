@@ -104,6 +104,27 @@ describe("saveLastSsid / loadLastSsid", () => {
   it("TTL constant is 90 days in milliseconds", () => {
     expect(SSID_TTL_MS).toBe(90 * 24 * 60 * 60 * 1000);
   });
+
+  it("returns null for whitespace-only SSID", () => {
+    localStorage.setItem(SSID_STORAGE_KEY, JSON.stringify({ ssid: "   ", saved_at: Date.now() }));
+    expect(loadLastSsid()).toBeNull();
+  });
+
+  it("returns null for SSID longer than 255 characters", () => {
+    localStorage.setItem(SSID_STORAGE_KEY, JSON.stringify({ ssid: "a".repeat(256), saved_at: Date.now() }));
+    expect(loadLastSsid()).toBeNull();
+  });
+
+  it("trims surrounding whitespace from SSID", () => {
+    localStorage.setItem(SSID_STORAGE_KEY, JSON.stringify({ ssid: "  MyNetwork  ", saved_at: Date.now() }));
+    expect(loadLastSsid()).toBe("MyNetwork");
+  });
+
+  it("accepts SSID of exactly 255 characters", () => {
+    const ssid255 = "a".repeat(255);
+    localStorage.setItem(SSID_STORAGE_KEY, JSON.stringify({ ssid: ssid255, saved_at: Date.now() }));
+    expect(loadLastSsid()).toBe(ssid255);
+  });
 });
 
 // ── Platform detection helpers ─────────────────────────────────────────────────
