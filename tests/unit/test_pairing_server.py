@@ -2198,6 +2198,27 @@ class TestActivateResponseStructure:
             "Duplicate activation (same token+gw_id) must be idempotent"
         )
 
+    async def test_duplicate_token_different_gw_id_generates_new_key(
+        self, client: TestClient
+    ) -> None:
+        """Same token + different gw_id must NOT reuse the previous local_key.
+
+        The idempotency guard is scoped to token+gw_id pairs.  If two different
+        devices happen to use the same token (edge case) they must each receive an
+        independent local_key so neither device ends up with the wrong credentials.
+        """
+        resp1 = await client.post(
+            "/api/tuya/device/active",
+            json={"gw_id": "device_alpha", "token": "shared_token"},
+        )
+        resp2 = await client.post(
+            "/api/tuya/device/active",
+            json={"gw_id": "device_beta", "token": "shared_token"},  # different gw_id
+        )
+        key1 = (await resp1.json())["result"]["localKey"]
+        key2 = (await resp2.json())["result"]["localKey"]
+        assert key1 != key2, "Different gw_id with same token must NOT share the idempotency key"
+
     async def test_timezone_falls_back_to_utc_when_not_string(self, client: TestClient) -> None:
         """When hass.config.time_zone is not a string, timezone defaults to 'UTC'."""
         # The default mock has a MagicMock as time_zone (not a string) →  UTC

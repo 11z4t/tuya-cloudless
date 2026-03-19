@@ -2248,8 +2248,9 @@ test.describe("WiFi AP pairing flow", () => {
     await loadPage(page);
     await pairViaWifiApUi(page);
 
-    // Wait a short tick so any delayed second POST would have arrived
-    await page.waitForTimeout(200);
+    // Wait for the spinner to appear — that confirms the POST response was processed.
+    // If a spurious second POST were going to fire it would do so before this point.
+    await expect(page.locator("#wifi-ap-status")).toBeVisible({ timeout: 3000 });
 
     expect(postCount).toBe(1);
   });
