@@ -228,6 +228,43 @@ class TestActivateEndpoint:
         )
         assert resp.status == 200
 
+    async def test_concurrent_activations_stored_independently(self, client: TestClient) -> None:
+        """Two concurrent device activations with different tokens must not collide.
+
+        If the server serialises _results writes correctly, both tokens will be
+        stored with their own gw_id and distinct local_keys.
+        """
+        resp1, resp2 = await asyncio.gather(
+            client.post(
+                "/api/tuya/device/active",
+                json={"gw_id": "gw-concurrent-1", "token": "tok-concurrent-1"},
+            ),
+            client.post(
+                "/api/tuya/device/active",
+                json={"gw_id": "gw-concurrent-2", "token": "tok-concurrent-2"},
+            ),
+        )
+        assert resp1.status == 200
+        assert resp2.status == 200
+
+        body1 = await resp1.json()
+        body2 = await resp2.json()
+        # Each device receives its own gw_id mirrored back
+        assert body1["result"]["gwId"] == "gw-concurrent-1"
+        assert body2["result"]["gwId"] == "gw-concurrent-2"
+        # Each device receives a unique local_key
+        assert body1["result"]["localKey"] != body2["result"]["localKey"]
+
+        # Verify result endpoint returns the correct device for each token
+        r1 = await client.get("/api/provision/result/tok-concurrent-1")
+        r2 = await client.get("/api/provision/result/tok-concurrent-2")
+        assert r1.status == 200
+        assert r2.status == 200
+        d1 = await r1.json()
+        d2 = await r2.json()
+        assert d1["gw_id"] == "gw-concurrent-1"
+        assert d2["gw_id"] == "gw-concurrent-2"
+
 
 # ── /api/provision/result/{token} ────────────────────────────────────────────
 
