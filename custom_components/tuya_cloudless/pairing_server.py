@@ -1091,9 +1091,11 @@ class PairingServer:
             )
             try:
                 stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=timeout)
-            except TimeoutError:
+            except (TimeoutError, asyncio.CancelledError):
+                # Kill the subprocess on both timeout AND task cancellation so it
+                # doesn't linger as a zombie (e.g. during HA shutdown mid-pairing).
                 proc.kill()
-                return -1, ""
+                raise
             return proc.returncode or 0, stdout.decode(errors="replace").strip()
 
         try:

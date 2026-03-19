@@ -7,6 +7,7 @@ and helper utilities — without needing a real HA instance or Tuya device.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import sys
 import time
@@ -1224,6 +1225,48 @@ class TestWifiApPair:
         assert any(ev == "wifi_ap_error" for ev, _ in broadcast_calls), (
             "wifi_ap_error must be emitted when nmcli connect times out"
         )
+
+    async def test_cancelled_task_kills_subprocess(self) -> None:
+        """When the background task is cancelled (e.g., HA shutdown), proc.kill()
+        must be called so the nmcli subprocess doesn't linger as a zombie."""
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        killed: list[bool] = []
+
+        async def fake_exec(*args: object, **kwargs: object) -> MagicMock:
+            proc = MagicMock()
+
+            # Simulate a hanging nmcli process for the initial nmcli connection list call
+            async def _hang() -> object:
+                await asyncio.sleep(999)
+
+            proc.communicate = _hang
+            proc.returncode = None
+
+            def _record_kill() -> None:
+                killed.append(True)
+
+            proc.kill = _record_kill
+            return proc
+
+        hass = MagicMock()
+        server = PairingServer(hass, port=9099)
+        server._broadcast_sse = AsyncMock()  # type: ignore[method-assign]
+
+        with patch("asyncio.create_subprocess_exec", side_effect=fake_exec):
+            task = asyncio.create_task(
+                server._wifi_ap_pair_task(
+                    "SmartLife_AB12", "HomeNet", "pass", "tok_cancel", "http://ha:8099"
+                )
+            )
+            # Give the task a moment to start and enter the subprocess call
+            await asyncio.sleep(0.05)
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
+
+        # proc.kill() must have been called when CancelledError propagated from wait_for
+        assert killed, "proc.kill() must be called when the task is cancelled"
 
     async def test_reconnect_failure_does_not_raise(self, client: TestClient) -> None:
         """Reconnect failure (step 4) is logged but does not propagate as an error SSE."""

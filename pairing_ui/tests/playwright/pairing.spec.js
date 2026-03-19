@@ -2541,6 +2541,42 @@ test.describe("BLE SSE malformed JSON — immediate error", () => {
   });
 });
 
+test.describe("XSS guard — HTML in SSE payload is escaped on done screen", () => {
+  test("malicious HTML in gw_id and local_key from SSE appears as escaped text", async ({ page }) => {
+    // If the server (or a MITM) sends HTML/JS in activation fields, the done screen
+    // must render them as literal text — no <img>, <script>, or other elements.
+    const xssGwId = "<img src=x onerror=window.__xss=1>";
+    const xssKey  = "aabbccddeeff00112233445566778899";  // valid 32-hex key
+
+    await setupRoutes(page, { tuya_aps: [{ ssid: "SmartLife_AB12" }] });
+    await mockWifiApRoute(page, {
+      activation: {
+        token: "wifi-ap-token-xyz",
+        gw_id: xssGwId,
+        local_key: xssKey,
+        ip_address: "192.168.1.55",
+      },
+    });
+    await loadPage(page);
+    await pairViaWifiApUi(page);
+
+    // Wait for done panel
+    await expect(page.locator("#panel-done")).toBeVisible({ timeout: 5000 });
+
+    // No <img> elements from the injected onerror payload
+    await expect(page.locator("#result-grid img")).toHaveCount(0);
+
+    // The malicious string must appear as text, not as an element attribute or DOM node
+    const gridText = await page.locator("#result-grid").textContent();
+    expect(gridText).toContain("<img");  // literal angle-bracket present as text
+    expect(gridText).toContain("onerror");  // literal text, not executed attribute
+
+    // XSS must not have executed (window.__xss never set)
+    const xssExecuted = await page.evaluate(() => window.__xss ?? false);
+    expect(xssExecuted).toBe(false);
+  });
+});
+
 test.describe("Copy URL button — clipboard failure feedback", () => {
   test("clipboard failure shows ✗ in button text briefly then resets", async ({ page }) => {
     await setupRoutes(page);
