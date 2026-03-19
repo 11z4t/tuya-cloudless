@@ -3020,6 +3020,42 @@ class TestHandleHaIndex:
 
         assert resp.status == 404
 
+    async def test_security_headers_on_200(self, server: PairingServer, tmp_path: Path) -> None:
+        """200 response includes all required security headers."""
+        ui_dir = tmp_path / "pairing_ui"
+        ui_dir.mkdir()
+        (ui_dir / "index.html").write_text(
+            "<html><head></head><body></body></html>", encoding="utf-8"
+        )
+        with patch(
+            "custom_components.tuya_cloudless.pairing_server._UI_DIR",
+            ui_dir,
+        ):
+            req = MagicMock()
+            resp = await server._handle_ha_index(req)
+
+        assert resp.status == 200
+        assert resp.headers["X-Frame-Options"] == "SAMEORIGIN"
+        assert resp.headers["X-Content-Type-Options"] == "nosniff"
+        assert "Referrer-Policy" in resp.headers
+        assert "Content-Security-Policy" in resp.headers
+
+    async def test_security_headers_on_404(self, server: PairingServer, tmp_path: Path) -> None:
+        """404 response (missing index.html) also includes security headers."""
+        empty_dir = tmp_path / "empty"
+        empty_dir.mkdir()
+        with patch(
+            "custom_components.tuya_cloudless.pairing_server._UI_DIR",
+            empty_dir,
+        ):
+            req = MagicMock()
+            resp = await server._handle_ha_index(req)
+
+        assert resp.status == 404
+        assert resp.headers["X-Frame-Options"] == "SAMEORIGIN"
+        assert resp.headers["X-Content-Type-Options"] == "nosniff"
+        assert "Content-Security-Policy" in resp.headers
+
 
 # ── HA config view (_handle_ha_config) ───────────────────────────────────────
 

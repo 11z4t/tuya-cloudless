@@ -1177,6 +1177,7 @@ class PairingServer:
             return web.Response(
                 status=404,
                 text="Pairing UI not found. This is a bug — please report it.",
+                headers=_SECURITY_HEADERS,
             )
 
         html = index_path.read_text(encoding="utf-8")
@@ -1205,7 +1206,12 @@ class PairingServer:
         )
         html = html.replace("</head>", globals_script + "</head>", 1)
 
-        return web.Response(text=html, content_type="text/html", charset="utf-8")
+        return web.Response(
+            text=html,
+            content_type="text/html",
+            charset="utf-8",
+            headers=_SECURITY_HEADERS,
+        )
 
     async def _handle_ha_config(self, request: web.Request) -> web.Response:
         """Config endpoint when the pairing UI is served via HA HTTPS.
