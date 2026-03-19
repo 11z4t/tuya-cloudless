@@ -550,7 +550,20 @@ class MessageBuffer:
             List of successfully decoded messages (may be empty).
         """
         result: list[TuyaMessage] = []
+        prev_buf_len = len(self._buffer) + 1  # sentinel larger than any real length
         while True:
+            cur_buf_len = len(self._buffer)
+            if cur_buf_len >= prev_buf_len:
+                # Buffer did not shrink — _try_extract made no progress.
+                # Break to avoid a tight infinite loop that starves the event loop.
+                _LOGGER.warning(
+                    "MessageBuffer: extraction loop made no progress (%d bytes remain); "
+                    "discarding buffer to prevent stall",
+                    cur_buf_len,
+                )
+                self._buffer.clear()
+                break
+            prev_buf_len = cur_buf_len
             try:
                 msg = self._try_extract()
             except (InvalidMessageError, ProtocolError) as exc:

@@ -26,6 +26,7 @@ import contextlib
 import functools
 import ipaddress
 import logging
+import re
 from typing import TYPE_CHECKING, Any
 from urllib.parse import urlparse
 
@@ -70,6 +71,9 @@ from .const import (
 _LOGGER = logging.getLogger(__name__)
 
 _LOCAL_KEY_LENGTH = 16
+# Tuya gateway IDs are alphanumeric with hyphens/underscores, max 64 chars.
+# Matches the server-side _DEVICE_ID_RE used in pairing_server.py.
+_GW_ID_RE = re.compile(r"^[a-zA-Z0-9_\-]{1,64}$")
 _DISCOVERY_LISTEN_SECS = 5.0
 _DISCOVERY_TIMEOUT = _DISCOVERY_LISTEN_SECS + 1.0
 _CONNECTION_TIMEOUT = 3.0
@@ -231,6 +235,7 @@ class TuyaCloudlessConfigFlow(ConfigFlow, domain=DOMAIN):
 
             if (
                 gw_id
+                and _GW_ID_RE.match(gw_id)
                 and len(local_key) == _LOCAL_KEY_LENGTH
                 and local_key.isascii()
                 and local_key.isprintable()
@@ -898,6 +903,11 @@ class TuyaCloudlessConfigFlow(ConfigFlow, domain=DOMAIN):
             name_part = discovery_info.name.split(".")[0]
             gw_id = name_part if name_part else None
         if not gw_id:
+            return self.async_abort(reason="no_device_id")
+        # Validate gw_id character set — mDNS properties are attacker-controlled on
+        # the LAN; an invalid format could corrupt HA entity IDs or repair issue IDs.
+        if not _GW_ID_RE.match(gw_id):
+            _LOGGER.warning("Zeroconf: invalid gw_id format %r — aborting", gw_id[:64])
             return self.async_abort(reason="no_device_id")
 
         await self.async_set_unique_id(gw_id)

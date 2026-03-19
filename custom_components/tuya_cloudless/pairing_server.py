@@ -83,7 +83,8 @@ _BRAND_DIR: Final[Path] = Path(__file__).parent / "brand"
 #: URL prefix for pairing views on HA's own HTTP/HTTPS server
 _HA_PAIRING_PREFIX: Final[str] = "/api/tuya_cloudless/pairing"
 
-#: local_key length in bytes (Tuya standard: 16 bytes → 16 ASCII chars)
+#: local_key length in characters (Tuya standard: 16 ASCII chars = 16 UTF-8 bytes).
+#: Generated as secrets.token_hex(_LOCAL_KEY_BYTES // 2) = 8 random bytes → 16 hex chars.
 _LOCAL_KEY_BYTES: Final[int] = 16
 
 #: Tuya device AP gateway IP — devices in AP mode always use this address
@@ -124,6 +125,10 @@ _CTRL_CHAR_RE: Final[re.Pattern[str]] = re.compile(r"[\x00-\x1f\x7f]")
 #: Alphanumeric + hyphens + underscores — matches all known Tuya ID formats.
 #: Excludes control characters and special chars that could inject into SSE/HA config.
 _DEVICE_ID_RE: Final[re.Pattern[str]] = re.compile(r"^[a-zA-Z0-9_\-]{1,64}$")
+#: Activation token format — 32 lowercase hex chars (16 random bytes encoded as hex).
+#: The BLE JS randomToken() uses crypto.getRandomValues(16 bytes); wifi-ap-pair uses
+#: secrets.token_hex(16).  The GET result endpoint enforces this same format.
+_TOKEN_RE: Final[re.Pattern[str]] = re.compile(r"^[0-9a-f]{32}$")
 
 #: SSID prefixes used by Tuya devices in AP/provisioning mode.
 #: Matching is case-insensitive.
@@ -663,6 +668,13 @@ class PairingServer:
             )
             return web.Response(status=400, text="Field too long")
 
+        # Validate token format — must be 16 lowercase hex chars (secrets.token_hex(8)).
+        # Tokens not matching this format can never be retrieved via the GET endpoint
+        # (which enforces the same regex), creating an unreachable result entry.
+        if token and not _TOKEN_RE.match(token):
+            _LOGGER.warning("Activation request rejected: invalid token format")
+            return web.Response(status=400, text="Invalid token format")
+
         # Validate gw_id and product_key character set — Tuya IDs are alphanumeric ASCII.
         # Rejects control characters that could interfere with SSE format or HA config flow.
         if gw_id and not _DEVICE_ID_RE.match(gw_id):
@@ -695,8 +707,11 @@ class PairingServer:
                 token[:8],
             )
         else:
-            # Generate a random 16-character local_key (printable ASCII, 32 hex chars)
-            local_key = secrets.token_hex(_LOCAL_KEY_BYTES)
+            # Generate a random 16-character local_key.
+            # secrets.token_hex(8) produces 8 random bytes encoded as 16 lowercase hex
+            # chars — the correct length expected by config_flow (_LOCAL_KEY_LENGTH = 16)
+            # and by the coordinator (key_bytes = local_key.encode("utf-8") → 16 bytes).
+            local_key = secrets.token_hex(_LOCAL_KEY_BYTES // 2)
 
             result = ActivationResult(
                 gw_id=gw_id,
@@ -786,9 +801,9 @@ class PairingServer:
                 headers={"Retry-After": "5"},
             )
         token = request.match_info["token"]
-        # Validate token format — secrets.token_hex(16) produces exactly 32
-        # lowercase hex characters.  Reject anything else before dict lookup.
-        if not re.fullmatch(r"[0-9a-f]{32}", token):
+        # Validate token format — 32 lowercase hex chars (see _TOKEN_RE).
+        # Reject anything else before dict lookup.
+        if not _TOKEN_RE.match(token):
             return web.Response(status=404, text="Not Found")
         result = self.get_result(token)
 
@@ -822,6 +837,16 @@ class PairingServer:
         Returns:
             SSE stream response (kept open until client disconnects).
         """
+        # Per-IP rate limit — prevents rapid open/close cycling that could exhaust
+        # the global SSE connection slot table for legitimate browsers.
+        client_ip = self._get_client_ip(request)
+        if self._is_rate_limited(client_ip, max_requests=10, window=60.0):
+            return web.Response(
+                status=429,
+                text="Too Many Requests",
+                headers={"Retry-After": "10"},
+            )
+
         # Enforce connection cap before allocating resources (SEC-002 / PLAT-825)
         if len(self._sse_queues) >= _MAX_SSE_CONNECTIONS:
             return web.Response(
@@ -838,6 +863,7 @@ class PairingServer:
         # (SEC-003 / PLAT-826)
         response = web.StreamResponse(
             headers={
+                **_SECURITY_HEADERS,
                 "Content-Type": "text/event-stream",
                 "Cache-Control": "no-cache",
                 "X-Accel-Buffering": "no",

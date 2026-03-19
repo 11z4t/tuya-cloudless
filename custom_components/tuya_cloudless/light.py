@@ -375,8 +375,16 @@ class TuyaCloudlessLight(RestoreStateMixin, TuyaCloudlessEntity, LightEntity):
                 min_raw = ct_spec.min_raw if ct_spec.min_raw is not None else 0
                 max_raw = ct_spec.max_raw if ct_spec.max_raw is not None else 1000
                 span = max_raw - min_raw
-                ratio = (kelvin - _MIN_COLOR_TEMP_KELVIN) / (
-                    _MAX_COLOR_TEMP_KELVIN - _MIN_COLOR_TEMP_KELVIN
+                # Clamp ratio to [0, 1] so out-of-range kelvin values (e.g. from
+                # automations requesting a temperature outside the HA/device range)
+                # never produce a raw DPS value below min_raw or above max_raw.
+                ratio = max(
+                    0.0,
+                    min(
+                        1.0,
+                        (kelvin - _MIN_COLOR_TEMP_KELVIN)
+                        / (_MAX_COLOR_TEMP_KELVIN - _MIN_COLOR_TEMP_KELVIN),
+                    ),
                 )
                 dps[ct_spec.id] = round(ratio * span + min_raw)
                 if self._spec.dp_color_mode is not None:

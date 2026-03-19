@@ -580,6 +580,11 @@ class BleProvisioner:
         def _on_notify(_char: BleakGATTCharacteristic, data: bytearray) -> None:
             if len(data) < 2:  # malformed chunk — need at least chunk_no and total bytes
                 return
+            # Cap to prevent unbounded memory growth from a malicious peripheral
+            # sending chunks without ever setting the last-chunk flag.
+            if len(recv_chunks) >= 512:
+                recv_chunks.clear()
+                return
             recv_chunks.append(bytes(data))
             if data[0] + 1 == data[1]:  # last chunk (chunk_no + 1 == total)
                 notify_event.set()

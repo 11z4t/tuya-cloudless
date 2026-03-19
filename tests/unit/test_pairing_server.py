@@ -47,6 +47,26 @@ _TOKEN_E = "ee" * 16  # used for multi-token tests
 _TOKEN_REUSE = "f1" * 16  # used for token-reuse test
 _TOKEN_CORS = "c0" * 16  # used for CORS tests
 _TOKEN_UNKNOWN = "f0" * 16  # used for "token not yet in results" tests
+# Additional tokens for tests that previously used short inline strings
+_TOKEN_1 = "01" * 16  # was "tok1" / "t1" etc.
+_TOKEN_2 = "02" * 16  # was "t2"
+_TOKEN_NESTED = "03" * 16  # was "nested_tok"
+_TOKEN_DEDUP = "04" * 16  # was "tok_dedup"
+_TOKEN_SHARED = "05" * 16  # was "shared_token"
+_TOKEN_001 = "06" * 16  # was "tok001"
+_TOKEN_CANCEL = "07" * 16  # was "tok_cancel"
+_TOKEN_SSE = "08" * 16  # was "tok_sse"
+_TOKEN_SSE_K = "09" * 16  # was "tok_sse_k"
+_TOKEN_SSE_I = "0a" * 16  # was "tok_sse_i"
+_TOKEN_RL = "0b" * 16  # was "tok_rl"
+_TOKEN_N1 = "0c" * 16  # was "tok-n1"
+_TOKEN_N2 = "0d" * 16  # was "tok-n2"
+_TOKEN_STRUCT = "10" * 16  # was "tok_struct"
+_TOKEN_KEYS = "20" * 16  # was "tok_keys"
+_TOKEN_SPEC = "30" * 16  # was "tok_spec"
+_TOKEN_HEX = "40" * 16  # was "tok_hex"
+_TOKEN_TZ = "50" * 16  # was "tok_tz"
+_TOKEN_GC = "60" * 16  # was "abc" (garbage collection test)
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -127,14 +147,14 @@ class TestActivateEndpoint:
     async def test_returns_200(self, client: TestClient) -> None:
         resp = await client.post(
             "/api/tuya/device/active",
-            json={"gw_id": "gw001", "product_key": "pk1", "token": "tok1"},
+            json={"gw_id": "gw001", "product_key": "pk1", "token": _TOKEN_1},
         )
         assert resp.status == 200
 
     async def test_response_success_flag(self, client: TestClient) -> None:
         resp = await client.post(
             "/api/tuya/device/active",
-            json={"gw_id": "gw001", "product_key": "pk1", "token": "tok1"},
+            json={"gw_id": "gw001", "product_key": "pk1", "token": _TOKEN_1},
         )
         body = await resp.json()
         assert body["success"] is True
@@ -142,11 +162,13 @@ class TestActivateEndpoint:
     async def test_response_has_local_key(self, client: TestClient) -> None:
         resp = await client.post(
             "/api/tuya/device/active",
-            json={"gw_id": "gw001", "product_key": "pk1", "token": "tok1"},
+            json={"gw_id": "gw001", "product_key": "pk1", "token": _TOKEN_1},
         )
         body = await resp.json()
         assert "localKey" in body["result"]
-        assert len(body["result"]["localKey"]) == 32  # 16 bytes hex
+        # local_key is generated as secrets.token_hex(8) = 16 hex chars (8 random bytes).
+        # This is the correct length for AES-128: local_key.encode("utf-8") → 16 bytes.
+        assert len(body["result"]["localKey"]) == 16
 
     async def test_response_has_gw_id(self, client: TestClient) -> None:
         resp = await client.post(
@@ -195,8 +217,12 @@ class TestActivateEndpoint:
         )
 
     async def test_each_activation_generates_unique_key(self, client: TestClient) -> None:
-        resp1 = await client.post("/api/tuya/device/active", json={"gw_id": "gw1", "token": "t1"})
-        resp2 = await client.post("/api/tuya/device/active", json={"gw_id": "gw2", "token": "t2"})
+        resp1 = await client.post(
+            "/api/tuya/device/active", json={"gw_id": "gw1", "token": _TOKEN_1}
+        )
+        resp2 = await client.post(
+            "/api/tuya/device/active", json={"gw_id": "gw2", "token": _TOKEN_2}
+        )
         body1 = await resp1.json()
         body2 = await resp2.json()
         assert body1["result"]["localKey"] != body2["result"]["localKey"]
@@ -205,7 +231,7 @@ class TestActivateEndpoint:
         """Some firmware wraps everything in a 'data' key."""
         resp = await client.post(
             "/api/tuya/device/active",
-            json={"data": {"gw_id": "nested_gw", "token": "nested_tok"}},
+            json={"data": {"gw_id": "nested_gw", "token": _TOKEN_NESTED}},
         )
         body = await resp.json()
         assert body["result"]["gwId"] == "nested_gw"
@@ -233,7 +259,7 @@ class TestActivateEndpoint:
             json={
                 "gw_id": "g" * 64,
                 "product_key": "p" * 64,
-                "token": "t" * 128,
+                "token": _TOKEN_A,  # valid 32-char hex token
                 "sw_ver": "s" * 32,
             },
         )
@@ -308,7 +334,7 @@ class TestResultEndpoint:
         assert body["status"] == "ok"
         assert body["gw_id"] == "gw_fields"
         assert "local_key" in body
-        assert len(body["local_key"]) == 32
+        assert len(body["local_key"]) == 16  # secrets.token_hex(8) → 16 hex chars
 
     async def test_ip_address_in_result(self, client: TestClient) -> None:
         await client.post(
@@ -473,7 +499,7 @@ class TestCsrfProtection:
     @pytest.mark.asyncio
     async def test_activate_accepts_json_content_type(self, client: TestClient) -> None:
         """A legitimate application/json POST must still be accepted."""
-        payload = {"gw_id": "dev1", "token": "tok1", "product_key": "pk"}
+        payload = {"gw_id": "dev1", "token": _TOKEN_1, "product_key": "pk"}
         resp = await client.post(
             "/api/tuya/device/active",
             json=payload,
@@ -1582,7 +1608,7 @@ class TestWifiApPair:
             # Trigger a rate-limit check via activation endpoint
             await cli.post(
                 "/api/tuya/device/active",
-                json={"gw_id": "test_gc", "token": "abc"},
+                json={"gw_id": "test_gc", "token": _TOKEN_GC},
             )
 
             # Empty-list IPs should have been evicted
@@ -2409,7 +2435,7 @@ class TestActivateResponseStructure:
         """t, success, and result keys must all be present."""
         resp = await client.post(
             "/api/tuya/device/active",
-            json={"gw_id": "struct_gw", "product_key": "pk", "token": "tok_struct"},
+            json={"gw_id": "struct_gw", "product_key": "pk", "token": _TOKEN_STRUCT},
         )
         assert resp.status == 200
         body = await resp.json()
@@ -2421,7 +2447,7 @@ class TestActivateResponseStructure:
         """result object must contain gwId, active, ability, localKey, timezone, netType."""
         resp = await client.post(
             "/api/tuya/device/active",
-            json={"gw_id": "keys_gw", "token": "tok_keys"},
+            json={"gw_id": "keys_gw", "token": _TOKEN_KEYS},
         )
         body = await resp.json()
         result = body["result"]
@@ -2432,7 +2458,7 @@ class TestActivateResponseStructure:
         """Verify specific values the Tuya device expects."""
         resp = await client.post(
             "/api/tuya/device/active",
-            json={"gw_id": "spec_gw", "token": "tok_spec"},
+            json={"gw_id": "spec_gw", "token": _TOKEN_SPEC},
         )
         body = await resp.json()
         result = body["result"]
@@ -2443,7 +2469,7 @@ class TestActivateResponseStructure:
         assert result["active"] == 2  # 2 = activated
         assert result["ability"] == 0
         assert result["netType"] == 0
-        assert len(result["localKey"]) == 32  # 16 bytes → 32 hex chars
+        assert len(result["localKey"]) == 16  # secrets.token_hex(8) → 16 hex chars
         assert isinstance(result["timezone"], str)
         assert len(result["timezone"]) > 0
 
@@ -2453,12 +2479,13 @@ class TestActivateResponseStructure:
 
         resp = await client.post(
             "/api/tuya/device/active",
-            json={"gw_id": "hex_gw", "token": "tok_hex"},
+            json={"gw_id": "hex_gw", "token": _TOKEN_HEX},
         )
         body = await resp.json()
         local_key = body["result"]["localKey"]
-        assert re.fullmatch(r"[0-9a-f]{32}", local_key), (
-            f"localKey {local_key!r} is not 32 lowercase hex chars"
+        # secrets.token_hex(8) produces 8 bytes → 16 lowercase hex chars
+        assert re.fullmatch(r"[0-9a-f]{16}", local_key), (
+            f"localKey {local_key!r} is not 16 lowercase hex chars"
         )
 
     async def test_same_gw_id_second_activation_uses_different_key(
@@ -2503,11 +2530,11 @@ class TestActivateResponseStructure:
         """
         resp1 = await client.post(
             "/api/tuya/device/active",
-            json={"gw_id": "dedup_gw", "token": "tok_dedup"},
+            json={"gw_id": "dedup_gw", "token": _TOKEN_DEDUP},
         )
         resp2 = await client.post(
             "/api/tuya/device/active",
-            json={"gw_id": "dedup_gw", "token": "tok_dedup"},  # same token + gw_id
+            json={"gw_id": "dedup_gw", "token": _TOKEN_DEDUP},  # same token + gw_id
         )
         body1 = await resp1.json()
         body2 = await resp2.json()
@@ -2530,11 +2557,11 @@ class TestActivateResponseStructure:
         """
         resp1 = await client.post(
             "/api/tuya/device/active",
-            json={"gw_id": "device_alpha", "token": "shared_token"},
+            json={"gw_id": "device_alpha", "token": _TOKEN_SHARED},
         )
         resp2 = await client.post(
             "/api/tuya/device/active",
-            json={"gw_id": "device_beta", "token": "shared_token"},  # different gw_id
+            json={"gw_id": "device_beta", "token": _TOKEN_SHARED},  # different gw_id
         )
         key1 = (await resp1.json())["result"]["localKey"]
         key2 = (await resp2.json())["result"]["localKey"]
@@ -2578,7 +2605,7 @@ class TestActivateResponseStructure:
         # The default mock has a MagicMock as time_zone (not a string) →  UTC
         resp = await client.post(
             "/api/tuya/device/active",
-            json={"gw_id": "tz_gw", "token": "tok_tz"},
+            json={"gw_id": "tz_gw", "token": _TOKEN_TZ},
         )
         body = await resp.json()
         # MagicMock is not a str → must fall back to "UTC"
@@ -2650,7 +2677,7 @@ class TestActivateFlowResume:
         try:
             resp = await cli.post(
                 "/api/tuya/device/active",
-                json={"gw_id": "gw001", "token": "tok001"},
+                json={"gw_id": "gw001", "token": _TOKEN_001},
             )
             assert resp.status == 200
             # async_create_task should have been called for the pending flow
@@ -2682,7 +2709,7 @@ class TestActivateFlowResume:
         try:
             resp = await cli.post(
                 "/api/tuya/device/active",
-                json={"gw_id": "gw_cancel", "token": "tok_cancel"},
+                json={"gw_id": "gw_cancel", "token": _TOKEN_CANCEL},
             )
             # Activation must succeed even though async_configure raised
             assert resp.status == 200
@@ -3165,7 +3192,7 @@ class TestSseMessageDelivery:
             # Now trigger an activation (this sends to SSE queues)
             await client.post(
                 "/api/tuya/device/active",
-                json={"gw_id": "gw_sse_test", "token": "tok_sse"},
+                json={"gw_id": "gw_sse_test", "token": _TOKEN_SSE},
             )
 
             # Read the activated event
@@ -3183,7 +3210,7 @@ class TestSseMessageDelivery:
 
             await client.post(
                 "/api/tuya/device/active",
-                json={"gw_id": "gw_sse_key", "token": "tok_sse_k"},
+                json={"gw_id": "gw_sse_key", "token": _TOKEN_SSE_K},
             )
 
             data = await asyncio.wait_for(resp.content.read(512), timeout=5)
@@ -3200,7 +3227,7 @@ class TestSseMessageDelivery:
 
             await client.post(
                 "/api/tuya/device/active",
-                json={"gw_id": "gw_sse_ip", "token": "tok_sse_i"},
+                json={"gw_id": "gw_sse_ip", "token": _TOKEN_SSE_I},
             )
 
             data = await asyncio.wait_for(resp.content.read(512), timeout=5)
@@ -3362,7 +3389,7 @@ class TestRateLimiting:
         for _ in range(5):
             resp = await client.post(
                 "/api/tuya/device/active",
-                json={"gw_id": "gw_rl", "token": "tok_rl"},
+                json={"gw_id": "gw_rl", "token": _TOKEN_RL},
             )
             assert resp.status == 200
 
