@@ -110,8 +110,15 @@ describe("saveLastSsid / loadLastSsid", () => {
     expect(loadLastSsid()).toBeNull();
   });
 
-  it("returns null for SSID longer than 255 characters", () => {
-    localStorage.setItem(SSID_STORAGE_KEY, JSON.stringify({ ssid: "a".repeat(256), saved_at: Date.now() }));
+  it("returns null for SSID longer than 32 UTF-8 bytes", () => {
+    localStorage.setItem(SSID_STORAGE_KEY, JSON.stringify({ ssid: "a".repeat(33), saved_at: Date.now() }));
+    expect(loadLastSsid()).toBeNull();
+  });
+
+  it("returns null for SSID that exceeds 32 bytes via multibyte chars", () => {
+    // 'あ' is 3 bytes in UTF-8; 11 × 3 = 33 bytes > 32
+    const ssid = "あ".repeat(11);
+    localStorage.setItem(SSID_STORAGE_KEY, JSON.stringify({ ssid, saved_at: Date.now() }));
     expect(loadLastSsid()).toBeNull();
   });
 
@@ -120,10 +127,15 @@ describe("saveLastSsid / loadLastSsid", () => {
     expect(loadLastSsid()).toBe("MyNetwork");
   });
 
-  it("accepts SSID of exactly 255 characters", () => {
-    const ssid255 = "a".repeat(255);
-    localStorage.setItem(SSID_STORAGE_KEY, JSON.stringify({ ssid: ssid255, saved_at: Date.now() }));
-    expect(loadLastSsid()).toBe(ssid255);
+  it("accepts SSID of exactly 32 ASCII bytes", () => {
+    const ssid32 = "a".repeat(32);
+    localStorage.setItem(SSID_STORAGE_KEY, JSON.stringify({ ssid: ssid32, saved_at: Date.now() }));
+    expect(loadLastSsid()).toBe(ssid32);
+  });
+
+  it("returns null for non-object JSON in localStorage", () => {
+    localStorage.setItem(SSID_STORAGE_KEY, JSON.stringify("just-a-string"));
+    expect(loadLastSsid()).toBeNull();
   });
 });
 

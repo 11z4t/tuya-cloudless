@@ -373,13 +373,17 @@ function loadLastSsid() {
   try {
     const raw = localStorage.getItem(SSID_STORAGE_KEY);
     if (!raw) return null;
-    const { ssid, saved_at } = JSON.parse(raw);
+    const parsed = JSON.parse(raw);
+    // Type-guard: reject non-object or missing keys to prevent use of corrupted storage data
+    if (typeof parsed !== "object" || parsed === null) return null;
+    const { ssid, saved_at } = parsed;
     if (Date.now() - saved_at > SSID_TTL_MS) {
       try { localStorage.removeItem(SSID_STORAGE_KEY); } catch (e) { dbg("SSID cache clear failed: " + e.message); }
       return null;
     }
     const trimmed = (typeof ssid === "string" ? ssid : "").trim();
-    if (!trimmed || trimmed.length > 255) return null;
+    // Validate byte-length (WiFi SSID max 32 UTF-8 bytes), not character count
+    if (!trimmed || countUtf8Bytes(trimmed) > 32) return null;
     return trimmed;
   } catch (_) { return null; }
 }
@@ -401,7 +405,7 @@ function _safePath(raw, fallback) {
 function _safeUrl(raw, fallback) {
   if (typeof raw !== "string") return fallback;
   if (/^\/[a-zA-Z0-9/_-]*$/.test(raw)) return raw;              // relative path
-  if (/^https?:\/\/[a-zA-Z0-9._:/%@-]+$/.test(raw)) return raw; // absolute http(s)
+  if (/^https?:\/\/[a-zA-Z0-9._:/%\[\]-]+$/.test(raw)) return raw; // absolute http(s)
   return fallback;
 }
 const _PROVISION_BASE = _safePath(
@@ -685,7 +689,12 @@ async function autoDetectDevices() {
       }
       if (statusLive) statusLive.textContent = t("no_devices_auto_found");
     } else {
-      for (const ap of aps) { if (ap.ssid) showDeviceCard(ap.ssid); }
+      for (const ap of aps) {
+        // Validate SSID type + byte-length before rendering (defense against malformed API response)
+        if (ap.ssid && typeof ap.ssid === "string" && countUtf8Bytes(ap.ssid) <= 32) {
+          showDeviceCard(ap.ssid);
+        }
+      }
       dbg("Found " + aps.length + " Tuya AP(s)");
       if (noDevEl) {
         noDevEl.textContent = t("devices_found", { count: aps.length });
@@ -843,6 +852,9 @@ function goToCredentials() {
       if (lbl) lbl.textContent = t("show") || "Show";
     }
   }
+  // Clear device-discovery aria-live region so screen readers don't re-announce stale info
+  const devStatus = document.getElementById("devices-status");
+  if (devStatus) devStatus.textContent = "";
   // Contextual back label: "← Back to Devices" so user knows where they're going
   const backLbl = document.getElementById("btn-back-label");
   if (backLbl) backLbl.textContent = t("back_to_devices") || "← Back to Devices";
@@ -1552,23 +1564,25 @@ function copyShareUrl() {
   const input = document.getElementById("share-url");
   const btn = document.getElementById("btn-copy");
   const val = input ? input.value : "";
-  let copyPromise;
+  // execCommand("copy") is deprecated — use Clipboard API only.
+  // If unavailable (HTTP context), select the field so user can copy manually.
   if (navigator.clipboard && navigator.clipboard.writeText) {
-    copyPromise = navigator.clipboard.writeText(val);
+    navigator.clipboard.writeText(val).then(() => {
+      btn.textContent = t("qr_copy_done");
+      setTimeout(() => { btn.textContent = t("qr_copy_btn"); }, 2000);
+    }).catch((err) => {
+      dbg("Copy to clipboard failed: " + err.message);
+      btn.textContent = "\u2717";
+      if (input) { input.select(); }
+      setTimeout(() => { btn.textContent = t("qr_copy_btn"); }, 2000);
+    });
   } else {
-    // Legacy fallback: execCommand("copy") requires the field to be selected first
+    // No Clipboard API — select text so user can press Ctrl+C / ⌘C
     if (input) { input.select(); }
-    copyPromise = Promise.resolve(document.execCommand("copy"));
-  }
-  copyPromise.then(() => {
-    btn.textContent = t("qr_copy_done");
-    setTimeout(() => { btn.textContent = t("qr_copy_btn"); }, 2000);
-  }).catch((err) => {
-    dbg("Copy to clipboard failed: " + err.message);
-    // Show ✗ briefly so the user knows the copy did not succeed, then restore button label.
+    dbg("Clipboard API unavailable — text selected for manual copy");
     btn.textContent = "\u2717";
     setTimeout(() => { btn.textContent = t("qr_copy_btn"); }, 2000);
-  });
+  }
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────────
@@ -1640,6 +1654,7 @@ function copyShareUrl() {
   // Password show/hide toggle
   document.getElementById("btn-pwd-toggle").addEventListener("click", function() {
     const pwd = document.getElementById("password");
+    if (!pwd) return;
     const showing = pwd.type === "text";
     pwd.type = showing ? "password" : "text";
     // Update icon and label separately — do not overwrite inner spans via textContent
