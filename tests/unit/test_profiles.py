@@ -171,6 +171,27 @@ def test_load_profiles_skips_invalid(tmp_path: Path) -> None:
     assert profiles[0].name == "Good"
 
 
+@pytest.mark.parametrize(
+    "content",
+    [
+        "",  # empty file → yaml.safe_load returns None
+        "---\n",  # explicit null document
+        '"just-a-string"\n',  # scalar string at top level
+        "[1, 2, 3]\n",  # list at top level
+    ],
+    ids=["empty", "null-doc", "scalar", "list"],
+)
+def test_load_profiles_skips_null_and_non_dict_yaml(tmp_path: Path, content: str) -> None:
+    """Profiles with null/non-dict YAML content must be skipped gracefully."""
+    (tmp_path / "weird.yaml").write_text(content, encoding="utf-8")
+    (tmp_path / "good.yaml").write_text(
+        'name: "Good"\nmodel: "*"\nentities: []\n', encoding="utf-8"
+    )
+    profiles = load_profiles_from_dir(tmp_path)
+    assert len(profiles) == 1
+    assert profiles[0].name == "Good"
+
+
 def test_load_profiles_empty_dir(tmp_path: Path) -> None:
     """load_profiles_from_dir should return an empty list for an empty dir."""
     profiles = load_profiles_from_dir(tmp_path)

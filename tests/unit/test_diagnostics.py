@@ -233,3 +233,56 @@ class TestDiagnosticsRedaction:
         assert "local_key" in diag_mod._CONFIG_REDACT
         assert "gw_id" in diag_mod._CONFIG_REDACT
         assert "ip_address" in diag_mod._CONFIG_REDACT
+
+
+class TestSanitizeLastError:
+    def test_ip_in_last_error_is_redacted(self) -> None:
+        """last_error strings containing LAN IPs must have the last octet replaced."""
+        from custom_components.tuya_cloudless.diagnostics import _sanitize_last_error
+
+        raw = "Connect call failed ('192.168.1.50', 6668)"
+        result = _sanitize_last_error(raw)
+        assert result is not None
+        assert "192.168.1.**" in result
+        assert "50" not in result
+
+    def test_none_last_error_returns_none(self) -> None:
+        from custom_components.tuya_cloudless.diagnostics import _sanitize_last_error
+
+        assert _sanitize_last_error(None) is None
+
+    def test_no_ip_passes_through(self) -> None:
+        from custom_components.tuya_cloudless.diagnostics import _sanitize_last_error
+
+        msg = "[Errno 111] Connection refused"
+        assert _sanitize_last_error(msg) == msg
+
+    def test_multiple_ips_all_redacted(self) -> None:
+        from custom_components.tuya_cloudless.diagnostics import _sanitize_last_error
+
+        raw = "Tried 10.0.0.1 and 192.168.0.99 without success"
+        result = _sanitize_last_error(raw)
+        assert result is not None
+        # Both IPs must be replaced with last-octet-redacted form
+        assert "10.0.0.**" in result
+        assert "192.168.0.**" in result
+        # Original last octets must not appear as standalone values
+        assert "10.0.0.1" not in result
+        assert "192.168.0.99" not in result
+
+
+class TestSanitizeDpsNested:
+    def test_nested_dict_is_redacted(self) -> None:
+        from custom_components.tuya_cloudless.diagnostics import _sanitize_dps
+
+        dps = {"1": {"key": "value"}, "2": True}
+        result = _sanitize_dps(dps)
+        assert result["1"] == "[REDACTED-NESTED]"
+        assert result["2"] is True
+
+    def test_nested_list_is_redacted(self) -> None:
+        from custom_components.tuya_cloudless.diagnostics import _sanitize_dps
+
+        dps = {"3": [1, 2, 3]}
+        result = _sanitize_dps(dps)
+        assert result["3"] == "[REDACTED-NESTED]"

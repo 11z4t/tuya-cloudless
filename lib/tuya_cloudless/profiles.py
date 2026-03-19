@@ -198,7 +198,7 @@ def _parse_entity_spec(data: dict[str, Any]) -> EntitySpec:
         dp_color_mode=_parse_dp_spec(data.get("dp_color_mode")),
         dp_scene=_parse_dp_spec(data.get("dp_scene")),
         dp_colour_data=_parse_dp_spec(data.get("dp_colour_data")),
-        effects=tuple(data.get("effects", [])),
+        effects=tuple(str(v) for v in data.get("effects", [])),
         device_class=str(data["device_class"]) if "device_class" in data else None,
         state_class=str(data["state_class"]) if "state_class" in data else None,
         unit=str(data["unit"]) if "unit" in data else None,
@@ -231,6 +231,9 @@ def load_profile(path: Path) -> DeviceProfile:
 
     with path.open("r", encoding="utf-8") as fh:
         raw: dict[str, Any] = yaml.safe_load(fh)
+
+    if not isinstance(raw, dict):
+        raise ValueError(f"Profile YAML must be a mapping, got {type(raw).__name__}")
 
     entities = [_parse_entity_spec(e) for e in raw.get("entities", [])]
     return DeviceProfile(

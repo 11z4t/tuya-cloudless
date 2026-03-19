@@ -15,11 +15,16 @@ callables for IP and device-ID fields (10/10 target).
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.redact import REDACTED, async_redact_data
+
+# Matches the last octet of an IPv4 address embedded in error strings
+# e.g. "Connect call failed ('192.168.1.50', 6668)" → "…192.168.1.**…"
+_IP_LAST_OCTET_RE = re.compile(r"\b(\d{1,3}\.\d{1,3}\.\d{1,3})\.\d{1,3}\b")
 
 
 def _sanitize_dps(dps: dict[str, Any]) -> dict[str, Any]:
@@ -28,7 +33,9 @@ def _sanitize_dps(dps: dict[str, Any]) -> dict[str, Any]:
     - String values longer than 64 chars are replaced with ``[REDACTED-LONG]``
       to avoid leaking base64-encoded keys or large payloads.
     - Bytes values are replaced with ``[REDACTED-BYTES:<length>]``.
-    - All other values (int, bool, float) pass through unchanged.
+    - Nested dict/list values are replaced with ``[REDACTED-NESTED]`` to
+      prevent oversized or sensitive structures from leaking through.
+    - All other values (int, bool, float, None) pass through unchanged.
 
     Args:
         dps: Raw DPS dict from device state.
@@ -42,9 +49,30 @@ def _sanitize_dps(dps: dict[str, Any]) -> dict[str, Any]:
             result[k] = f"[REDACTED-BYTES:{len(v)}]"
         elif isinstance(v, str) and len(v) > 64:
             result[k] = "[REDACTED-LONG]"
+        elif isinstance(v, (dict, list)):
+            result[k] = "[REDACTED-NESTED]"
         else:
             result[k] = v
     return result
+
+
+def _sanitize_last_error(last_error: str | None) -> str | None:
+    """Redact IP addresses embedded in OSError/connection error strings.
+
+    Python OSError messages routinely include LAN IP addresses, e.g.
+    ``"Connect call failed ('192.168.1.50', 6668)"``.  Sharing diagnostics
+    would otherwise leak the device's private IP even though ``ip_address``
+    in the config section is already redacted.
+
+    Args:
+        last_error: Raw error string from coordinator state, or ``None``.
+
+    Returns:
+        Error string with IPv4 last octets replaced by ``**``, or ``None``.
+    """
+    if last_error is None:
+        return None
+    return _IP_LAST_OCTET_RE.sub(r"\1.**", last_error)
 
 
 def _partial_gw_id(value: str) -> str:
@@ -108,7 +136,7 @@ async def async_get_config_entry_diagnostics(
             "available": coord.state.available,
             "last_seen": (coord.state.last_seen.isoformat() if coord.state.last_seen else None),
             "reconnect_count": coord.state.reconnect_count,
-            "last_error": coord.state.last_error,
+            "last_error": _sanitize_last_error(coord.state.last_error),
             # NOTE: DPS values may contain sensitive device state. Review before sharing.
             "dps": _sanitize_dps(dict(coord.state.dps)),
         },
