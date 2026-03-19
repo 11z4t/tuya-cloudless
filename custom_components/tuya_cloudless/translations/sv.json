@@ -158,7 +158,8 @@
       "reauth_successful": "Säkerhetsnyckeln uppdaterades — enheten är ansluten igen",
       "reconfigure_successful": "Inställningarna uppdaterades — enheten laddas om",
       "no_device_id": "Det gick inte att identifiera enheten — kontrollera att den är påslagen och ansluten till nätverket",
-      "reauth_entry_not_found": "Enhetsposten togs bort innan omautentiseringen kunde slutföras"
+      "reauth_entry_not_found": "Enhetsposten togs bort innan omautentiseringen kunde slutföras",
+      "invalid_device_data": "Parkopplingsservern returnerade ogiltiga enhetsdata — försök para ihop igen"
     }
   },
   "exceptions": {

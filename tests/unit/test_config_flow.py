@@ -1380,12 +1380,17 @@ class TestDetectHttpsFromRequest:
     """Tests for TuyaCloudlessConfigFlow._detect_https_from_request."""
 
     def _mock_request(
-        self, scheme: str = "http", host: str = "ha.local:8123", headers: dict | None = None
+        self,
+        scheme: str = "http",
+        host: str = "ha.local:8123",
+        headers: dict | None = None,
+        remote: str = "192.168.1.50",
     ) -> Any:
         req = MagicMock()
         req.url.scheme = scheme
         req.host = host
         req.headers = headers or {}
+        req.remote = remote
         return req
 
     def test_returns_none_when_no_request_context(self) -> None:
@@ -1421,7 +1426,7 @@ class TestDetectHttpsFromRequest:
         assert result == "https://ha.example.com:8123/api/tuya_cloudless/pairing"
 
     def test_x_forwarded_proto_https_returns_pairing_url(self) -> None:
-        """X-Forwarded-Proto: https (reverse proxy) → returns HTTPS pairing URL."""
+        """X-Forwarded-Proto: https from loopback (reverse proxy) → returns HTTPS pairing URL."""
         from custom_components.tuya_cloudless.config_flow import TuyaCloudlessConfigFlow
 
         server = MagicMock()
@@ -1429,11 +1434,28 @@ class TestDetectHttpsFromRequest:
             scheme="http",
             host="192.168.1.100:8123",
             headers={"X-Forwarded-Proto": "https", "X-Forwarded-Host": "ha.example.com"},
+            remote="127.0.0.1",  # must come from loopback to trust forwarded headers
         )
         with patch("homeassistant.helpers.http.current_request") as mock_cv:
             mock_cv.get.return_value = req
             result = TuyaCloudlessConfigFlow._detect_https_from_request(server)
         assert result == "https://ha.example.com/api/tuya_cloudless/pairing"
+
+    def test_x_forwarded_proto_https_ignored_from_untrusted_peer(self) -> None:
+        """X-Forwarded-Proto: https from LAN peer (not loopback) → header ignored, returns None."""
+        from custom_components.tuya_cloudless.config_flow import TuyaCloudlessConfigFlow
+
+        server = MagicMock()
+        req = self._mock_request(
+            scheme="http",
+            host="192.168.1.100:8123",
+            headers={"X-Forwarded-Proto": "https", "X-Forwarded-Host": "evil.com"},
+            remote="192.168.1.50",  # untrusted LAN peer — headers must be ignored
+        )
+        with patch("homeassistant.helpers.http.current_request") as mock_cv:
+            mock_cv.get.return_value = req
+            result = TuyaCloudlessConfigFlow._detect_https_from_request(server)
+        assert result is None
 
     def test_returns_none_on_import_error(self) -> None:
         """Import error → returns None without crashing."""

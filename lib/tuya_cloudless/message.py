@@ -338,6 +338,9 @@ def decode_message(
     if payload_size < 0:
         msg = f"payload_len_field {payload_len_field} too small for checksum+suffix overhead"
         raise InvalidMessageError(msg)
+    if payload_size > MAX_PAYLOAD_SIZE:
+        msg = f"payload_size {payload_size} exceeds MAX_PAYLOAD_SIZE {MAX_PAYLOAD_SIZE}"
+        raise InvalidMessageError(msg)
     expected_total_bytes = HEADER_SIZE + payload_size + chk_size + SUFFIX_SIZE
 
     if len(data) < expected_total_bytes:

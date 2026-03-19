@@ -202,11 +202,18 @@ class TuyaCloudlessConfigFlow(ConfigFlow, domain=DOMAIN):
             request = current_request.get()
             if request is None:
                 return None
-            proto = request.headers.get("X-Forwarded-Proto", request.url.scheme)
-            if proto != "https":
-                return None
-            host = request.headers.get("X-Forwarded-Host", request.host)
-            return f"https://{host}/api/tuya_cloudless/pairing"
+            # Only trust X-Forwarded-Proto / X-Forwarded-Host when the TCP
+            # connection originates from a loopback reverse proxy — same guard
+            # as PairingRedirectView.  Trusting these headers from untrusted LAN
+            # peers would let an attacker redirect the BLE pairing UI to an
+            # arbitrary host.
+            peer = request.remote or ""
+            if peer in ("127.0.0.1", "::1") and request.headers.get("X-Forwarded-Proto") == "https":
+                host = request.headers.get("X-Forwarded-Host", request.host)
+                return f"https://{host}/api/tuya_cloudless/pairing"
+            if request.url.scheme == "https":
+                return f"https://{request.host}/api/tuya_cloudless/pairing"
+            return None
         except Exception:  # broad catch — must never crash the flow
             return None
 
@@ -279,11 +286,32 @@ class TuyaCloudlessConfigFlow(ConfigFlow, domain=DOMAIN):
         """
         if user_input is not None:
             # Second call: pairing server resumed us with device data.
+            # Validate all fields before storing — device-controlled values must
+            # pass the same checks as manual entry.
+            gw_id = str(user_input.get(CONF_GW_ID, "")).strip()
+            local_key = str(user_input.get(CONF_LOCAL_KEY, "")).strip()
+            ip_address = str(user_input.get("ip_address", "")).strip()
+            product_key = str(user_input.get("product_key", "")).strip()
+            if (
+                not _GW_ID_RE.match(gw_id)
+                or len(local_key) != _LOCAL_KEY_LENGTH
+                or not local_key.isascii()
+                or not local_key.isprintable()
+                or not _validate_ip(ip_address)
+            ):
+                _LOGGER.warning(
+                    "BLE activation returned invalid device data "
+                    "(gw_id=%r, key_len=%d, ip=%r) — aborting",
+                    gw_id[:64],
+                    len(local_key),
+                    ip_address,
+                )
+                return self.async_abort(reason="invalid_device_data")
             self._device = {
-                CONF_GW_ID: str(user_input.get(CONF_GW_ID, "")).strip(),
-                CONF_LOCAL_KEY: str(user_input.get(CONF_LOCAL_KEY, "")).strip(),
-                CONF_IP_ADDRESS: str(user_input.get("ip_address", "")).strip(),
-                "product_key": str(user_input.get("product_key", "")).strip(),
+                CONF_GW_ID: gw_id,
+                CONF_LOCAL_KEY: local_key,
+                CONF_IP_ADDRESS: ip_address,
+                "product_key": product_key,
             }
             return self.async_external_step_done(next_step_id="ble_confirm")
 

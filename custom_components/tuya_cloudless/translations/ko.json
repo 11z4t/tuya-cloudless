@@ -147,7 +147,8 @@
       "reauth_successful": "보안 키가 업데이트되었습니다 — 기기가 다시 연결되었습니다",
       "reconfigure_successful": "설정이 업데이트되었습니다 — 기기가 다시 로드되고 있습니다",
       "no_device_id": "기기를 식별할 수 없습니다 — 켜져 있고 네트워크에 연결되어 있는지 확인하세요",
-      "reauth_entry_not_found": "The device entry was removed before re-authentication could complete"
+      "reauth_entry_not_found": "The device entry was removed before re-authentication could complete",
+      "invalid_device_data": "The pairing server returned invalid device data — please try pairing again"
     }
   },
   "exceptions": {

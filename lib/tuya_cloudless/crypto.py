@@ -236,6 +236,8 @@ def decrypt_ecb(key: bytes, ciphertext: bytes) -> bytes:
     """
     if len(key) != _AES_BLOCK:
         raise CryptoError(f"AES key must be {_AES_BLOCK} bytes, got {len(key)}")
+    if len(ciphertext) == 0:
+        raise CryptoError("Ciphertext must not be empty")
     if len(ciphertext) % _AES_BLOCK != 0:
         raise CryptoError(f"Ciphertext length {len(ciphertext)} is not a multiple of {_AES_BLOCK}")
     iv = b"\x00" * _AES_BLOCK  # nosec B303 — protocol-mandated zero IV (see encrypt_ecb)

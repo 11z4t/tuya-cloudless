@@ -147,7 +147,8 @@
       "reauth_successful": "Sikkerhetsnøkkel oppdatert — enheten er tilkoblet igjen",
       "reconfigure_successful": "Innstillinger oppdatert — enheten lastes på nytt",
       "no_device_id": "Kunne ikke identifisere enheten — sørg for at den er slått på og koblet til nettverket",
-      "reauth_entry_not_found": "The device entry was removed before re-authentication could complete"
+      "reauth_entry_not_found": "The device entry was removed before re-authentication could complete",
+      "invalid_device_data": "The pairing server returned invalid device data — please try pairing again"
     }
   },
   "exceptions": {

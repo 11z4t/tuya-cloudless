@@ -147,7 +147,8 @@
       "reauth_successful": "Klucz bezpieczeństwa zaktualizowany — urządzenie jest ponownie połączone",
       "reconfigure_successful": "Ustawienia zaktualizowane — urządzenie jest ponownie ładowane",
       "no_device_id": "Nie można zidentyfikować urządzenia — upewnij się, że jest włączone i podłączone do sieci",
-      "reauth_entry_not_found": "The device entry was removed before re-authentication could complete"
+      "reauth_entry_not_found": "The device entry was removed before re-authentication could complete",
+      "invalid_device_data": "The pairing server returned invalid device data — please try pairing again"
     }
   },
   "exceptions": {

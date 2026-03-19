@@ -677,7 +677,7 @@ class PairingServer:
             )
             return web.Response(status=400, text="Field too long")
 
-        # Validate token format — must be 16 lowercase hex chars (secrets.token_hex(8)).
+        # Validate token format — must be 32 lowercase hex chars (secrets.token_hex(16) = 16 bytes).
         # Tokens not matching this format can never be retrieved via the GET endpoint
         # (which enforces the same regex), creating an unreachable result entry.
         if token and not _TOKEN_RE.match(token):
@@ -896,7 +896,7 @@ class PairingServer:
                     # If the write fails the client has disconnected; exit cleanly.
                     try:
                         await response.write(b": keepalive\n\n")
-                    except (ConnectionResetError, BrokenPipeError):
+                    except OSError:
                         break
                     continue
 
@@ -1647,6 +1647,12 @@ class PairingServer:
             max_requests: Max allowed requests in the window (default from constant).
             window:       Sliding window in seconds (default from constant).
         """
+        # Requests with no identifiable client IP (e.g. HA-internal calls via loopback
+        # with no X-Forwarded-For header) use the "unknown" sentinel.  Rate-limiting
+        # these would cause legitimate internal calls to exhaust each other's quota.
+        if client_ip == "unknown":
+            return False
+
         now = time.monotonic()
         timestamps = [ts for ts in self._rate_limit.get(client_ip, []) if now - ts < window]
         # Always persist the filtered list so stale timestamps are evicted even for

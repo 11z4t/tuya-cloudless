@@ -54,6 +54,10 @@ _MAX_CONSECUTIVE_ERRORS = 5
 #: Maximum receive buffer — forces reconnect if exceeded (guards against corrupt streams)
 _MAX_BUFFER_BYTES = 65_536  # 64 KB
 
+#: Maximum number of distinct DP keys allowed per device (prevents memory exhaustion
+#: from a malicious device flooding the coordinator with arbitrary key names).
+_MAX_DPS_KEYS = 256
+
 #: Initial DP_QUERY retry policy (PLAT-761)
 _DP_QUERY_MAX_RETRIES: int = 3
 _DP_QUERY_RETRY_DELAY: float = 2.0
@@ -429,8 +433,9 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     local_key=self._local_key,
                     session_key=self._session_key,
                 )
-                self._writer.write(frame)
-                await self._writer.drain()
+                async with self._send_lock:
+                    self._writer.write(frame)
+                    await self._writer.drain()
                 _LOGGER.debug("[%s] Heartbeat sent", self._gw_id)
             except (OSError, CryptoError) as exc:
                 _LOGGER.warning("[%s] Heartbeat failed: %s — closing connection", self._gw_id, exc)
@@ -482,6 +487,7 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 return
             msg_buf.feed(chunk)
 
+            all_frames_ok = True
             for tuya_msg in msg_buf.messages():
                 try:
                     if tuya_msg.payload and self._version != PROTOCOL_31:
@@ -499,9 +505,6 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                         version=self._version,
                         payload=decrypted,
                     )
-                    if self._consecutive_decode_errors > 0:
-                        self._consecutive_decode_errors = 0
-                        self._clear_auth_repair_issue()
                     self._on_frame(frame)
                 except (TuyaCloudlessError, ValueError) as exc:
                     # ValueError is caught alongside TuyaCloudlessError because
@@ -509,6 +512,7 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     # command byte is not a valid integer — this is a malformed
                     # frame, not a programming error, so treat it like any other
                     # decode failure and count toward the reconnect threshold.
+                    all_frames_ok = False
                     self._consecutive_decode_errors += 1
                     _LOGGER.debug(
                         "[%s] Frame decode error #%d: %s",
@@ -532,6 +536,7 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             # mismatches detected before decryption) — PLAT-727
             buf_errors = msg_buf.pop_error_count()
             if buf_errors > 0:
+                all_frames_ok = False
                 self._consecutive_decode_errors += buf_errors
                 _LOGGER.debug(
                     "[%s] %d buffer-level frame error(s) (total consecutive: %d)",
@@ -549,6 +554,13 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     if self._writer is not None:
                         self._writer.close()
                     return
+
+            # Reset consecutive error counter only after the entire batch
+            # (messages + buffer errors) is clean.  Resetting inside the loop
+            # would silently discard CRC errors that follow a good message.
+            if all_frames_ok and self._consecutive_decode_errors > 0:
+                self._consecutive_decode_errors = 0
+                self._clear_auth_repair_issue()
 
     def _raise_auth_repair_issue(self) -> None:
         """Create an HA repair issue directing the user to re-authenticate."""
@@ -609,6 +621,16 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         _SCALAR = (bool, int, float, str, type(None))
         dps = {k: v for k, v in raw_dps.items() if isinstance(v, _SCALAR)}
         if dps:
+            # Guard against a malicious device flooding the coordinator with
+            # arbitrary DP key names — unbounded accumulation would exhaust memory.
+            new_keys = [k for k in dps if k not in self.state.dps]
+            if len(self.state.dps) + len(new_keys) > _MAX_DPS_KEYS:
+                _LOGGER.warning(
+                    "[%s] DPS key count would exceed %d — ignoring frame",
+                    self._gw_id,
+                    _MAX_DPS_KEYS,
+                )
+                return
             # Accumulate DP IDs seen across all frames for auto-detection (PLAT-778).
             # Use union so DPs that arrive in later frames (e.g. a separate status
             # push after the initial DP_QUERY response) are also captured.

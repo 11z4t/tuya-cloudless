@@ -147,7 +147,8 @@
       "reauth_successful": "Bezpečnostní klíč aktualizován — zařízení je opět připojeno",
       "reconfigure_successful": "Nastavení aktualizováno — zařízení se znovu načítá",
       "no_device_id": "Nepodařilo se identifikovat zařízení — ujistěte se, že je zapnuté a připojené k síti",
-      "reauth_entry_not_found": "The device entry was removed before re-authentication could complete"
+      "reauth_entry_not_found": "The device entry was removed before re-authentication could complete",
+      "invalid_device_data": "The pairing server returned invalid device data — please try pairing again"
     }
   },
   "exceptions": {

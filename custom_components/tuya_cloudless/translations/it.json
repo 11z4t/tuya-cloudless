@@ -147,7 +147,8 @@
       "reauth_successful": "Chiave di sicurezza aggiornata — il dispositivo è di nuovo connesso",
       "reconfigure_successful": "Impostazioni aggiornate — il dispositivo si sta ricaricando",
       "no_device_id": "Impossibile identificare il dispositivo — assicurati che sia acceso e connesso alla rete",
-      "reauth_entry_not_found": "The device entry was removed before re-authentication could complete"
+      "reauth_entry_not_found": "The device entry was removed before re-authentication could complete",
+      "invalid_device_data": "The pairing server returned invalid device data — please try pairing again"
     }
   },
   "exceptions": {
