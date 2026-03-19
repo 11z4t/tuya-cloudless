@@ -37,6 +37,17 @@ from custom_components.tuya_cloudless.pairing_server import (  # noqa: E402
     stop_pairing_server,
 )
 
+# ── Test token constants (must be exactly 32 lowercase hex chars) ──────────────
+# Real tokens come from secrets.token_hex(16) which always produces this format.
+_TOKEN_A = "aa" * 16  # "aaaa...aa" (32 chars)
+_TOKEN_B = "bb" * 16  # "bbbb...bb" (32 chars)
+_TOKEN_C = "cc" * 16
+_TOKEN_D = "dd" * 16  # used for multi-token tests
+_TOKEN_E = "ee" * 16  # used for multi-token tests
+_TOKEN_REUSE = "f1" * 16  # used for token-reuse test
+_TOKEN_CORS = "c0" * 16  # used for CORS tests
+_TOKEN_UNKNOWN = "f0" * 16  # used for "token not yet in results" tests
+
 # ── Fixtures ──────────────────────────────────────────────────────────────────
 
 
@@ -153,10 +164,10 @@ class TestActivateEndpoint:
     async def test_result_stored_by_token(self, client: TestClient) -> None:
         await client.post(
             "/api/tuya/device/active",
-            json={"gw_id": "stored_gw", "token": "test_token"},
+            json={"gw_id": "stored_gw", "token": _TOKEN_A},
         )
         # Verify via the result endpoint
-        resp = await client.get("/api/provision/result/test_token")
+        resp = await client.get(f"/api/provision/result/{_TOKEN_A}")
         assert resp.status == 200
 
     async def test_empty_body_accepted(self, client: TestClient) -> None:
@@ -237,11 +248,11 @@ class TestActivateEndpoint:
         resp1, resp2 = await asyncio.gather(
             client.post(
                 "/api/tuya/device/active",
-                json={"gw_id": "gw-concurrent-1", "token": "tok-concurrent-1"},
+                json={"gw_id": "gw-concurrent-1", "token": _TOKEN_A},
             ),
             client.post(
                 "/api/tuya/device/active",
-                json={"gw_id": "gw-concurrent-2", "token": "tok-concurrent-2"},
+                json={"gw_id": "gw-concurrent-2", "token": _TOKEN_B},
             ),
         )
         assert resp1.status == 200
@@ -256,8 +267,8 @@ class TestActivateEndpoint:
         assert body1["result"]["localKey"] != body2["result"]["localKey"]
 
         # Verify result endpoint returns the correct device for each token
-        r1 = await client.get("/api/provision/result/tok-concurrent-1")
-        r2 = await client.get("/api/provision/result/tok-concurrent-2")
+        r1 = await client.get(f"/api/provision/result/{_TOKEN_A}")
+        r2 = await client.get(f"/api/provision/result/{_TOKEN_B}")
         assert r1.status == 200
         assert r2.status == 200
         d1 = await r1.json()
@@ -271,28 +282,28 @@ class TestActivateEndpoint:
 
 class TestResultEndpoint:
     async def test_pending_returns_202(self, client: TestClient) -> None:
-        resp = await client.get("/api/provision/result/unknown_token")
+        resp = await client.get(f"/api/provision/result/{_TOKEN_UNKNOWN}")
         assert resp.status == 202
 
     async def test_pending_body(self, client: TestClient) -> None:
-        resp = await client.get("/api/provision/result/unknown_token")
+        resp = await client.get(f"/api/provision/result/{_TOKEN_UNKNOWN}")
         body = await resp.json()
         assert body["status"] == "pending"
 
     async def test_ok_after_activation(self, client: TestClient) -> None:
         await client.post(
             "/api/tuya/device/active",
-            json={"gw_id": "gw_ok", "token": "tok_ok"},
+            json={"gw_id": "gw_ok", "token": _TOKEN_A},
         )
-        resp = await client.get("/api/provision/result/tok_ok")
+        resp = await client.get(f"/api/provision/result/{_TOKEN_A}")
         assert resp.status == 200
 
     async def test_ok_body_has_fields(self, client: TestClient) -> None:
         await client.post(
             "/api/tuya/device/active",
-            json={"gw_id": "gw_fields", "product_key": "pk", "token": "tok_fields"},
+            json={"gw_id": "gw_fields", "product_key": "pk", "token": _TOKEN_B},
         )
-        resp = await client.get("/api/provision/result/tok_fields")
+        resp = await client.get(f"/api/provision/result/{_TOKEN_B}")
         body = await resp.json()
         assert body["status"] == "ok"
         assert body["gw_id"] == "gw_fields"
@@ -302,9 +313,9 @@ class TestResultEndpoint:
     async def test_ip_address_in_result(self, client: TestClient) -> None:
         await client.post(
             "/api/tuya/device/active",
-            json={"gw_id": "gw", "token": "tok_ip"},
+            json={"gw_id": "gw", "token": _TOKEN_C},
         )
-        resp = await client.get("/api/provision/result/tok_ip")
+        resp = await client.get(f"/api/provision/result/{_TOKEN_C}")
         body = await resp.json()
         assert "ip_address" in body
 
@@ -323,19 +334,19 @@ class TestResultEndpoint:
         # First, activate the device so a result exists
         await client.post(
             "/api/tuya/device/active",
-            json={"gw_id": "gw_expired", "token": "tok_will_expire"},
+            json={"gw_id": "gw_expired", "token": _TOKEN_A},
         )
         # Verify it's available while fresh
-        resp_ok = await client.get("/api/provision/result/tok_will_expire")
+        resp_ok = await client.get(f"/api/provision/result/{_TOKEN_A}")
         assert resp_ok.status == 200
 
         # Backdate the result's timestamp past the TTL
-        result = server._results["tok_will_expire"]
+        result = server._results[_TOKEN_A]
         expired_ts = time.monotonic() - (_RESULT_TTL_SECS + 10)
         object.__setattr__(result, "timestamp", expired_ts)
 
         # Now the result should be treated as expired → 202 pending
-        resp_expired = await client.get("/api/provision/result/tok_will_expire")
+        resp_expired = await client.get(f"/api/provision/result/{_TOKEN_A}")
         assert resp_expired.status == 202
         body = await resp_expired.json()
         assert body["status"] == "pending"
@@ -346,7 +357,7 @@ class TestResultEndpoint:
         Without this header, polling clients may cache the 202 and stop re-polling,
         causing device activation to silently fail from the client's perspective.
         """
-        resp = await client.get("/api/provision/result/never_existed")
+        resp = await client.get(f"/api/provision/result/{_TOKEN_UNKNOWN}")
         assert resp.status == 202
         cache_ctrl = resp.headers.get("Cache-Control", "")
         assert "no-cache" in cache_ctrl, (
@@ -2455,11 +2466,11 @@ class TestActivateResponseStructure:
         """
         resp1 = await client.post(
             "/api/tuya/device/active",
-            json={"gw_id": "shared_gw", "token": "tok_reactivate_1"},
+            json={"gw_id": "shared_gw", "token": _TOKEN_D},
         )
         resp2 = await client.post(
             "/api/tuya/device/active",
-            json={"gw_id": "shared_gw", "token": "tok_reactivate_2"},
+            json={"gw_id": "shared_gw", "token": _TOKEN_E},
         )
         body1 = await resp1.json()
         body2 = await resp2.json()
@@ -2470,8 +2481,8 @@ class TestActivateResponseStructure:
         assert body1["result"]["localKey"] != body2["result"]["localKey"]
 
         # Both tokens must be retrievable independently
-        r1 = await client.get("/api/provision/result/tok_reactivate_1")
-        r2 = await client.get("/api/provision/result/tok_reactivate_2")
+        r1 = await client.get(f"/api/provision/result/{_TOKEN_D}")
+        r2 = await client.get(f"/api/provision/result/{_TOKEN_E}")
         assert (await r1.json())["status"] == "ok"
         assert (await r2.json())["status"] == "ok"
 
@@ -2536,18 +2547,18 @@ class TestActivateResponseStructure:
         # First activation
         resp1 = await client.post(
             "/api/tuya/device/active",
-            json={"gw_id": "device-first", "token": "reuse-tok"},
+            json={"gw_id": "device-first", "token": _TOKEN_REUSE},
         )
         key1 = (await resp1.json())["result"]["localKey"]
 
         # Second activation: same token, different gw_id
         await client.post(
             "/api/tuya/device/active",
-            json={"gw_id": "device-second", "token": "reuse-tok"},
+            json={"gw_id": "device-second", "token": _TOKEN_REUSE},
         )
 
         # Result endpoint must reflect the second activation
-        result_resp = await client.get("/api/provision/result/reuse-tok")
+        result_resp = await client.get(f"/api/provision/result/{_TOKEN_REUSE}")
         assert result_resp.status == 200
         result = await result_resp.json()
         assert result["gw_id"] == "device-second", (
@@ -3665,9 +3676,9 @@ class TestStrictCors:
         """After activation, result endpoint must still not send wildcard CORS."""
         await client.post(
             "/api/tuya/device/active",
-            json={"gw_id": "gw_cors", "token": "tok_cors"},
+            json={"gw_id": "gw_cors", "token": _TOKEN_CORS},
         )
-        resp = await client.get("/api/provision/result/tok_cors")
+        resp = await client.get(f"/api/provision/result/{_TOKEN_CORS}")
         assert resp.status == 200
         cors = resp.headers.get("Access-Control-Allow-Origin", "")
         assert cors != "*", "Result endpoint (ok) must not send wildcard CORS"

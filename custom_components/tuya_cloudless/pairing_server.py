@@ -678,12 +678,14 @@ class PairingServer:
                 self._results[token] = result
                 self._expire_old_results()
 
-        # Notify SSE subscribers
+        # Notify SSE subscribers.  local_key is intentionally excluded here —
+        # it is sensitive and the stream has no per-subscriber authentication.
+        # The browser retrieves the key via GET /api/provision/result/{token}
+        # which is only useful to the holder of the token.
         event_data = {
             "gw_id": gw_id,
-            "local_key": local_key,
-            "ip_address": client_ip,
             "token": token,
+            "ip_address": client_ip,
         }
         await self._broadcast_sse("activated", json.dumps(event_data))
 
@@ -700,6 +702,10 @@ class PairingServer:
                 await self._hass.config_entries.flow.async_configure(fid, flow_data)
             except Exception:  # flow may have been cancelled or removed by user
                 _LOGGER.debug("Flow %s no longer active — skipping resume", fid)
+            finally:
+                # Always clean up — prevents stale IDs from accumulating and
+                # keeps _pending_flows accurate for auto-stop logic.
+                self._pending_flows.discard(fid)
 
         for flow_id in list(self._pending_flows):
             self._hass.async_create_task(_resume_flow(flow_id))
@@ -733,6 +739,10 @@ class PairingServer:
             JSON response with device info + local_key, or 202 if pending.
         """
         token = request.match_info["token"]
+        # Validate token format — secrets.token_hex(16) produces exactly 32
+        # lowercase hex characters.  Reject anything else before dict lookup.
+        if not re.fullmatch(r"[0-9a-f]{32}", token):
+            return web.Response(status=404, text="Not Found")
         result = self.get_result(token)
 
         if result is None:

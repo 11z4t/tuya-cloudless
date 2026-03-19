@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import ipaddress
 import logging
 import sys
 from dataclasses import dataclass
@@ -64,6 +65,20 @@ _LOGGER = logging.getLogger(__name__)
 # Per-hass domain data keys
 _KEY_PROFILE_REGISTRY = "profile_registry"
 _KEY_PROFILE_LOCK = "profile_lock"
+
+
+def _safe_device_url(ip_address: str) -> str | None:
+    """Return a device URL only when ``ip_address`` is a valid IP literal.
+
+    Rejects empty strings, hostnames, and any value that could produce a
+    malformed or attacker-controlled ``configuration_url`` in DeviceInfo.
+    Returns ``None`` when invalid so HA omits the link from the device card.
+    """
+    try:
+        ipaddress.ip_address(ip_address)  # raises ValueError for non-IP input
+        return f"http://{ip_address}"
+    except ValueError:
+        return None
 
 
 async def _ensure_profiles(hass: HomeAssistant) -> None:
@@ -203,7 +218,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         manufacturer="Tuya",
         model=profile_name or "Tuya Cloudless",
         serial_number=entry.data[CONF_GW_ID],
-        configuration_url=f"http://{entry.data.get(CONF_IP_ADDRESS, '')}",
+        configuration_url=_safe_device_url(entry.data.get(CONF_IP_ADDRESS, "")),
     )
 
     coordinator = TuyaCloudlessCoordinator.from_config_entry(hass, entry, device_info=device_info)

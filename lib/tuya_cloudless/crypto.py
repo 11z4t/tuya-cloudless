@@ -181,8 +181,12 @@ def encrypt_ecb(key: bytes, plaintext: bytes) -> bytes:
     if len(key) != _AES_BLOCK:
         raise CryptoError(f"AES key must be {_AES_BLOCK} bytes, got {len(key)}")
     padded = _pad_pkcs7(plaintext)
-    iv = b"\x00" * _AES_BLOCK
-    cipher = Cipher(algorithms.AES(key), modes.CBC(iv))
+    # Tuya LAN protocol v3.1-3.3 mandates AES-128-CBC with a fixed zero IV.
+    # This is a protocol constraint — do NOT change to a random IV (breaks compat).
+    # Known weakness: identical first plaintext blocks → identical first ciphertext
+    # blocks.  v3.4/3.5 devices use AES-GCM (encrypt_gcm) which is not affected.
+    iv = b"\x00" * _AES_BLOCK  # nosec B303 — protocol-mandated zero IV
+    cipher = Cipher(algorithms.AES(key), modes.CBC(iv))  # nosec B303
     encryptor = cipher.encryptor()
     return encryptor.update(padded) + encryptor.finalize()
 
@@ -204,8 +208,8 @@ def decrypt_ecb(key: bytes, ciphertext: bytes) -> bytes:
         raise CryptoError(f"AES key must be {_AES_BLOCK} bytes, got {len(key)}")
     if len(ciphertext) % _AES_BLOCK != 0:
         raise CryptoError(f"Ciphertext length {len(ciphertext)} is not a multiple of {_AES_BLOCK}")
-    iv = b"\x00" * _AES_BLOCK
-    cipher = Cipher(algorithms.AES(key), modes.CBC(iv))
+    iv = b"\x00" * _AES_BLOCK  # nosec B303 — protocol-mandated zero IV (see encrypt_ecb)
+    cipher = Cipher(algorithms.AES(key), modes.CBC(iv))  # nosec B303
     decryptor = cipher.decryptor()
     padded = decryptor.update(ciphertext) + decryptor.finalize()
     return _unpad_pkcs7(padded)
