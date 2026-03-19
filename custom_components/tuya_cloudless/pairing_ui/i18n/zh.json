@@ -93,5 +93,6 @@
   "step2_hint_2": "Wait until the LED flashes rapidly",
   "step2_hint_3": "Click Scan & Pair below",
   "btn_try_again": "重试",
-  "label_network": "网络"
+  "label_network": "网络",
+  "spin_waiting_hint": "通常需要 15–30 秒"
 }

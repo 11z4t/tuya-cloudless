@@ -93,5 +93,6 @@
   "step2_hint_2": "Vänta tills lysdioden blinkar snabbt",
   "step2_hint_3": "Klicka på Sök & Parkoppla nedan",
   "btn_try_again": "Försök igen",
-  "label_network": "Nätverk"
+  "label_network": "Nätverk",
+  "spin_waiting_hint": "Brukar ta 15–30 sekunder"
 }

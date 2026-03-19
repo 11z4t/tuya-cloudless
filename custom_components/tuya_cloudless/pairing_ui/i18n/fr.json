@@ -93,5 +93,6 @@
   "step2_hint_2": "Wait until the LED flashes rapidly",
   "step2_hint_3": "Click Scan & Pair below",
   "btn_try_again": "Réessayer",
-  "label_network": "Réseau"
+  "label_network": "Réseau",
+  "spin_waiting_hint": "Généralement 15–30 secondes"
 }

@@ -288,6 +288,9 @@ function applyStrings() {
   // Re-apply inline retry button text if it is currently shown
   const retryPairBtn = document.getElementById("retry-pair-btn");
   if (retryPairBtn) retryPairBtn.textContent = t("btn_try_again") || "Try Again";
+  // Re-apply BLE network label (localised prefix for the network pill)
+  const bleNetworkLabelEl = document.getElementById("ble-network-label");
+  if (bleNetworkLabelEl) bleNetworkLabelEl.textContent = (t("label_network") || "Network") + ":";
 }
 
 function changeLang(lang) {
@@ -928,6 +931,20 @@ function goToStep2() {
   // Contextual back label: "← Back to WiFi"
   const blePanelBackLbl = document.getElementById("btn-back-ble-label");
   if (blePanelBackLbl) blePanelBackLbl.textContent = t("back_to_wifi") || "← Back to WiFi";
+  // Show which WiFi network the device will connect to so user can confirm before scanning
+  const bleNetworkInfo = document.getElementById("ble-network-info");
+  const bleNetworkName = document.getElementById("ble-network-name");
+  const bleNetworkLabel = document.getElementById("ble-network-label");
+  if (bleNetworkInfo && bleNetworkName) {
+    if (_ssid) {
+      if (bleNetworkLabel) bleNetworkLabel.textContent = (t("label_network") || "Network") + ":";
+      bleNetworkName.textContent = _ssid;
+      bleNetworkInfo.classList.remove("hidden");
+      bleNetworkInfo.style.display = "flex";
+    } else {
+      bleNetworkInfo.classList.add("hidden");
+    }
+  }
   // Move focus to the BLE panel heading so screen readers announce the new panel
   const bleTitle = document.getElementById("step2-title");
   if (bleTitle && typeof bleTitle.focus === "function") {
@@ -1528,7 +1545,16 @@ async function startPairing() {
     if (ack.cmd === CMD_PAIR_FAIL) throw new Error(t("err_pair_fail"));
 
     dbg(t("spin_waiting"));
-    showPairStep(4, t("spin_waiting"));
+    // Step 4: credentials sent — now passively waiting for server-side activation.
+    // Use success-style (green) with pulsing LED to signal "waiting" vs "actively working".
+    setPairStatus("status-success",
+      "<span style=\"display:flex;align-items:center;gap:8px\">" +
+      "<span class=\"device-led\" style=\"flex-shrink:0\" aria-hidden=\"true\"></span>" +
+      "<span><span style=\"opacity:.6;font-size:.8em;margin-right:4px\">(4/4)</span>" +
+      esc(t("spin_waiting")) + "</span></span>" +
+      "<div style=\"font-size:0.78em;opacity:0.65;margin-top:5px;padding-left:16px\">" +
+      esc(t("spin_waiting_hint") || "Usually 15\u201330 seconds") + "</div>"
+    );
 
     if (typeof _cleanupNotify === "function") { _cleanupNotify(); _cleanupNotify = null; }
     if (device && _onDisconnected) { device.removeEventListener("gattserverdisconnected", _onDisconnected); _onDisconnected = null; }

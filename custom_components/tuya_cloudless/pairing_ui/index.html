@@ -685,6 +685,13 @@
       <span id="step2-title">Pair device via Bluetooth</span>
       <span class="badge" id="step2-badge">Chrome / Edge</span>
     </h2>
+    <!-- Selected network pill — shown when WiFi credentials have been entered -->
+    <div id="ble-network-info" class="step-hint hidden"
+         style="display:flex;align-items:center;gap:6px;background:rgba(52,211,153,0.08);border:1px solid rgba(52,211,153,0.2);border-radius:6px;padding:8px 12px;">
+      <span aria-hidden="true" style="color:var(--success)">📶</span>
+      <span id="ble-network-label" style="color:var(--muted);font-size:0.82rem"></span>
+      <span id="ble-network-name" style="font-weight:600;font-size:0.9rem;word-break:break-all"></span>
+    </div>
     <p class="step-desc" id="step2-desc">Make sure your device is flashing rapidly (pairing mode).</p>
     <ol class="pairing-steps" id="step2-hint" aria-label="Pairing instructions">
       <li id="step2-hint-1">Put device in pairing mode — hold pair button 5–10 sec (or factory reset)</li>

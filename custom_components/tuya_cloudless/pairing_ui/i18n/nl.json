@@ -93,5 +93,6 @@
   "step2_hint_2": "Wait until the LED flashes rapidly",
   "step2_hint_3": "Click Scan & Pair below",
   "btn_try_again": "Opnieuw proberen",
-  "label_network": "Netwerk"
+  "label_network": "Netwerk",
+  "spin_waiting_hint": "Duurt gewoonlijk 15–30 seconden"
 }
