@@ -612,7 +612,8 @@ async function autoDetectDevices() {
     }
     if (!r.ok) throw new Error("scan HTTP " + r.status);
     const data = await r.json();
-    const aps = data.tuya_aps || [];
+    // Defensive: tuya_aps must be an array; reject other types (null, object, string)
+    const aps = Array.isArray(data.tuya_aps) ? data.tuya_aps : [];
     if (scanEl) scanEl.style.display = "none";
     const statusLive = document.getElementById("devices-status");
     if (aps.length === 0) {
@@ -626,7 +627,8 @@ async function autoDetectDevices() {
       dbg("Found " + aps.length + " Tuya AP(s)");
       if (statusLive) statusLive.textContent = aps.length + " " + t("pair_via_wifi_ap");
     }
-  } catch (_) {
+  } catch (err) {
+    dbg("quick-scan failed: " + (err.message || err));
     if (scanEl) scanEl.style.display = "none";
     if (noDevEl) {
       noDevEl.textContent = t("no_devices_auto_found");
