@@ -2372,3 +2372,81 @@ test.describe("goToDevices auto-scan on back navigation", () => {
     expect(scanCount).toBeGreaterThan(countAfterInit);
   });
 });
+
+test.describe("BLE SSE malformed JSON — immediate error", () => {
+  test("malformed JSON in activated SSE event shows error and re-enables pair button", async ({ page }) => {
+    await setupRoutes(page);
+    // mockBle with null → sets up BLE hardware (navigator.bluetooth) but fires no activation.
+    // A second addInitScript runs AFTER, overriding EventSource with one that sends malformed JSON.
+    await mockBle(page, null);
+    await page.addInitScript(() => {
+      window.EventSource = class MalformedJsonEventSource {
+        constructor() { this.readyState = 1; this._cbs = {}; }
+        addEventListener(evt, cb) {
+          if (!this._cbs[evt]) this._cbs[evt] = [];
+          this._cbs[evt].push(cb);
+          if (evt === "activated") {
+            // Fire malformed JSON after a short delay — simulates a corrupt SSE frame
+            setTimeout(() => { cb({ data: "not-valid-json{{{" }); }, 200);
+          }
+        }
+        set onerror(_fn) {}
+        close() { this.readyState = 2; }
+      };
+    });
+
+    await loadPage(page);
+    await navigateToCredentials(page);
+    await page.locator("#ssid").fill("MyNet");
+    await page.locator("#btn-next").click();
+
+    // BLE panel — click Scan & Pair to start the flow
+    await expect(page.locator("#panel-ble")).toBeVisible();
+    await page.locator("#btn-pair").click();
+
+    // After malformed JSON fires (200ms), error must be shown immediately — not 120s later
+    await expect(page.locator("#pair-status")).toHaveClass(/status-error/, { timeout: 2000 });
+    // Pair button must be re-enabled so the user can retry
+    await expect(page.locator("#btn-pair")).toBeEnabled({ timeout: 2000 });
+    // Done screen must NOT appear
+    await expect(page.locator("#panel-done")).toBeHidden();
+  });
+});
+
+test.describe("Copy URL button — clipboard failure feedback", () => {
+  test("clipboard failure shows ✗ in button text briefly then resets", async ({ page }) => {
+    await setupRoutes(page);
+    // Simulate a non-BLE browser so the QR / copy section is shown:
+    //   - isSecureContext = true   → qr-section is shown (not just the browser warning)
+    //   - navigator.bluetooth = undefined → triggers the "no BLE" branch
+    //   - not iOS / not Android   → desktop path → qr-section reveals
+    await page.addInitScript(() => {
+      Object.defineProperty(window, "isSecureContext", { get: () => true });
+      Object.defineProperty(navigator, "bluetooth", { get: () => undefined, configurable: true });
+      // Stub clipboard to reject so we exercise the failure path
+      Object.defineProperty(navigator, "clipboard", {
+        get: () => ({
+          writeText: () => Promise.reject(new Error("Permission denied")),
+        }),
+        configurable: true,
+      });
+    });
+
+    await loadPage(page);
+    await navigateToCredentials(page);
+    await page.locator("#ssid").fill("TestNet");
+    await page.locator("#btn-next").click();
+
+    // BLE panel — qr-section should be visible (no BLE + secure context + desktop)
+    await expect(page.locator("#qr-section")).toBeVisible({ timeout: 2000 });
+
+    // Click the Copy button — clipboard will reject
+    await page.locator("#btn-copy").click();
+
+    // Button should briefly show ✗ to signal failure
+    await expect(page.locator("#btn-copy")).toHaveText("✗", { timeout: 1000 });
+
+    // After 2s, button text resets to the original label
+    await expect(page.locator("#btn-copy")).not.toHaveText("✗", { timeout: 3000 });
+  });
+});

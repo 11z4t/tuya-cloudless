@@ -1085,7 +1085,14 @@ function listenForActivation(token) {
       } else if (d.gw_id === undefined || d.local_key === undefined) {
         dbg("SSE activated: missing gw_id or local_key");
       }
-    } catch (err) { dbg("SSE parse error: " + err.message); }
+    } catch (err) {
+      dbg("SSE parse error: " + err.message);
+      clearTimeout(sseTimer); _activeSseTimer = null;
+      es.close();
+      setPairStatus("status-error", "\u274C " + esc(t("err_sse_lost")));
+      const pairBtnErr = document.getElementById("btn-pair");
+      if (pairBtnErr) pairBtnErr.disabled = false;
+    }
   });
   es.onerror = () => {
     clearTimeout(sseTimer); _activeSseTimer = null;
@@ -1169,7 +1176,11 @@ async function pairViaWifiAp() {
       } else if (d.gw_id === undefined || d.local_key === undefined) {
         dbg("SSE activated: missing gw_id or local_key in payload");
       }
-    } catch (err) { dbg("SSE parse error (activated): " + err.message); }
+    } catch (err) {
+      dbg("SSE parse error (activated): " + err.message);
+      wifiApCleanup(true);
+      setWifiApStatus("status-error", "\u274C " + esc(t("wifi_ap_error")));
+    }
   });
   es.addEventListener("wifi_ap_error", (e) => {
     try {
@@ -1179,7 +1190,11 @@ async function pairViaWifiAp() {
         setWifiApStatus("status-error", "\u274C " + esc(t("wifi_ap_error")));
         dbg("WiFi AP error: " + (d.error || "unknown"));
       }
-    } catch (err) { dbg("SSE parse error (wifi_ap_error): " + err.message); }
+    } catch (err) {
+      dbg("SSE parse error (wifi_ap_error): " + err.message);
+      wifiApCleanup(true);
+      setWifiApStatus("status-error", "\u274C " + esc(t("wifi_ap_error")));
+    }
   });
   es.onerror = () => {
     if (!_wifiApDone) {
@@ -1380,7 +1395,12 @@ function copyShareUrl() {
   copyPromise.then(() => {
     btn.textContent = t("qr_copy_done");
     setTimeout(() => { btn.textContent = t("qr_copy_btn"); }, 2000);
-  }).catch((err) => { dbg("Copy to clipboard failed: " + err.message); });
+  }).catch((err) => {
+    dbg("Copy to clipboard failed: " + err.message);
+    // Show ✗ briefly so the user knows the copy did not succeed, then restore button label.
+    btn.textContent = "\u2717";
+    setTimeout(() => { btn.textContent = t("qr_copy_btn"); }, 2000);
+  });
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────────
