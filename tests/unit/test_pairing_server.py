@@ -4393,3 +4393,35 @@ class TestActivateGwIdValidation:
             json={"gw_id": "gwvalid", "product_key": "pk\u0400", "token": _TOKEN_A},
         )
         assert resp.status == 400
+
+
+class TestActivateBodyDataNesting:
+    """R20-2: body["data"] must be ignored when it is not a dict."""
+
+    @pytest.mark.asyncio
+    async def test_non_dict_data_field_falls_back_to_body(self, client: TestClient) -> None:
+        """When body['data'] is a string, gw_id must be read from body (not crash)."""
+        resp = await client.post(
+            "/api/tuya/device/active",
+            json={"data": "malicious_string", "gw_id": "fallback_gw"},
+        )
+        # Must not return 500 — the handler must fall back to reading body
+        assert resp.status in (200, 400)
+
+    @pytest.mark.asyncio
+    async def test_null_data_field_falls_back_to_body(self, client: TestClient) -> None:
+        """When body['data'] is null, gw_id must be read from body."""
+        resp = await client.post(
+            "/api/tuya/device/active",
+            json={"data": None, "gw_id": "fallback_gw"},
+        )
+        assert resp.status in (200, 400)
+
+    @pytest.mark.asyncio
+    async def test_integer_data_field_falls_back_to_body(self, client: TestClient) -> None:
+        """When body['data'] is an integer, gw_id must be read from body."""
+        resp = await client.post(
+            "/api/tuya/device/active",
+            json={"data": 42, "gw_id": "fallback_gw"},
+        )
+        assert resp.status in (200, 400)

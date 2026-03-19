@@ -659,7 +659,8 @@ class PairingServer:
             body = {}
 
         # Support both top-level and nested ``data`` field
-        data: dict[str, object] = body.get("data", body)  # type: ignore[assignment]
+        raw_data = body.get("data", body)
+        data: dict[str, object] = raw_data if isinstance(raw_data, dict) else body
 
         gw_id = str(data.get("gw_id") or data.get("gwId") or "")
         product_key = str(data.get("product_key") or data.get("productKey") or "")

@@ -592,6 +592,7 @@ class BleProvisioner:
             # prevent notify_event from ever being set and cause a timeout.
             if len(recv_chunks) >= 512:
                 recv_chunks.clear()
+                notify_event.clear()  # Reset so the next frame's last chunk sets it
             recv_chunks.append(bytes(data))
             if data[0] + 1 == data[1]:  # last chunk (chunk_no + 1 == total)
                 notify_event.set()

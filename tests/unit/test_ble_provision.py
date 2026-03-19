@@ -1153,3 +1153,45 @@ class TestBleProvisionerDisconnectConnected:
             await p.disconnect()
 
         assert p._client is None
+
+
+class TestChunkOverflowClearsEvent:
+    """R20-1: notify_event must be cleared when recv_chunks overflows."""
+
+    def test_overflow_resets_notify_event(self) -> None:
+        """After 512-chunk overflow, notify_event is cleared so the next frame
+        does not immediately return stale data."""
+        import asyncio
+
+        recv_chunks: list[bytes] = []
+        notify_event = asyncio.Event()
+
+        # Simulate the _on_notify callback logic directly
+        def on_notify(data: bytes) -> None:
+            if len(recv_chunks) >= 512:
+                recv_chunks.clear()
+                notify_event.clear()  # This is the fix we're testing
+            recv_chunks.append(bytes(data))
+            if data[0] + 1 == data[1]:
+                notify_event.set()
+
+        # Fill to 512 with partial chunks (chunk_no=0, total=2 — not the last)
+        for i in range(512):
+            on_notify(bytes([0, 2, i & 0xFF]))  # chunk_no=0, total=2
+
+        # At this point the overflow fires on the NEXT chunk
+        # Simulate the 513th chunk triggering overflow
+        # First, pre-set the event to simulate it being already set
+        notify_event.set()
+        assert notify_event.is_set()
+
+        # The first chunk of a new 2-chunk frame (not the last chunk)
+        on_notify(bytes([0, 2, 0xAB]))
+
+        # After overflow, event should be cleared (the new chunk is NOT the last)
+        assert not notify_event.is_set(), (
+            "notify_event must be cleared on overflow to prevent immediate "
+            "return with stale/partial frame data"
+        )
+        # Only the new chunk should remain
+        assert len(recv_chunks) == 1

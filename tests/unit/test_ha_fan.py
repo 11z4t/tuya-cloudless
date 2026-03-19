@@ -889,3 +889,36 @@ class TestFanSetDirectionDpDirectionNone:
         e = _make_fan({}, spec=_make_power_only_fan_spec())
         await e.async_set_direction("reverse")
         e.coordinator.async_send_dps.assert_not_awaited()
+
+
+class TestFanDirectionValidation:
+    """R20-5: async_set_direction must reject values other than forward/reverse."""
+
+    @pytest.mark.asyncio
+    async def test_invalid_direction_not_sent(self) -> None:
+        """An invalid direction string must not be forwarded to the device."""
+        e = _make_fan({"1": True})
+        await e.async_set_direction("__invalid__")
+        e.coordinator.async_send_dps.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_invalid_direction_does_not_set_optimistic(self) -> None:
+        """An invalid direction must not update the optimistic state."""
+        e = _make_fan({"1": True})
+        e._optimistic_direction = None
+        await e.async_set_direction("__invalid__")
+        assert e._optimistic_direction is None
+
+    @pytest.mark.asyncio
+    async def test_forward_accepted(self) -> None:
+        """'forward' is a valid HA fan direction and must be sent."""
+        e = _make_fan({"1": True})
+        await e.async_set_direction("forward")
+        e.coordinator.async_send_dps.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_reverse_accepted(self) -> None:
+        """'reverse' is a valid HA fan direction and must be sent."""
+        e = _make_fan({"1": True})
+        await e.async_set_direction("reverse")
+        e.coordinator.async_send_dps.assert_awaited_once()

@@ -358,6 +358,13 @@ class TuyaCloudlessFan(RestoreStateMixin, TuyaCloudlessEntity, FanEntity):
         """
         if self._spec.dp_direction is None:
             return
+        if direction not in ("forward", "reverse"):
+            _LOGGER.warning(
+                "[%s] Direction '%s' is not a valid HA fan direction — ignored",
+                self.coordinator.gw_id,
+                direction,
+            )
+            return
         self._optimistic_direction = direction
         self.async_write_ha_state()
         try:

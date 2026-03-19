@@ -251,7 +251,10 @@ class TuyaCloudlessLight(RestoreStateMixin, TuyaCloudlessEntity, LightEntity):
             return None
         min_raw = bri_spec.min_raw if bri_spec.min_raw is not None else 10
         max_raw = bri_spec.max_raw if bri_spec.max_raw is not None else 1000
-        return _tuya_to_ha_brightness(int(raw), min_raw, max_raw)
+        try:
+            return _tuya_to_ha_brightness(int(raw), min_raw, max_raw)
+        except (ValueError, TypeError):
+            return None
 
     @property
     def hs_color(self) -> tuple[float, float] | None:
@@ -277,12 +280,15 @@ class TuyaCloudlessLight(RestoreStateMixin, TuyaCloudlessEntity, LightEntity):
         sat_max = sat_spec.max_raw if sat_spec.max_raw is not None else _TUYA_SAT_DEFAULT_MAX
         # Clamp to valid HA ranges in case the device reports an out-of-range value.
         # Guard against hue_max=0 (invalid profile) to prevent ZeroDivisionError.
-        hue = (
-            max(0.0, min(360.0, round(int(raw_hue) / hue_max * _TUYA_HUE_MAX, 1)))
-            if hue_max != 0
-            else 0.0
-        )
-        sat = max(0.0, min(100.0, _tuya_to_ha_saturation(int(raw_sat), sat_max)))
+        try:
+            hue = (
+                max(0.0, min(360.0, round(int(raw_hue) / hue_max * _TUYA_HUE_MAX, 1)))
+                if hue_max != 0
+                else 0.0
+            )
+            sat = max(0.0, min(100.0, _tuya_to_ha_saturation(int(raw_sat), sat_max)))
+        except (ValueError, TypeError):
+            return None
         return (hue, sat)
 
     @property
@@ -298,7 +304,10 @@ class TuyaCloudlessLight(RestoreStateMixin, TuyaCloudlessEntity, LightEntity):
         span = max_raw - min_raw
         if span == 0:
             return _MIN_COLOR_TEMP_KELVIN
-        ratio = (int(raw) - min_raw) / span
+        try:
+            ratio = (int(raw) - min_raw) / span
+        except (ValueError, TypeError):
+            return None
         # Clamp result in case the device reports an out-of-range raw value
         return max(
             _MIN_COLOR_TEMP_KELVIN,

@@ -551,3 +551,29 @@ class TestTurnOnBrightnessWithColorMode:
         # dp_color_mode should be set to "colour"
         assert "6" in dps_sent
         assert dps_sent["6"] == "colour"
+
+
+class TestLightIntGuards:
+    """R20-3: brightness/hs_color/color_temp must return None on non-numeric DP values."""
+
+    def test_brightness_none_on_non_numeric_dp(self) -> None:
+        """brightness_pct returns None when device sends non-numeric brightness value."""
+        e = _make_light({"2": "not-a-number"})
+        assert e.brightness is None
+
+    def test_hs_color_none_on_non_numeric_hue(self) -> None:
+        """hs_color returns None when hue DP is non-numeric."""
+        spec = _make_light_spec(dp_hs_hue_id="4", dp_hs_sat_id="5")
+        e = _make_light({"4": "bad", "5": 500}, spec=spec)
+        assert e.hs_color is None
+
+    def test_hs_color_none_on_non_numeric_sat(self) -> None:
+        """hs_color returns None when saturation DP is non-numeric."""
+        spec = _make_light_spec(dp_hs_hue_id="4", dp_hs_sat_id="5")
+        e = _make_light({"4": 180, "5": "bad"}, spec=spec)
+        assert e.hs_color is None
+
+    def test_color_temp_none_on_non_numeric_dp(self) -> None:
+        """color_temp_kelvin returns None when device sends non-numeric value."""
+        e = _make_light({"3": "bad"})
+        assert e.color_temp_kelvin is None
