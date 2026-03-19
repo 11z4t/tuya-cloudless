@@ -495,6 +495,9 @@ async function autoDetectDevices() {
       noDevEl.textContent = t("no_devices_auto_found");
       noDevEl.className = "status-box status-info";
     }
+    // Update aria-live region so screen readers announce the scan failure
+    const statusLive = document.getElementById("devices-status");
+    if (statusLive) statusLive.textContent = t("no_devices_auto_found");
   } finally {
     _scanInProgress = false;
     if (refreshBtn) refreshBtn.disabled = false;
@@ -677,6 +680,10 @@ function goToStep2() {
 }
 
 function showDone(gw_id, local_key, ip_address) {
+  // Defensive: coerce null/undefined to empty string so esc() doesn't render "null"
+  gw_id      = (gw_id      != null) ? String(gw_id)      : "";
+  local_key  = (local_key  != null) ? String(local_key)  : "";
+  ip_address = (ip_address != null) ? String(ip_address) : "";
   // Clear sensitive credential from memory now that pairing is complete
   _pwd = "";
   document.getElementById("panel-ble").classList.add("hidden");

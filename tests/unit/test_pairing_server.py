@@ -961,6 +961,22 @@ class TestWifiApPair:
         # Token should be returned regardless
         assert "token" in data
 
+    @pytest.mark.parametrize(
+        "field,value",
+        [
+            ("ap_ssid", "Smart\x00Life"),  # null byte in AP SSID
+            ("home_ssid", "Home\x1fNet"),  # control char in home SSID
+            ("home_password", "pass\x7fword"),  # DEL char in password
+        ],
+    )
+    async def test_control_chars_rejected(self, client: TestClient, field: str, value: str) -> None:
+        """SSIDs/passwords containing control characters are rejected with 400."""
+        body = {"ap_ssid": "SmartLife_AB12", "home_ssid": "HomeNet", "home_password": "pass"}
+        body[field] = value
+        resp = await client.post("/api/provision/wifi-ap-pair", json=body)
+        assert resp.status == 400
+        assert "control" in (await resp.text()).lower()
+
     async def test_rate_limit_dict_does_not_grow_unbounded(self, server: PairingServer) -> None:
         """Old IPs are cleaned from _rate_limit after each activation request."""
         ts = TestServer(server._app)

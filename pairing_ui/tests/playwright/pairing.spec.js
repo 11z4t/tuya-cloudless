@@ -1772,4 +1772,18 @@ test.describe("WiFi AP pairing flow", () => {
     // BLE scan button should still be usable
     await expect(page.locator("#btn-ble-scan")).toBeVisible();
   });
+
+  test("quick-scan error updates aria-live region for screen readers", async ({ page }) => {
+    await setupRoutes(page);
+    // Override quick-scan to return a server error
+    await page.route(BASE + "/api/provision/quick-scan", (route) =>
+      route.fulfill({ status: 500, body: "Internal Server Error" })
+    );
+    await loadPage(page);
+
+    // devices-status aria-live region must be populated so screen readers announce the failure
+    await expect(page.locator("#no-devices-msg")).toBeVisible({ timeout: 3000 });
+    const liveText = await page.locator("#devices-status").textContent();
+    expect(liveText.trim().length).toBeGreaterThan(0);
+  });
 });

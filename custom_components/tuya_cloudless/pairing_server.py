@@ -39,6 +39,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 import secrets
 import shutil
 import time
@@ -97,6 +98,11 @@ _RATE_LIMIT_WINDOW: Final[float] = 60.0
 _MAX_SSE_CONNECTIONS: Final[int] = 10
 
 # ── WiFi AP discovery constants ────────────────────────────────────────────────
+
+#: Compiled pattern matching ASCII control characters (0x00-0x1F, 0x7F).
+#: These are invalid in WiFi SSIDs/passwords and could interfere with
+#: nmcli argument handling even when using list-based subprocess calls.
+_CTRL_CHAR_RE: Final[re.Pattern[str]] = re.compile(r"[\x00-\x1f\x7f]")
 
 #: SSID prefixes used by Tuya devices in AP/provisioning mode.
 #: Matching is case-insensitive.
@@ -910,6 +916,16 @@ class PairingServer:
             return web.Response(status=400, text="SSID exceeds 32-byte WiFi limit")
         if len(home_password.encode()) > 63:
             return web.Response(status=400, text="Password exceeds 63-byte WPA2 limit")
+
+        # Reject control characters (0x00-0x1F, 0x7F) in any field
+        if (
+            _CTRL_CHAR_RE.search(ap_ssid)
+            or _CTRL_CHAR_RE.search(home_ssid)
+            or _CTRL_CHAR_RE.search(home_password)
+        ):
+            return web.Response(
+                status=400, text="SSID/password must not contain control characters"
+            )
 
         # Prevent duplicate concurrent pairing tasks for the same AP
         if ap_ssid in self._wifi_ap_pairing_in_progress:
