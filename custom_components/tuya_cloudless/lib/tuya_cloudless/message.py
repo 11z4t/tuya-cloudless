@@ -32,6 +32,7 @@ from dataclasses import dataclass, field
 from enum import IntEnum
 from typing import Any
 
+from .const import MAX_PAYLOAD_SIZE
 from .crypto import (
     ProtocolVersion,
     crc32_bytes,
@@ -127,23 +128,24 @@ class CommandType(IntEnum):
     UNBIND_V35 = 0x25
 
     @classmethod
-    def from_int(cls, value: int) -> CommandType:
-        """Convert integer to CommandType, raising on unknown values.
+    def from_int(cls, value: int) -> CommandType | int:
+        """Convert integer to CommandType, returning raw int for unknown values.
+
+        Unknown command codes are returned as plain ints rather than raising
+        ``InvalidMessageError``.  This prevents new Tuya firmware that uses
+        previously unseen command codes from being counted as decode errors and
+        triggering a permanent reconnect loop in the coordinator.
 
         Args:
             value: Integer command type from wire.
 
         Returns:
-            Matching CommandType enum member.
-
-        Raises:
-            InvalidMessageError: If value is not a known command type.
+            Matching :class:`CommandType` member, or the raw ``int`` if unknown.
         """
         try:
             return cls(value)
         except ValueError:
-            msg = f"Unknown command type: 0x{value:02X}"
-            raise InvalidMessageError(msg) from None
+            return value
 
 
 # ---------------------------------------------------------------------------
@@ -333,6 +335,12 @@ def decode_message(
 
     # payload_len_field = payload + checksum + suffix
     payload_size = payload_len_field - chk_size - SUFFIX_SIZE
+    if payload_size < 0:
+        msg = f"payload_len_field {payload_len_field} too small for checksum+suffix overhead"
+        raise InvalidMessageError(msg)
+    if payload_size > MAX_PAYLOAD_SIZE:
+        msg = f"payload_size {payload_size} exceeds MAX_PAYLOAD_SIZE {MAX_PAYLOAD_SIZE}"
+        raise InvalidMessageError(msg)
     expected_total_bytes = HEADER_SIZE + payload_size + chk_size + SUFFIX_SIZE
 
     if len(data) < expected_total_bytes:
@@ -366,7 +374,10 @@ def decode_message(
             raise InvalidMessageError(msg)
     else:
         expected_checksum = crc32_bytes(checksum_input)
-        if received_checksum != expected_checksum:
+        # Use constant-time comparison per stated security principle in CLAUDE.md:
+        # "All MAC/tag verification uses constant-time comparison."
+        # CRC32 has no secret to protect via timing, but we honour the invariant.
+        if not hmac_compare(received_checksum, expected_checksum):
             msg = (
                 f"CRC32 mismatch: received 0x{received_checksum.hex()}, "
                 f"expected 0x{expected_checksum.hex()}"
@@ -503,8 +514,24 @@ class MessageBuffer:
         payload_len_field = struct.unpack(">I", self._buffer[12:16])[0]
         payload_size = payload_len_field - self._chk_size - SUFFIX_SIZE
         if payload_size < 0:
-            # Invalid payload_len — discard this prefix and retry
+            # Invalid payload_len — discard this prefix and count as decode error
+            # so the coordinator's consecutive-error reconnect threshold fires on
+            # a stream of crafted frames with corrupt length fields.
             _LOGGER.debug("Invalid payload_len_field: %d, discarding prefix", payload_len_field)
+            self._error_count += 1
+            del self._buffer[:4]
+            return None
+
+        # Reject implausibly large frames to prevent memory amplification from a
+        # crafted device that advertises a huge payload in the length field.
+        # (Consistent with the same guard in split_frames in protocol.py.)
+        if payload_size > MAX_PAYLOAD_SIZE:
+            _LOGGER.debug(
+                "Frame payload_size %d exceeds MAX_PAYLOAD_SIZE %d, discarding prefix",
+                payload_size,
+                MAX_PAYLOAD_SIZE,
+            )
+            self._error_count += 1
             del self._buffer[:4]
             return None
 
@@ -531,7 +558,23 @@ class MessageBuffer:
             List of successfully decoded messages (may be empty).
         """
         result: list[TuyaMessage] = []
+        prev_buf_len = len(self._buffer) + 1  # sentinel larger than any real length
         while True:
+            cur_buf_len = len(self._buffer)
+            if cur_buf_len >= prev_buf_len:
+                # Buffer did not shrink — _try_extract made no progress.
+                # Break to avoid a tight infinite loop that starves the event loop.
+                _LOGGER.warning(
+                    "MessageBuffer: extraction loop made no progress (%d bytes remain); "
+                    "discarding buffer to prevent stall",
+                    cur_buf_len,
+                )
+                # Count the stall as an error so the coordinator's consecutive-error
+                # reconnect threshold is correctly triggered.
+                self._error_count += 1
+                self._buffer.clear()
+                break
+            prev_buf_len = cur_buf_len
             try:
                 msg = self._try_extract()
             except (InvalidMessageError, ProtocolError) as exc:

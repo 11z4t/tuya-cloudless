@@ -43,8 +43,10 @@ VERSIONS_ECB: frozenset[str] = frozenset({PROTOCOL_31, PROTOCOL_32, PROTOCOL_33}
 #: Versions that use AES-GCM (ECDH session key)
 VERSIONS_GCM: frozenset[str] = frozenset({PROTOCOL_34, PROTOCOL_35})
 
-#: v3.3 and later embed a version header inside the encrypted payload
-VERSIONS_WITH_PAYLOAD_HEADER: frozenset[str] = frozenset({PROTOCOL_33, PROTOCOL_34, PROTOCOL_35})
+#: v3.3 uses an ECB-encrypted payload with a 12-byte version header prepended.
+#: v3.4/3.5 use AES-GCM (no ECB header) and return early in encrypt/decrypt_payload
+#: before reaching the VERSIONS_WITH_PAYLOAD_HEADER check — so they are excluded here.
+VERSIONS_WITH_PAYLOAD_HEADER: frozenset[str] = frozenset({PROTOCOL_33})
 
 # ── Command codes ─────────────────────────────────────────────────────────────
 # Note: 0x03-0x05 are session-key negotiation commands for v3.4/3.5.

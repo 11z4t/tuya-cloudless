@@ -64,6 +64,17 @@ __all__ = [
     "DiscoveryListener",
 ]
 
+# Protect against UDP amplification / memory exhaustion from spoofed packets
+_MAX_DISCOVERED = 256
+# R43-F5: Cap decryption trials per datagram to bound CPU cost of forged UDP
+# packets on the LAN.  Each trial attempts 3 AES ops (v3.3/v3.4/v3.5).
+# 16 devices x 3 versions = 48 AES calls worst-case per packet; acceptable.
+# Installations with >16 devices still work; old devices broadcast plain-JSON.
+_MAX_DECRYPT_ATTEMPTS = 16
+_MAX_GW_ID_LEN = 64
+_MAX_VERSION_LEN = 16
+_MAX_PRODUCT_KEY_LEN = 64
+
 # ── Device info dataclass ─────────────────────────────────────────────────────
 
 
@@ -310,6 +321,13 @@ class DiscoveryListener:
                 device = self._parse_datagram(data, addr[0])
                 if device is not None:
                     is_new = device.gw_id not in self._discovered
+                    if is_new and len(self._discovered) >= _MAX_DISCOVERED:
+                        _LOGGER.warning(
+                            "Discovery table full (%d entries) — ignoring new device %s",
+                            _MAX_DISCOVERED,
+                            device.gw_id,
+                        )
+                        continue
                     self._discovered[device.gw_id] = device
                     self._device_event.set()
                     if is_new:
@@ -333,6 +351,7 @@ class DiscoveryListener:
                 ValueError,
                 TypeError,
                 KeyError,
+                OverflowError,  # int(float("inf")) from malformed JSON numeric fields
             ):
                 _LOGGER.debug("Failed to parse discovery datagram from %s", addr[0], exc_info=True)
 
@@ -355,23 +374,31 @@ class DiscoveryListener:
             _LOGGER.debug("Discovery datagram has bad prefix: %s", data[:4].hex())
             return None
 
-        import struct
-
         _, _, cmd, length = struct.unpack_from(">4sIII", data, 0)
 
         if cmd not in (CMD_UDP, 0x12):  # 0x12 = encrypted discovery
             _LOGGER.debug("Discovery datagram cmd=0x%02x is not a discovery command", cmd)
             return None
 
-        payload_end = FRAME_HEADER_SIZE + length - 8  # exclude CRC(4) + suffix(4)
-        if payload_end > len(data) or payload_end <= FRAME_HEADER_SIZE:
-            raise MalformedPacketError(f"Discovery payload bounds invalid (length={length})")
-
-        raw_payload = data[FRAME_HEADER_SIZE:payload_end]
-
-        # Attempt to decode: try plain JSON first, then decrypt
-        json_bytes = self._try_decode_payload(raw_payload)
+        # R42-F1: Try both checksum overheads to support v3.4/v3.5 encrypted discovery.
+        # v3.1/v3.3 use CRC32 (4 bytes) + suffix (4 bytes) = 8 bytes overhead.
+        # v3.4/v3.5 use HMAC-SHA256 (32 bytes) + suffix (4 bytes) = 36 bytes overhead.
+        # The `length` field encodes (payload + checksum + suffix), so we subtract the
+        # appropriate overhead to isolate the payload bytes.
+        json_bytes: bytes | None = None
+        for overhead in (8, 36):
+            candidate_end = FRAME_HEADER_SIZE + length - overhead
+            if FRAME_HEADER_SIZE < candidate_end <= len(data):
+                decoded = self._try_decode_payload(data[FRAME_HEADER_SIZE:candidate_end])
+                if decoded is not None:
+                    json_bytes = decoded
+                    break
         if json_bytes is None:
+            # Raise for structurally invalid frames: length too small to hold
+            # even the minimal 8-byte overhead, or length too large for packet.
+            min_end = FRAME_HEADER_SIZE + length - 8
+            if min_end <= FRAME_HEADER_SIZE or min_end > len(data):
+                raise MalformedPacketError(f"Discovery payload bounds invalid (length={length})")
             return None
 
         try:
@@ -384,15 +411,41 @@ class DiscoveryListener:
             return None
 
         gw_id: str = info.get("gwId", "")
-        ip: str = info.get("ip", source_ip)
+        # Always use the actual UDP sender address as the device IP (R26-1).
+        # The payload "ip" field is the device's self-reported address, which can be
+        # forged by any LAN host that knows (or guesses) a target gwId.  Using the
+        # real sender IP prevents an attacker from redirecting HA's TCP connection
+        # to an arbitrary host via a crafted broadcast.
+        ip: str = source_ip
         version: str = str(info.get("version", PROTOCOL_31))
         product_key: str = info.get("productKey", "")
         encrypt: bool = bool(info.get("encrypt", False))
-        active: int = int(info.get("active", 0))
-        ability: int = int(info.get("ability", 0))
+        # Guard against OverflowError: int(float("inf")) raises OverflowError (not
+        # ValueError) when a rogue packet sends JSON floats like 1e400.  Coerce to
+        # int only when the value is a plain int; treat floats/strings as zero.
+        _raw_active = info.get("active", 0)
+        _raw_ability = info.get("ability", 0)
+        active: int = int(_raw_active) if isinstance(_raw_active, int) else 0
+        ability: int = int(_raw_ability) if isinstance(_raw_ability, int) else 0
 
         if not gw_id:
             _LOGGER.debug("Discovery packet missing gwId")
+            return None
+
+        if (
+            len(gw_id) > _MAX_GW_ID_LEN
+            or len(version) > _MAX_VERSION_LEN
+            or len(product_key) > _MAX_PRODUCT_KEY_LEN
+            or len(ip) > 45  # max length for IPv6 address
+        ):
+            _LOGGER.debug(
+                "Discovery packet field too long "
+                "(gwId=%d, ip=%d, version=%d, productKey=%d) — discarded",
+                len(gw_id),
+                len(ip),
+                len(version),
+                len(product_key),
+            )
             return None
 
         return DiscoveredDevice(
@@ -427,14 +480,17 @@ class DiscoveryListener:
         except (json.JSONDecodeError, UnicodeDecodeError):
             pass
 
-        # Try decrypting with known device keys
-        for gw_id, local_key in self._known_devices.items():
+        # Try decrypting with known device keys (capped to _MAX_DECRYPT_ATTEMPTS
+        # to prevent LAN DoS via crafted UDP packets on busy installations).
+        for _gw_id, local_key in list(self._known_devices.items())[:_MAX_DECRYPT_ATTEMPTS]:
             for version in ("3.3", "3.4", "3.5"):
                 try:
                     decrypted = decrypt_payload(version, local_key, raw)
                     # Validate it's JSON
                     json.loads(decrypted.decode("utf-8", errors="strict"))
-                    _LOGGER.debug("Discovery payload decrypted with key for gwId=%s", gw_id)
+                    # R31-3: Don't log gwId — it creates a key↔device association
+                    # in log files that is sensitive diagnostic data.
+                    _LOGGER.debug("Discovery payload decrypted with a known device key")
                     return decrypted
                 except (CryptoError, json.JSONDecodeError, UnicodeDecodeError, ValueError):
                     continue

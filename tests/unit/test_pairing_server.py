@@ -5497,3 +5497,117 @@ class TestR49SecurityFixes:
         assert _MAX_STATIC_FILE_BYTES == 5 * 1024 * 1024
         assert _MAX_SSE_EVENT_LEN == 64
         assert _MAX_SSE_DATA_LEN == 4096
+
+
+class TestR50SecurityFixes:
+    """R50 — bundled lib sync, icon size guard, index size guard, rate-limit throttle."""
+
+    def test_bundled_lib_message_command_type_returns_raw_int_for_unknown(self) -> None:
+        """R50-F3: bundled message.py CommandType.from_int must return raw int, not raise."""
+        import sys
+
+        # Insert bundled lib path first (simulating HACS runtime priority)
+        bundled = str(
+            __import__("pathlib").Path(__file__).resolve().parent.parent.parent
+            / "custom_components/tuya_cloudless/lib"
+        )
+        if bundled not in sys.path:
+            sys.path.insert(0, bundled)
+        try:
+            from tuya_cloudless.message import CommandType
+
+            result = CommandType.from_int(0xFF)  # unknown code
+            assert isinstance(result, int), (
+                "from_int must return raw int for unknown command codes, not raise"
+            )
+        finally:
+            if bundled in sys.path:
+                sys.path.remove(bundled)
+
+    def test_bundled_lib_protocol_masks_sequence_to_32_bits(self) -> None:
+        """R50-F4: bundled protocol.py encode_frame must mask sequence to 32 bits."""
+        import sys
+
+        bundled = str(
+            __import__("pathlib").Path(__file__).resolve().parent.parent.parent
+            / "custom_components/tuya_cloudless/lib"
+        )
+        if bundled not in sys.path:
+            sys.path.insert(0, bundled)
+        try:
+            import importlib
+
+            import tuya_cloudless.protocol as proto
+
+            importlib.reload(proto)
+            # sequence > 0xFFFFFFFF must not raise struct.error
+            frame = proto.encode_frame(
+                sequence=0x1_0000_0001,
+                command=7,
+                payload=b"",
+                local_key=b"1234567890123456",
+                version="3.3",
+            )
+            assert frame  # any bytes returned = no struct.error
+        finally:
+            if bundled in sys.path:
+                sys.path.remove(bundled)
+
+    @pytest.mark.asyncio
+    async def test_handle_icon_rejects_oversized_file(self, server: PairingServer) -> None:
+        """R50-F1: _handle_icon must return 403 when icon.png exceeds _MAX_STATIC_FILE_BYTES."""
+        from unittest.mock import MagicMock, patch
+
+        stat_mock = MagicMock()
+        stat_mock.st_size = 6 * 1024 * 1024  # 6 MiB > limit
+
+        with (
+            patch("pathlib.Path.is_file", return_value=True),
+            patch("pathlib.Path.stat", return_value=stat_mock),
+        ):
+            request = MagicMock()
+            request.remote = "127.0.0.1"
+            request.headers = {}
+            resp = await server._handle_icon(request)
+        assert resp.status == 403
+
+    @pytest.mark.asyncio
+    async def test_handle_index_rejects_oversized_file(self, server: PairingServer) -> None:
+        """R50-F5: _handle_index must return 503 when index.html exceeds _MAX_STATIC_FILE_BYTES."""
+        from unittest.mock import MagicMock, patch
+
+        stat_mock = MagicMock()
+        stat_mock.st_mtime = 0.0
+        stat_mock.st_size = 10 * 1024 * 1024  # 10 MiB > limit
+
+        with (
+            patch("pathlib.Path.is_file", return_value=True),
+            patch("pathlib.Path.stat", return_value=stat_mock),
+        ):
+            request = MagicMock()
+            request.remote = "127.0.0.1"
+            request.headers = {}
+            resp = await server._handle_index(request)
+        assert resp.status == 503
+
+    def test_rate_limit_cleanup_timestamp_initialised(self) -> None:
+        """R50-F6: _rate_limit_last_cleanup must be initialised to 0.0 in __init__."""
+        hass = _make_hass()
+        srv = PairingServer(hass, port=0)
+        assert hasattr(srv, "_rate_limit_last_cleanup")
+        assert srv._rate_limit_last_cleanup == 0.0
+
+    def test_rate_limit_rebuild_throttled(self) -> None:
+        """R50-F6: full table rebuild must be skipped within 5 s of last cleanup."""
+        import time
+
+        hass = _make_hass()
+        srv = PairingServer(hass, port=0)
+        # Seed one IP to give the cleanup something to process
+        srv._rate_limit["10.0.0.1"] = [time.monotonic()]
+        # Mark cleanup as just-done → subsequent call must NOT rebuild
+        srv._rate_limit_last_cleanup = time.monotonic()
+        # Second call for a different IP (not rate limited)
+        srv._is_rate_limited("10.0.0.2", max_requests=10, window=60.0)
+        # Table should still contain 10.0.0.1 (cleanup was throttled)
+        assert "10.0.0.1" in srv._rate_limit

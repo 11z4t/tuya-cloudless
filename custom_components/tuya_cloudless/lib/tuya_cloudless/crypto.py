@@ -52,6 +52,7 @@ __all__ = [
     "decrypt_payload",
     "derive_ecb_key",
     "derive_session_key",
+    "encrypt_ble_payload",
     "encrypt_ecb",
     "encrypt_gcm",
     "encrypt_payload",
@@ -181,8 +182,41 @@ def encrypt_ecb(key: bytes, plaintext: bytes) -> bytes:
     if len(key) != _AES_BLOCK:
         raise CryptoError(f"AES key must be {_AES_BLOCK} bytes, got {len(key)}")
     padded = _pad_pkcs7(plaintext)
-    iv = b"\x00" * _AES_BLOCK
-    cipher = Cipher(algorithms.AES(key), modes.CBC(iv))
+    # Tuya LAN protocol v3.1-3.3 mandates AES-128-CBC with a fixed zero IV.
+    # This is a protocol constraint — do NOT change to a random IV (breaks compat).
+    # Known weakness: identical first plaintext blocks → identical first ciphertext
+    # blocks.  v3.4/3.5 devices use AES-GCM (encrypt_gcm) which is not affected.
+    iv = b"\x00" * _AES_BLOCK  # nosec B303 — protocol-mandated zero IV
+    cipher = Cipher(algorithms.AES(key), modes.CBC(iv))  # nosec B303
+    encryptor = cipher.encryptor()
+    return encryptor.update(padded) + encryptor.finalize()
+
+
+def encrypt_ble_payload(key: bytes, plaintext: bytes) -> bytes:
+    """Encrypt a Tuya BLE WiFi config payload with AES-128-ECB.
+
+    Used exclusively for Tuya BLE provisioning to encrypt the WiFi credential
+    frame with the session key derived from the handshake nonce exchange
+    (``derive_session_key``).  The Tuya BLE protocol uses true ECB mode —
+    distinct from the LAN protocol which uses CBC (``encrypt_ecb``).
+
+    Args:
+        key: 16-byte session key from :func:`tuya_cloudless.ble_provision.derive_session_key`.
+        plaintext: WiFi config payload (will be PKCS7-padded to AES block size).
+
+    Returns:
+        Encrypted bytes.
+
+    Raises:
+        CryptoError: If key length is not 16 bytes.
+    """
+    if len(key) != _AES_BLOCK:
+        raise CryptoError(f"BLE session key must be {_AES_BLOCK} bytes, got {len(key)}")
+    padded = _pad_pkcs7(plaintext)
+    # Tuya BLE protocol mandates AES-128-ECB for the WiFi credential frame.
+    # The key is ephemeral (derived fresh per pairing session from two random nonces)
+    # so the ECB block-pattern weakness does not yield long-term key exposure.
+    cipher = Cipher(algorithms.AES(key), modes.ECB())  # nosec B303 — BLE protocol mandate
     encryptor = cipher.encryptor()
     return encryptor.update(padded) + encryptor.finalize()
 
@@ -202,10 +236,12 @@ def decrypt_ecb(key: bytes, ciphertext: bytes) -> bytes:
     """
     if len(key) != _AES_BLOCK:
         raise CryptoError(f"AES key must be {_AES_BLOCK} bytes, got {len(key)}")
+    if len(ciphertext) == 0:
+        raise CryptoError("Ciphertext must not be empty")
     if len(ciphertext) % _AES_BLOCK != 0:
         raise CryptoError(f"Ciphertext length {len(ciphertext)} is not a multiple of {_AES_BLOCK}")
-    iv = b"\x00" * _AES_BLOCK
-    cipher = Cipher(algorithms.AES(key), modes.CBC(iv))
+    iv = b"\x00" * _AES_BLOCK  # nosec B303 — protocol-mandated zero IV (see encrypt_ecb)
+    cipher = Cipher(algorithms.AES(key), modes.CBC(iv))  # nosec B303
     decryptor = cipher.decryptor()
     padded = decryptor.update(ciphertext) + decryptor.finalize()
     return _unpad_pkcs7(padded)
@@ -229,14 +265,32 @@ def add_v33_header(plaintext: bytes) -> bytes:
 def strip_v33_header(data: bytes) -> bytes:
     """Strip the 12-byte v3.3 version header from a decrypted payload.
 
+    Only called for v3.3 payloads (``VERSIONS_WITH_PAYLOAD_HEADER``).  The
+    header is always present for v3.3 encrypted frames — checking for the
+    magic bytes is intentional to remain safe if called with a payload that
+    unexpectedly has no header (e.g., a device firmware edge case).
+
     Args:
-        data: Decrypted payload bytes (may or may not have header).
+        data: Decrypted payload bytes.
 
     Returns:
-        Payload bytes with header removed if present.
+        Payload bytes with 12-byte header stripped if the magic prefix is present.
+
+    Raises:
+        CryptoError: If the payload starts with the v3.3 magic prefix but is
+            shorter than the expected 12-byte header length.
     """
-    if data[:3] in (b"3.3", b"3.4", b"3.5"):
-        return data[_AES_BLOCK - 4 :]  # 12-byte header
+    _header_len = len(V33_PAYLOAD_HEADER)  # always 12
+    if data[:3] == b"3.3":
+        # The header is always prepended by add_v33_header for v3.3 devices.
+        # The version prefix check avoids corrupting a payload that starts with
+        # something other than the 12-byte header (firmware edge case).
+        if len(data) < _header_len:
+            raise CryptoError(
+                f"v3.3 payload too short to contain version header: "
+                f"{len(data)} bytes (expected ≥ {_header_len})"
+            )
+        return data[_header_len:]
     return data
 
 
@@ -265,7 +319,9 @@ def encrypt_gcm(key: bytes, plaintext: bytes, *, extra_nonce: bytes = b"") -> by
     if len(key) != _AES_BLOCK:
         raise CryptoError(f"AES-GCM key must be {_AES_BLOCK} bytes, got {len(key)}")
     iv = os.urandom(GCM_IV_SIZE)
-    if extra_nonce:
+    # R44-F4: Validate length whenever extra_nonce is provided (even all-zeros),
+    # not just when truthy.  bytes(12) is falsy but still a valid caller mistake.
+    if extra_nonce is not None and extra_nonce != b"":
         if len(extra_nonce) != GCM_IV_SIZE:
             raise CryptoError(f"extra_nonce must be {GCM_IV_SIZE} bytes, got {len(extra_nonce)}")
         iv = bytes(a ^ b for a, b in zip(iv, extra_nonce, strict=True))

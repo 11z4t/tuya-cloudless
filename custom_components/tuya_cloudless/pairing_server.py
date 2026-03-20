@@ -304,6 +304,9 @@ class PairingServer:
         self._auto_stop_task: asyncio.Task[None] | None = None
         # Per-IP rate limit: maps IP → list of request timestamps (SEC-001)
         self._rate_limit: dict[str, list[float]] = {}
+        # R50-F6: Timestamp of the last full _rate_limit table sweep. Throttle to
+        # once per 5 s to avoid O(n) dict rebuild on every request under IP-flood.
+        self._rate_limit_last_cleanup: float = 0.0
         # Guard: only register HA views once per server instance
         self._ha_views_registered: bool = False
         # Strong references to background tasks so GC doesn't cancel them (RUF006)
@@ -562,7 +565,26 @@ class PairingServer:
         except OSError:
             current_mtime = None
         if self._index_html_cache is None or current_mtime != self._index_html_mtime:
-            self._index_html_cache = index_path.read_bytes()
+            # R50-F5: Guard against oversized or unreadable index.html
+            # (e.g. a HACS partial-update that swaps in a large file).
+            try:
+                file_size = index_path.stat().st_size
+            except OSError:
+                file_size = 0
+            if file_size > _MAX_STATIC_FILE_BYTES:
+                return web.Response(
+                    status=503,
+                    text="Pairing UI file too large — this is a bug, please report it.",
+                    headers=_SECURITY_HEADERS,
+                )
+            try:
+                self._index_html_cache = index_path.read_bytes()
+            except OSError:
+                return web.Response(
+                    status=503,
+                    text="Pairing UI temporarily unavailable — please retry",
+                    headers=_SECURITY_HEADERS,
+                )
             self._index_html_mtime = current_mtime
         return web.Response(
             body=self._index_html_cache,
@@ -622,8 +644,24 @@ class PairingServer:
         icon_path = _BRAND_DIR / "icon.png"
         if not icon_path.is_file():
             return web.Response(status=404, text="Icon not found")
+        # R50-F1: Guard against oversized icon file; cap at _MAX_STATIC_FILE_BYTES.
+        try:
+            icon_size = icon_path.stat().st_size
+        except OSError:
+            return web.Response(status=404, text="Icon not found")
+        if icon_size > _MAX_STATIC_FILE_BYTES:
+            _LOGGER.warning(
+                "Brand icon exceeds size limit (%d > %d) — denied",
+                icon_size,
+                _MAX_STATIC_FILE_BYTES,
+            )
+            return web.Response(status=403, text="Icon file too large")
+        try:
+            icon_bytes = icon_path.read_bytes()
+        except OSError:
+            return web.Response(status=503, text="Icon temporarily unavailable")
         return web.Response(
-            body=icon_path.read_bytes(),
+            body=icon_bytes,
             content_type="image/png",
             headers={"Cache-Control": "max-age=86400"},
         )
@@ -1576,6 +1614,9 @@ class PairingServer:
             # CancelledError is caught here so cleanup runs to completion.
             if prev_connection:
                 _LOGGER.info("WiFi AP pair: reconnecting to %s", prev_connection)
+                # R50-F7: Password not needed in this branch — zero it out before any
+                # potential exception so exc.__traceback__ cannot expose it.
+                home_pwd = ""
                 try:
                     await asyncio.shield(
                         _run(
@@ -1609,9 +1650,16 @@ class PairingServer:
                     ]
                     if home_pwd:
                         cmd += ["password", home_pwd]
+                    # R50-F7: Erase password from frame locals immediately after last
+                    # use so it is not accessible via exc.__traceback__ in any subsequent
+                    # exception (crash reporters, HA diagnostic collectors).
+                    home_pwd = ""
                     await asyncio.shield(_run(cmd, timeout=_TUYA_AP_RECONNECT_TIMEOUT))
                 except (Exception, asyncio.CancelledError) as exc:
                     _LOGGER.warning("WiFi AP pair: home WiFi reconnect failed: %s", exc)
+            else:
+                # Neither reconnect branch will run — zero password defensively.
+                home_pwd = ""
 
     # ── HA HTTPS views ─────────────────────────────────────────────────────
 
@@ -2030,7 +2078,12 @@ class PairingServer:
         # skipped for rate-limited callers, allowing stale entries to accumulate until
         # the hard-cap eviction fired (which could then evict a legitimate user's bucket
         # rather than the oldest attacker IP).
-        self._rate_limit = {ip: ts_list for ip, ts_list in self._rate_limit.items() if ts_list}
+        # R50-F6: Throttle the full dict-rebuild to at most once per 5 s.
+        # Under IP-flood, every request was rebuilding the full 1024-entry table (O(n))
+        # on the event loop.  The hard-cap eviction path below remains the primary bound.
+        if now - self._rate_limit_last_cleanup >= 5.0:
+            self._rate_limit = {ip: ts_list for ip, ts_list in self._rate_limit.items() if ts_list}
+            self._rate_limit_last_cleanup = now
         if rate_limited:
             _LOGGER.warning(
                 "Rate limit exceeded: ip=%s requests=%d",

@@ -30,6 +30,7 @@ import struct
 from dataclasses import dataclass, field
 from typing import Final
 
+from .crypto import encrypt_ble_payload
 from .exceptions import PairingError
 
 __all__ = [
@@ -208,7 +209,11 @@ class BleFrame:
         received_crc = struct.unpack_from("<H", data, frame_end)[0]
         computed_crc = crc16_modbus(data[:frame_end])
 
-        if received_crc != computed_crc:
+        import hmac as _hmac_mod
+
+        if not _hmac_mod.compare_digest(
+            struct.pack("<H", received_crc), struct.pack("<H", computed_crc)
+        ):
             raise PairingError(
                 f"BLE frame CRC mismatch: expected 0x{computed_crc:04X}, got 0x{received_crc:04X}"
             )
@@ -240,6 +245,11 @@ def _chunk_frame(frame_bytes: bytes) -> list[bytes]:
         for i in range(0, len(frame_bytes), transport_payload_size)
     ]
     total = len(chunks_data)
+    if total > 255:
+        raise PairingError(
+            f"BLE frame too large to chunk: {len(frame_bytes)} bytes produces "
+            f"{total} chunks (max 255)"
+        )
     return [bytes([idx, total]) + chunk for idx, chunk in enumerate(chunks_data)]
 
 
@@ -260,11 +270,25 @@ def _reassemble_chunks(chunks: list[bytes]) -> bytes:
     if not chunks:
         raise PairingError("Cannot reassemble empty chunk list")
 
+    if len(chunks[0]) < 2:
+        raise PairingError("BLE chunk too short — missing chunk index or total bytes")
+
     total = chunks[0][1]
+    # R41-F7: total=0 is always invalid — a peripheral sending chunk[1]=0 would
+    # never trigger notify_event (data[0]+1==0 requires data[0]==255 in Python,
+    # which never wraps), causing a 10-second hang until the wait_for timeout.
+    if total == 0:
+        raise PairingError("BLE chunk total_chunks is 0 — invalid frame from peripheral")
     if len(chunks) != total:
         raise PairingError(f"Incomplete BLE frame: expected {total} chunks, got {len(chunks)}")
+    # Verify all chunks agree on the total — a peripheral sending inconsistent
+    # total bytes would otherwise smuggle a frame through the length check.
+    if any(c[1] != total for c in chunks):
+        raise PairingError("BLE chunks have inconsistent total_chunks values")
 
     ordered = sorted(chunks, key=lambda c: c[0])
+    if len(ordered) != len({c[0] for c in ordered}):
+        raise PairingError("BLE chunk list contains duplicate chunk indices")
     for idx, chunk in enumerate(ordered):
         if chunk[0] != idx:
             raise PairingError(f"BLE chunk sequence gap: expected index {idx}, got {chunk[0]}")
@@ -328,21 +352,34 @@ class ProvisionPayload:
 # ── High-level frame builders ─────────────────────────────────────────────────
 
 
-def build_provision_frames(payload: ProvisionPayload, seq: int = 1) -> list[bytes]:
+def build_provision_frames(
+    payload: ProvisionPayload,
+    seq: int = 1,
+    *,
+    session_key: bytes | None = None,
+) -> list[bytes]:
     """Build the BLE chunk list for a complete WiFi provisioning exchange.
 
     Encodes the WiFi config into a :class:`BleFrame` (CMD_WIFI_CONFIG)
-    and splits it into BLE transport chunks.
+    and splits it into BLE transport chunks.  When ``session_key`` is provided
+    the payload bytes are AES-128-ECB encrypted before encoding, as required
+    by the Tuya BLE provisioning protocol.
 
     Args:
-        payload: Fully populated :class:`ProvisionPayload`.
-        seq:     Sequence number for the frame (default 1).
+        payload:     Fully populated :class:`ProvisionPayload`.
+        seq:         Sequence number for the frame (default 1).
+        session_key: 16-byte session key from :func:`derive_session_key`.
+                     Must be provided for production use — omitting it sends
+                     the WiFi credentials in cleartext over BLE.
 
     Returns:
         List of raw byte strings, each ≤ 20 bytes, to be written to the
         BLE Write characteristic in order.
     """
-    frame = BleFrame(seq=seq, cmd=CMD_WIFI_CONFIG, payload=payload.to_bytes())
+    raw_payload = payload.to_bytes()
+    if session_key is not None:
+        raw_payload = encrypt_ble_payload(session_key, raw_payload)
+    frame = BleFrame(seq=seq, cmd=CMD_WIFI_CONFIG, payload=raw_payload)
     return _chunk_frame(frame.encode())
 
 
@@ -555,6 +592,19 @@ class BleProvisioner:
         notify_event: asyncio.Event = asyncio.Event()
 
         def _on_notify(_char: BleakGATTCharacteristic, data: bytearray) -> None:
+            if len(data) < 2:  # malformed chunk — need at least chunk_no and total bytes
+                return
+            # Cap to prevent unbounded memory growth from a malicious peripheral
+            # sending chunks without ever setting the last-chunk flag.
+            if len(recv_chunks) >= 512:
+                recv_chunks.clear()
+                notify_event.clear()  # Reset so the next frame's last chunk sets it
+                # R36-5: Only restart accumulation on chunk_no == 0 (first chunk of
+                # a new frame).  If the incoming chunk is mid-frame (chunk_no > 0),
+                # the preceding chunks were discarded by the cap so this chunk belongs
+                # to an already-broken frame — drop it and wait for a fresh start.
+                if data[0] != 0:
+                    return
             recv_chunks.append(bytes(data))
             if data[0] + 1 == data[1]:  # last chunk (chunk_no + 1 == total)
                 notify_event.set()
@@ -584,12 +634,22 @@ class BleProvisioner:
                     )
 
                 device_nonce = resp.payload[:BLE_NONCE_SIZE]
-                _session_key = derive_session_key(controller_nonce, device_nonce)
-                recv_chunks.clear()
+                # R35-6: Reject all-zeros nonce — XOR key derivation with a zero
+                # nonce produces session_key == controller_nonce, which a rogue
+                # device (knowing only the public nonce) could exploit.
+                if device_nonce == b"\x00" * BLE_NONCE_SIZE:
+                    raise PairingError(
+                        "Device returned invalid all-zeros nonce — potential rogue device"
+                    )
+                session_key = derive_session_key(controller_nonce, device_nonce)
+                # Clear event BEFORE chunks to close the TOCTOU window where a
+                # spurious notification between the two clears would leave the
+                # event set with an empty recv_chunks list.
                 notify_event.clear()
+                recv_chunks.clear()
 
-                # Step 2: Send WiFi config
-                for chunk in build_provision_frames(payload, seq=1):
+                # Step 2: Send WiFi config, encrypted with the session key
+                for chunk in build_provision_frames(payload, seq=1, session_key=session_key):
                     await client.write_gatt_char(BLE_WRITE_CHAR_UUID, chunk, response=False)
 
                 # Wait for ACK
