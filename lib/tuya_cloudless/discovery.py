@@ -346,6 +346,7 @@ class DiscoveryListener:
                 ValueError,
                 TypeError,
                 KeyError,
+                OverflowError,  # int(float("inf")) from malformed JSON numeric fields
             ):
                 _LOGGER.debug("Failed to parse discovery datagram from %s", addr[0], exc_info=True)
 
@@ -397,15 +398,22 @@ class DiscoveryListener:
             return None
 
         gw_id: str = info.get("gwId", "")
-        # Force ip to str — a rogue device could send an integer (e.g. {"ip": 12345});
-        # ipaddress.ip_address() would silently accept it and store an int, causing
-        # TypeError later when asyncio.open_connection() or slicing is attempted.
-        ip: str = str(info.get("ip", source_ip))
+        # Always use the actual UDP sender address as the device IP (R26-1).
+        # The payload "ip" field is the device's self-reported address, which can be
+        # forged by any LAN host that knows (or guesses) a target gwId.  Using the
+        # real sender IP prevents an attacker from redirecting HA's TCP connection
+        # to an arbitrary host via a crafted broadcast.
+        ip: str = source_ip
         version: str = str(info.get("version", PROTOCOL_31))
         product_key: str = info.get("productKey", "")
         encrypt: bool = bool(info.get("encrypt", False))
-        active: int = int(info.get("active", 0))
-        ability: int = int(info.get("ability", 0))
+        # Guard against OverflowError: int(float("inf")) raises OverflowError (not
+        # ValueError) when a rogue packet sends JSON floats like 1e400.  Coerce to
+        # int only when the value is a plain int; treat floats/strings as zero.
+        _raw_active = info.get("active", 0)
+        _raw_ability = info.get("ability", 0)
+        active: int = int(_raw_active) if isinstance(_raw_active, int) else 0
+        ability: int = int(_raw_ability) if isinstance(_raw_ability, int) else 0
 
         if not gw_id:
             _LOGGER.debug("Discovery packet missing gwId")

@@ -1635,14 +1635,21 @@ class PairingServer:
             Client IP string, never empty ("unknown" as last resort).
         """
         peer = request.remote or ""
-        if peer in ("127.0.0.1", "::1"):
-            forwarded = request.headers.get("X-Forwarded-For", "").split(",")[0].strip()
-            if forwarded:
-                try:
-                    ipaddress.ip_address(forwarded)
-                    return forwarded
-                except ValueError:
-                    _LOGGER.debug("Invalid X-Forwarded-For value ignored: %r", forwarded)
+        # Trust X-Forwarded-For only when the TCP connection comes from a loopback
+        # address, indicating a trusted reverse proxy.  Use ipaddress.is_loopback()
+        # rather than an exact-string check so that ::1 variants and 127.x.y.z are
+        # all recognised (R26-5).
+        try:
+            if peer and ipaddress.ip_address(peer).is_loopback:
+                forwarded = request.headers.get("X-Forwarded-For", "").split(",")[0].strip()
+                if forwarded:
+                    try:
+                        ipaddress.ip_address(forwarded)
+                        return forwarded
+                    except ValueError:
+                        _LOGGER.debug("Invalid X-Forwarded-For value ignored: %r", forwarded)
+        except ValueError:
+            pass  # non-IP peer (e.g. unix socket path); fall through to peer/unknown
         return peer or "unknown"
 
     def _is_rate_limited(
@@ -1661,11 +1668,11 @@ class PairingServer:
             max_requests: Max allowed requests in the window (default from constant).
             window:       Sliding window in seconds (default from constant).
         """
-        # Requests with no identifiable client IP (e.g. HA-internal calls via loopback
-        # with no X-Forwarded-For header) use the "unknown" sentinel.  Rate-limiting
-        # these would cause legitimate internal calls to exhaust each other's quota.
-        if client_ip == "unknown":
-            return False
+        # Requests with no identifiable client IP (unix socket / abstract peer) use the
+        # "unknown" sentinel.  Previously these skipped rate-limiting entirely, creating
+        # a bypass.  Now they share a single "unknown" bucket — still rate-limited but
+        # all anonymous callers share the quota (R26-5).
+        # The bucket key is kept as-is; callers are limited collectively.
 
         now = time.monotonic()
         timestamps = [ts for ts in self._rate_limit.get(client_ip, []) if now - ts < window]

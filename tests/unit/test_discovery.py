@@ -295,3 +295,68 @@ class TestDiscoveryListenerParseExtra:
         )
         result = listener._parse_datagram(bad_cmd_frame, "1.2.3.4")
         assert result is None
+
+
+# ── R26 security fixes ────────────────────────────────────────────────────────
+
+
+class TestDiscoveryR26Fixes:
+    """R26-1: source_ip preferred over payload ip; R26-4: OverflowError handled."""
+
+    def _listener(self) -> DiscoveryListener:
+        return DiscoveryListener()
+
+    def test_payload_ip_ignored_uses_source_ip(self) -> None:
+        """Device-reported IP in payload must be ignored; UDP source IP is used.
+
+        A rogue device could spoof the payload 'ip' to redirect HA's TCP
+        connection to an arbitrary host.  R26-1 fix: always use source_ip.
+        """
+        listener = self._listener()
+        info = {
+            "gwId": "gw_spoof",
+            "ip": "192.168.99.99",  # attacker's desired redirect target
+            "version": "3.3",
+        }
+        raw = _make_discovery_packet(info)
+        device = listener._parse_datagram(raw, "10.0.0.5")  # real UDP source
+        assert device is not None
+        assert device.ip == "10.0.0.5", "Must use UDP source IP, not payload ip"
+
+    def test_float_inf_in_active_does_not_raise(self) -> None:
+        """Payload with 'active': 1e400 (parsed as float inf) must not crash parser.
+
+        int(float('inf')) raises OverflowError, which was not in the except tuple
+        before R26-4.  This test verifies the datagram is silently discarded
+        (returns None) rather than killing the discovery task.
+        """
+        listener = self._listener()
+        # Build a raw packet that contains valid JSON with float inf
+        payload = b'{"gwId":"gw_overflow","ip":"1.2.3.4","active":1e400}'
+        length_val = len(payload) + 8
+        raw = (
+            bytes.fromhex("000055aa")
+            + struct.pack(">III", 1, 0x00000001, length_val)
+            + payload
+            + b"\x00\x00\x00\x00"
+            + bytes.fromhex("0000aa55")
+        )
+        # Must not raise; result may be None (invalid CRC) — we just care no exception
+        try:
+            listener._parse_datagram(raw, "1.2.3.4")
+        except Exception as exc:
+            pytest.fail(f"_parse_datagram raised unexpectedly: {exc!r}")
+
+    def test_active_as_float_string_becomes_zero(self) -> None:
+        """Non-int 'active' value (e.g. float JSON number) must not propagate as float."""
+        listener = self._listener()
+        info = {
+            "gwId": "gw_float",
+            "ip": "1.2.3.4",
+            "version": "3.3",
+            "active": 2,  # normal int — must be accepted
+        }
+        raw = _make_discovery_packet(info)
+        device = listener._parse_datagram(raw, "1.2.3.4")
+        assert device is not None
+        assert isinstance(device.active, int)

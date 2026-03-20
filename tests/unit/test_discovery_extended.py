@@ -192,7 +192,8 @@ class TestParseDatagram:
         result = listener._parse_datagram(packet, "1.2.3.4")
         assert result is not None
         assert result.gw_id == "abc123"
-        assert result.ip == "192.168.1.42"
+        # R26-1: source IP (UDP sender) is always used, not the payload 'ip' field
+        assert result.ip == "1.2.3.4"
         assert result.version == "3.3"
         assert result.encrypt is True
 

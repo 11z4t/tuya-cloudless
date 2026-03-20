@@ -4421,6 +4421,31 @@ class TestGetClientIp:
         req.headers = {}
         assert server._get_client_ip(req) == "127.0.0.1"
 
+    def test_non_standard_loopback_127_x_trusts_xff(self, server: PairingServer) -> None:
+        """R26-5: 127.0.0.2 is loopback (per RFC 990) and must trust X-Forwarded-For.
+
+        The old exact-match check only handled 127.0.0.1 and ::1.  Using
+        ipaddress.is_loopback() correctly handles the full 127.0.0.0/8 block.
+        """
+        req = MagicMock()
+        req.remote = "127.0.0.2"
+        req.headers = {"X-Forwarded-For": "10.20.30.40"}
+        assert server._get_client_ip(req) == "10.20.30.40"
+
+    def test_unknown_rate_limited_not_bypassed(self, server: PairingServer) -> None:
+        """R26-5: 'unknown' client IPs must not bypass rate limiting.
+
+        Previously the 'unknown' sentinel caused _is_rate_limited to return
+        False unconditionally.  Now 'unknown' is treated as a single shared
+        bucket to prevent unbounded requests from connection-less peers.
+        """
+        from custom_components.tuya_cloudless.pairing_server import _RATE_LIMIT_MAX
+
+        # Pre-fill the 'unknown' bucket beyond the rate limit
+        now = time.monotonic()
+        server._rate_limit["unknown"] = [now] * _RATE_LIMIT_MAX
+        assert server._is_rate_limited("unknown") is True
+
 
 # ── gw_id character validation ─────────────────────────────────────────────────
 
