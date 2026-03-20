@@ -1316,7 +1316,7 @@ function listenForActivation(token) {
       // Accept if token matches, OR if the event has no token (null/undefined = backward
       // compat with old server builds that omit the field). Reject events with a
       // different non-null token — they belong to a concurrent pairing session.
-      if ((d.token == null || d.token === token) && d.gw_id && d.local_key) {
+      if ((d.token == null || d.token === token) && d.gw_id) {
         clearTimeout(sseTimer); _activeSseTimer = null;
         es.close();
         setPairStatus("status-success", esc(t("success_activated")));
@@ -1324,14 +1324,24 @@ function listenForActivation(token) {
         dbg("Device activated: " + d.gw_id + " \u2713");
         // PLAT-811: Persist the SSID used for successful activation (with 90-day TTL)
         if (_ssid) { saveLastSsid(_ssid); }
-        showDone(d.gw_id, d.local_key, d.ip_address || "");
         // Guard: btn-pair may be absent in test environments (onerror handler also guards)
         const pairBtnActivated = document.getElementById("btn-pair");
         if (pairBtnActivated) pairBtnActivated.disabled = false;
         const backBtnActivated = document.getElementById("btn-back-ble");
         if (backBtnActivated) backBtnActivated.disabled = false;
-      } else if (d.gw_id === undefined || d.local_key === undefined) {
-        dbg("SSE activated: missing gw_id or local_key");
+        if (d.local_key) {
+          // Backward compat: server/test mock includes local_key in SSE event
+          showDone(d.gw_id, d.local_key, d.ip_address || "");
+        } else {
+          // R38-F6: Production server omits local_key from SSE (R33-3 security fix).
+          // Fetch it from the result endpoint using our token.
+          fetch(ACTIVATOR_URL + "/api/provision/result/" + token)
+            .then(function(r) { return r.json(); })
+            .then(function(res) { showDone(res.gw_id || d.gw_id, res.local_key || "", res.ip_address || ""); })
+            .catch(function() { showDone(d.gw_id, "", ""); });
+        }
+      } else if (d.gw_id === undefined) {
+        dbg("SSE activated: missing gw_id");
       }
     } catch (err) {
       dbg("SSE parse error: " + err.message);
@@ -1419,15 +1429,29 @@ async function pairViaWifiAp() {
       // Reject events with a non-null, non-matching token even if our token is
       // not yet known (POST still in flight) — avoids accepting a concurrent
       // user's activation during the brief pre-token window.
-      if ((d.token == null || d.token === token) && d.gw_id && d.local_key) {
+      if ((d.token == null || d.token === token) && d.gw_id) {
         wifiApCleanup(true);
         if (_ssid) saveLastSsid(_ssid);  // save only on confirmed activation
         setWifiApStatus("status-success", esc(t("success_activated")));
         // dbg() uses textContent → auto-escapes; do not call esc() here (would double-escape)
         dbg("Device activated: " + d.gw_id + " \u2713");
-        showDone(d.gw_id, d.local_key, d.ip_address || "");
-      } else if (d.gw_id === undefined || d.local_key === undefined) {
-        dbg("SSE activated: missing gw_id or local_key in payload");
+        if (d.local_key) {
+          // Backward compat: server/test mock includes local_key in SSE event
+          showDone(d.gw_id, d.local_key, d.ip_address || "");
+        } else {
+          // R38-F6: fetch local_key from result endpoint (token available from POST response)
+          var _tok38 = token;
+          if (_tok38) {
+            fetch(ACTIVATOR_URL + "/api/provision/result/" + _tok38)
+              .then(function(r) { return r.json(); })
+              .then(function(res) { showDone(res.gw_id || d.gw_id, res.local_key || "", res.ip_address || ""); })
+              .catch(function() { showDone(d.gw_id, "", ""); });
+          } else {
+            showDone(d.gw_id, "", "");
+          }
+        }
+      } else if (d.gw_id === undefined) {
+        dbg("SSE activated: missing gw_id in payload");
       }
     } catch (err) {
       dbg("SSE parse error (activated): " + err.message);

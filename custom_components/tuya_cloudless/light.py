@@ -62,7 +62,8 @@ def _tuya_to_ha_brightness(raw: int, min_raw: int, max_raw: int) -> int:
 def _ha_to_tuya_brightness(ha_value: int, min_raw: int, max_raw: int) -> int:
     """Map a HA brightness value (0-255) to Tuya raw (min_raw-max_raw)."""
     span = max_raw - min_raw
-    return round(ha_value / _HA_BRIGHTNESS_MAX * span + min_raw)
+    raw = round(ha_value / _HA_BRIGHTNESS_MAX * span + min_raw)
+    return max(min_raw, min(max_raw, raw))
 
 
 def _tuya_to_ha_saturation(raw: int, max_raw: int) -> float:

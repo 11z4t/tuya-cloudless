@@ -67,6 +67,7 @@ _TOKEN_SPEC = "30" * 16  # was "tok_spec"
 _TOKEN_HEX = "40" * 16  # was "tok_hex"
 _TOKEN_TZ = "50" * 16  # was "tok_tz"
 _TOKEN_GC = "60" * 16  # was "abc" (garbage collection test)
+_TOKEN_R38 = "38" * 16  # R38 tests
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -5042,3 +5043,84 @@ class TestActivateBodyDataNesting:
             json={"data": 42, "gw_id": "fallback_gw"},
         )
         assert resp.status in (200, 400)
+
+
+# ── R38: Security design contract ─────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+class TestR38SecurityDesign:
+    """R38: Verify the security contract between SSE and the result endpoint.
+
+    The SSE 'activated' broadcast must NOT include local_key (R33-3: LAN-visible).
+    The result endpoint MUST include local_key (browser fetches it after SSE fires,
+    gated by the token which acts as a capability token).
+    """
+
+    async def test_result_endpoint_includes_local_key_for_browser_fetch(
+        self, client: TestClient
+    ) -> None:
+        """R38-F6: The result endpoint must include local_key so the browser can fetch it.
+
+        This is the mechanism by which the browser retrieves local_key after the SSE
+        'activated' event fires (which deliberately omits local_key for security).
+        """
+        await client.post(
+            "/api/tuya/device/active",
+            json={"gw_id": "r38_result_gw", "token": _TOKEN_R38},
+        )
+        resp = await client.get(f"/api/provision/result/{_TOKEN_R38}")
+        assert resp.status == 200
+        body = await resp.json()
+        assert "local_key" in body, (
+            "Result endpoint missing local_key — browser can't complete the pairing flow"
+        )
+        assert body["local_key"], "local_key must be non-empty"
+
+    async def test_result_endpoint_local_key_is_hex(self, client: TestClient) -> None:
+        """R38-F6: local_key in result must be a valid hex string (16 chars for 8-byte key)."""
+        import re
+
+        await client.post(
+            "/api/tuya/device/active",
+            json={"gw_id": "r38_hex_gw", "token": _TOKEN_R38},
+        )
+        resp = await client.get(f"/api/provision/result/{_TOKEN_R38}")
+        body = await resp.json()
+        assert re.fullmatch(r"[0-9a-f]{16,32}", body.get("local_key", "")), (
+            "local_key must be 16-32 lowercase hex chars"
+        )
+
+    async def test_sse_activated_does_not_expose_local_key_field(
+        self, client: TestClient, server: PairingServer
+    ) -> None:
+        """R33-3 contract: SSE 'activated' payload must not expose local_key.
+
+        Verified by inspecting the stored SSE broadcast queues (avoids slow stream reads).
+        """
+        import json
+
+        # Capture what gets queued for broadcast
+        queued_events: list[tuple[str, str]] = []
+        original_broadcast = server._broadcast_sse
+
+        async def _capture(event: str, data: str) -> None:
+            queued_events.append((event, data))
+            await original_broadcast(event, data)
+
+        server._broadcast_sse = _capture  # type: ignore[method-assign]
+
+        await client.post(
+            "/api/tuya/device/active",
+            json={"gw_id": "r38_sse_gw", "token": _TOKEN_R38},
+        )
+        server._broadcast_sse = original_broadcast  # type: ignore[method-assign]
+
+        activated = [(e, d) for e, d in queued_events if e == "activated"]
+        assert activated, "Expected at least one 'activated' SSE event"
+        for _, data in activated:
+            payload = json.loads(data)
+            assert "local_key" not in payload, (
+                "R33-3 violated: SSE 'activated' broadcast must not expose local_key — "
+                "the SSE stream is accessible to any LAN host"
+            )

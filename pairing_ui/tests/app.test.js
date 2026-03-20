@@ -1212,3 +1212,83 @@ describe("showDone — copy-IP button", () => {
   });
 });
 
+// ── Round 38 — F6: SSE handler fetches result endpoint when local_key absent ───
+// The server (R33-3) omits local_key from SSE broadcasts.  The BLE SSE handler
+// must detect the missing key and fetch it from ACTIVATOR_URL + /api/provision/result/{token}.
+
+describe("R38-F6: listenForActivation fetches result when SSE has no local_key", () => {
+  const { _listenForActivation, showDone } = app;
+
+  function setupResultDom() {
+    document.body.innerHTML = `
+      <div id="pair-status"></div>
+      <div id="panel-devices" class="hidden"><ul id="device-list"></ul></div>
+      <div id="panel-wifi" class="hidden"></div>
+      <div id="panel-ble" class="hidden"><button id="btn-pair"></button><button id="btn-back-ble"></button></div>
+      <div id="panel-done" class="hidden">
+        <h2 id="step3-title" tabindex="-1"></h2>
+        <p id="ha-flow-msg" class="hidden"></p>
+        <dl id="result-grid"></dl>
+        <a id="btn-add-ha" class="hidden" href="#"></a>
+        <button id="btn-pair-another" class="hidden"></button>
+      </div>
+      <span id="step-counter"></span>
+    `;
+  }
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+    setupResultDom();
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+    delete global.fetch;
+  });
+
+  it("fetches result endpoint when SSE activated event lacks local_key", () => {
+    // fetch is called SYNCHRONOUSLY inside the activated handler's else-branch
+    global.fetch = jest.fn().mockReturnValue(new Promise(() => {})); // never-resolving Promise is fine
+
+    let activatedCb = null;
+    global.EventSource = class {
+      constructor() {
+        this.close = jest.fn();
+        this.addEventListener = (evt, cb) => { if (evt === "activated") activatedCb = cb; };
+        this.onerror = null;
+      }
+    };
+
+    _listenForActivation("aabbccddeeff00112233445566778899aabb");
+    // Production server: SSE has gw_id only, no local_key
+    activatedCb({ data: JSON.stringify({ gw_id: "devABC" }) });
+
+    // fetch() is called synchronously as part of the activated handler
+    expect(global.fetch).toHaveBeenCalledWith(
+      expect.stringContaining("/api/provision/result/aabbccddeeff00112233445566778899aabb")
+    );
+  });
+
+  it("skips fetch and calls showDone directly when SSE includes local_key (backward compat)", () => {
+    global.fetch = jest.fn();
+
+    let activatedCb = null;
+    global.EventSource = class {
+      constructor() {
+        this.close = jest.fn();
+        this.addEventListener = (evt, cb) => { if (evt === "activated") activatedCb = cb; };
+        this.onerror = null;
+      }
+    };
+
+    _listenForActivation("aabbccddeeff00112233445566778899aabb");
+    // Test mock / backward compat: SSE includes local_key → no fetch needed
+    activatedCb({ data: JSON.stringify({ gw_id: "devXYZ", local_key: "1122334455667788", ip_address: "10.0.0.7" }) });
+
+    // showDone is called synchronously; fetch must NOT be called
+    expect(global.fetch).not.toHaveBeenCalled();
+    const grid = document.getElementById("result-grid");
+    expect(grid.textContent).toContain("devXYZ");
+  });
+});
+

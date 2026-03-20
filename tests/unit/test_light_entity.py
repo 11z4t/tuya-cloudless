@@ -876,3 +876,58 @@ class TestLightColourDataDP:
 
         call_dps = coord.async_send_dps.call_args[0][0]
         assert call_dps.get("2") == "colour"
+
+
+# ── R38-F2: _ha_to_tuya_brightness clamp ───────────────────────────────────────
+
+
+class TestHaToTuyaBrightnessClamp:
+    """R38-F2: _ha_to_tuya_brightness must clamp output to [min_raw, max_raw].
+
+    With floating-point rounding, values near the endpoints could compute
+    to exactly min_raw - 1 or max_raw + 1.  The clamp prevents out-of-range
+    DPs that could confuse Tuya firmware.
+    """
+
+    def test_normal_mapping_mid(self) -> None:
+        """Mid-range value maps to approximately mid-range output."""
+        from custom_components.tuya_cloudless.light import (
+            _ha_to_tuya_brightness,  # type: ignore[attr-defined]
+        )
+
+        result = _ha_to_tuya_brightness(128, 10, 1000)
+        assert 10 <= result <= 1000
+
+    def test_clamp_at_min(self) -> None:
+        """ha_value=0 must return exactly min_raw (not below)."""
+        from custom_components.tuya_cloudless.light import (
+            _ha_to_tuya_brightness,  # type: ignore[attr-defined]
+        )
+
+        assert _ha_to_tuya_brightness(0, 10, 1000) == 10
+
+    def test_clamp_at_max(self) -> None:
+        """ha_value=255 must return exactly max_raw (not above)."""
+        from custom_components.tuya_cloudless.light import (
+            _ha_to_tuya_brightness,  # type: ignore[attr-defined]
+        )
+
+        assert _ha_to_tuya_brightness(255, 10, 1000) == 1000
+
+    def test_output_never_below_min_raw(self) -> None:
+        """Output must never be below min_raw for any valid input."""
+        from custom_components.tuya_cloudless.light import (
+            _ha_to_tuya_brightness,  # type: ignore[attr-defined]
+        )
+
+        for ha_val in range(256):
+            assert _ha_to_tuya_brightness(ha_val, 10, 1000) >= 10
+
+    def test_output_never_above_max_raw(self) -> None:
+        """Output must never be above max_raw for any valid input."""
+        from custom_components.tuya_cloudless.light import (
+            _ha_to_tuya_brightness,  # type: ignore[attr-defined]
+        )
+
+        for ha_val in range(256):
+            assert _ha_to_tuya_brightness(ha_val, 10, 1000) <= 1000
