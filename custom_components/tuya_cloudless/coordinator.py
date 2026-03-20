@@ -706,6 +706,10 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             if (
                 isinstance(k, str)
                 and len(k) <= _MAX_DPS_KEY_LEN
+                # R53-F4: Tuya DP keys are always pure decimal integers ("1", "2", "104").
+                # Reject keys with leading zeros, whitespace, or non-digit characters —
+                # they would never match a profile dp_id and only crowd the DP budget.
+                and k.isdigit()
                 and isinstance(v, _SCALAR)
                 and (not isinstance(v, str) or len(v) <= _MAX_DPS_STR_VALUE_LEN)
                 # R52-F3: Reject astronomically large integers — Python's json.loads

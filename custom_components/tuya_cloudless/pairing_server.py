@@ -965,7 +965,13 @@ class PairingServer:
                 self._background_tasks.add(_rt)
                 _rt.add_done_callback(self._background_tasks.discard)
 
-        # Respond in Tuya cloud activation format
+        # Respond in Tuya cloud activation format.
+        # R53-F3: For tokenless duplicate activations, omit the localKey from the
+        # response body.  The legitimate device already received the key on the
+        # first call; this is a firmware retry that only needs an ACK.  Returning
+        # the key again makes port 8099 an oracle for any LAN host that knows the
+        # gw_id and can craft a tokenless POST (no auth is required on port 8099).
+        response_local_key = "" if _is_tokenless_duplicate else local_key
         response_body = {
             "t": int(time.time()),
             "success": True,
@@ -973,7 +979,7 @@ class PairingServer:
                 "gwId": gw_id,
                 "active": 2,
                 "ability": 0,
-                "localKey": local_key,
+                "localKey": response_local_key,
                 "timezone": (
                     tz
                     if isinstance((tz := getattr(self._hass.config, "time_zone", None)), str) and tz
@@ -1832,7 +1838,12 @@ class PairingServer:
                 return await server._handle_ha_index(request)
 
         class _PairingConfigView(HomeAssistantView):
-            requires_auth = False
+            # R53-F6: Require auth — response includes default_ssid (home WiFi SSID)
+            # and integration_version.  The pairing UI is always opened from within
+            # the authenticated HA frontend, so requiring auth is safe here.
+            # (Compare _PairingEventsView which must remain unauthenticated so the
+            #  SSE stream can open before the HA auth token exchange completes.)
+            requires_auth = True
             url = _HA_PAIRING_PREFIX + "/provision/config"
             name = "api:tuya_cloudless:pairing:config"
 

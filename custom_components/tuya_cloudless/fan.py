@@ -250,7 +250,13 @@ class TuyaCloudlessFan(RestoreStateMixin, TuyaCloudlessEntity, FanEntity):
         value = self.get_dp(self._spec.dp_direction.id)
         if value is None:
             return None
-        return str(value)
+        # R53-F2: Apply the same allowlist as async_set_direction — a rogue
+        # device reporting an arbitrary direction string would otherwise write
+        # unvalidated content into the HA state machine verbatim.
+        str_value = str(value)
+        if str_value not in ("forward", "reverse"):
+            return None
+        return str_value
 
     async def async_turn_on(
         self,

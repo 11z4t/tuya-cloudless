@@ -439,3 +439,45 @@ class TestStripV33Header:
 
         raw = b"hello world"
         assert strip_v33_header(raw) is raw
+
+
+# ── R53-F7: encrypt_gcm all-zero extra_nonce rejection ────────────────────────
+
+
+class TestEncryptGcmAllZeroNonceR53:
+    """R53-F7: encrypt_gcm must reject all-zero extra_nonce."""
+
+    def test_all_zero_extra_nonce_raises(self) -> None:
+        """bytes(12) as extra_nonce must raise CryptoError — it is a no-op XOR."""
+        from tuya_cloudless.const import GCM_IV_SIZE
+        from tuya_cloudless.crypto import encrypt_gcm
+        from tuya_cloudless.exceptions import CryptoError
+
+        key = b"0123456789abcdef"
+        with pytest.raises(CryptoError, match="all-zero"):
+            encrypt_gcm(key, b"payload", extra_nonce=bytes(GCM_IV_SIZE))
+
+    def test_nonzero_extra_nonce_accepted(self) -> None:
+        """A non-zero 12-byte extra_nonce must not raise."""
+        from tuya_cloudless.crypto import decrypt_gcm, encrypt_gcm
+
+        key = b"0123456789abcdef"
+        nonce = b"\x01" + bytes(11)
+        ct = encrypt_gcm(key, b"hello", extra_nonce=nonce)
+        assert decrypt_gcm(key, ct) == b"hello"
+
+    def test_empty_extra_nonce_treated_as_none(self) -> None:
+        """empty extra_nonce (b'') must be treated as 'no nonce' — must not raise."""
+        from tuya_cloudless.crypto import decrypt_gcm, encrypt_gcm
+
+        key = b"0123456789abcdef"
+        ct = encrypt_gcm(key, b"hello", extra_nonce=b"")
+        assert decrypt_gcm(key, ct) == b"hello"
+
+    def test_none_extra_nonce_accepted(self) -> None:
+        """extra_nonce=None must be accepted and produce a random IV."""
+        from tuya_cloudless.crypto import decrypt_gcm, encrypt_gcm
+
+        key = b"0123456789abcdef"
+        ct = encrypt_gcm(key, b"hello", extra_nonce=None)
+        assert decrypt_gcm(key, ct) == b"hello"

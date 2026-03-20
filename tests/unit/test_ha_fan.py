@@ -978,3 +978,51 @@ class TestFanOverflowErrorR47:
         )
         e = _make_fan({"3": float("nan")}, spec=spec)
         assert e.percentage is None
+
+
+# ── R53-F2: current_direction allowlist ───────────────────────────────────────
+
+
+class TestCurrentDirectionAllowlistR53:
+    """R53-F2: current_direction must only return 'forward' or 'reverse'."""
+
+    def _make_fan_with_direction(self, direction_value: object) -> TuyaCloudlessFan:
+        spec = EntitySpec(
+            platform="fan",
+            name="main_fan",
+            dp_power=DPSpec(id="1", type="bool"),
+            dp_direction=DPSpec(id="5", type="str"),
+        )
+        return _make_fan({"5": direction_value}, spec=spec)
+
+    def test_forward_accepted(self) -> None:
+        """'forward' must be returned as-is."""
+        e = self._make_fan_with_direction("forward")
+        assert e.current_direction == "forward"
+
+    def test_reverse_accepted(self) -> None:
+        """'reverse' must be returned as-is."""
+        e = self._make_fan_with_direction("reverse")
+        assert e.current_direction == "reverse"
+
+    def test_unknown_value_returns_none(self) -> None:
+        """An unknown direction string from a rogue device must return None."""
+        e = self._make_fan_with_direction("evil<script>")
+        assert e.current_direction is None
+
+    def test_empty_string_returns_none(self) -> None:
+        """Empty string must return None."""
+        e = self._make_fan_with_direction("")
+        assert e.current_direction is None
+
+    def test_none_dp_returns_none(self) -> None:
+        """Missing dp_direction DP returns None."""
+        spec = EntitySpec(
+            platform="fan",
+            name="main_fan",
+            dp_power=DPSpec(id="1", type="bool"),
+            dp_direction=DPSpec(id="5", type="str"),
+        )
+        # No "5" key in state — get_dp returns None
+        e = _make_fan({}, spec=spec)
+        assert e.current_direction is None

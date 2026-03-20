@@ -437,8 +437,12 @@ class MessageBuffer:
             handle(msg)
     """
 
-    # Maximum buffer size (256 KB) — prevents memory exhaustion
-    MAX_BUFFER_SIZE = 256 * 1024
+    # Maximum buffer size (128 KB) — prevents memory exhaustion.
+    # R53-F5: Aligned with coordinator._MAX_BUFFER_BYTES (128 KB).  The previous
+    # 256 KB value created an inconsistency: the coordinator pre-checked at 128 KB
+    # but if that check were removed, MessageBuffer would accept up to 256 KB.
+    # Both limits are now 128 KB so the library is the authoritative enforcer.
+    MAX_BUFFER_SIZE = 128 * 1024
 
     def __init__(
         self,

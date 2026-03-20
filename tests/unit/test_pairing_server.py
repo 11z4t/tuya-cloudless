@@ -4709,7 +4709,9 @@ class TestRegisterHaViews:
 
         ui_names = {
             "api:tuya_cloudless:pairing:index",
-            "api:tuya_cloudless:pairing:config",
+            # NOTE: pairing:config was moved to requires_auth=True in R53-F6 (exposes
+            # default_ssid / integration_version).  It is always opened from within
+            # the authenticated HA frontend so auth is safe there.
             "api:tuya_cloudless:pairing:events",
             "api:tuya_cloudless:pairing:static",
         }
@@ -5271,13 +5273,20 @@ class TestTokenlessDedupR46:
     """R46-F5: Tokenless activations must be deduplicated by gw_id."""
 
     @pytest.mark.asyncio
-    async def test_tokenless_retry_gets_same_local_key(self, client: TestClient) -> None:
-        """Second POST without token for same gw_id reuses local_key (not a new one)."""
+    async def test_tokenless_retry_omits_local_key_r53(self, client: TestClient) -> None:
+        """R53-F3: Second POST without token for same gw_id must NOT re-expose localKey.
+
+        The first activation generates and stores the key internally (dedup entry).
+        A firmware retry gets a 200 ACK but with an empty localKey — the device already
+        received the key on the first call and this prevents port-8099 from acting as
+        a key-oracle for any LAN host that knows the gw_id.
+        """
         payload = {"gw_id": "testgw001", "product_key": "abc123"}
         resp1 = await client.post("/api/tuya/device/active", json=payload)
         data1 = await resp1.json()
         assert resp1.status == 200
         key1 = data1["result"]["localKey"]
+        assert key1 != "", "First tokenless activation must return a non-empty localKey"
 
         # Retry — same gw_id, no token
         resp2 = await client.post("/api/tuya/device/active", json=payload)
@@ -5285,7 +5294,7 @@ class TestTokenlessDedupR46:
         assert resp2.status == 200
         key2 = data2["result"]["localKey"]
 
-        assert key1 == key2, "Tokenless retry must return same localKey as first activation"
+        assert key2 == "", "R53-F3: tokenless duplicate must not expose localKey in response"
 
     @pytest.mark.asyncio
     async def test_different_gw_ids_get_different_keys_tokenless(self, client: TestClient) -> None:
@@ -5771,3 +5780,59 @@ class TestR52SecurityFixes:
         # Clean strings — must pass
         assert _SSE_NEWLINE_RE.search("clean-event-name") is None
         assert _SSE_NEWLINE_RE.search('{"key":"value"}') is None
+
+
+# ── Round 53 security findings ────────────────────────────────────────────────
+
+
+class TestR53SecurityFixes:
+    """Round 53 — security hardening tests."""
+
+    @pytest.fixture
+    def server(self) -> PairingServer:
+        hass = _make_hass()
+        return PairingServer(hass, port=0)
+
+    @pytest.mark.asyncio
+    async def test_tokenless_duplicate_omits_local_key(self, server: PairingServer) -> None:
+        """R53-F3: tokenless duplicate activation must not return local_key to caller."""
+        from unittest.mock import MagicMock
+
+        # Seed a tokenless result so the next call is a duplicate
+        from custom_components.tuya_cloudless.pairing_server import ActivationResult
+
+        gw_id = "aabbccdd11223344"
+        server._tokenless_results[gw_id] = ActivationResult(
+            gw_id=gw_id,
+            product_key="",
+            local_key="1234567890abcdef",
+            ip_address="192.168.1.50",
+            sw_ver="1.0",
+        )
+
+        request = MagicMock()
+        request.remote = "192.168.1.50"
+        request.content_type = "application/json"
+        request.json = AsyncMock(return_value={"gwId": gw_id, "t": 1234567890})
+
+        resp = await server._handle_activate(request)
+        data = json.loads(resp.body)
+        # The duplicate response must return an empty localKey
+        assert data["result"]["localKey"] == ""
+
+    def test_pairing_config_view_requires_auth(self) -> None:
+        """R53-F6: _PairingConfigView must have requires_auth=True."""
+        import inspect
+
+        from custom_components.tuya_cloudless import pairing_server
+
+        source = inspect.getsource(pairing_server)
+        # Find the _PairingConfigView block and verify requires_auth = True
+        # We check for the pattern: requires_auth = True appears after _PairingConfigView
+        config_view_idx = source.find("class _PairingConfigView")
+        assert config_view_idx >= 0
+        # Within the next 500 chars of _PairingConfigView, find requires_auth = True
+        snippet = source[config_view_idx : config_view_idx + 500]
+        assert "requires_auth = True" in snippet, (
+            "R53-F6: _PairingConfigView must have requires_auth = True"
+        )

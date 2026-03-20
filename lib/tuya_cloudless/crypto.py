@@ -324,6 +324,11 @@ def encrypt_gcm(key: bytes, plaintext: bytes, *, extra_nonce: bytes = b"") -> by
     if extra_nonce is not None and extra_nonce != b"":
         if len(extra_nonce) != GCM_IV_SIZE:
             raise CryptoError(f"extra_nonce must be {GCM_IV_SIZE} bytes, got {len(extra_nonce)}")
+        # R53-F7: Reject all-zero extra_nonce — XOR with zeros is a no-op that
+        # silently defeats the nonce-derivation step without any indication.
+        # Callers that want a deterministic nonce must supply a non-zero value.
+        if extra_nonce == bytes(GCM_IV_SIZE):
+            raise CryptoError("extra_nonce must not be all-zero bytes (would produce a no-op XOR)")
         iv = bytes(a ^ b for a, b in zip(iv, extra_nonce, strict=True))
     aesgcm = AESGCM(key)
     # AESGCM.encrypt returns ciphertext + 16-byte tag (standard GCM 128-bit tag)

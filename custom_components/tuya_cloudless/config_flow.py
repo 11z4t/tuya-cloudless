@@ -281,7 +281,8 @@ class TuyaCloudlessConfigFlow(ConfigFlow, domain=DOMAIN):
                     CONF_LOCAL_KEY: local_key,
                     CONF_IP_ADDRESS: ip_address,
                     CONF_PROTOCOL_VERSION: _version,
-                    CONF_DEVICE_NAME: str(user_input.get(CONF_DEVICE_NAME, "")).strip()
+                    # R53-F1: cap at 128 chars (defence-in-depth alongside vol.Length)
+                    CONF_DEVICE_NAME: str(user_input.get(CONF_DEVICE_NAME, "")).strip()[:128]
                     or ip_address,
                 }
                 return await self.async_step_local_key()
@@ -504,11 +505,16 @@ class TuyaCloudlessConfigFlow(ConfigFlow, domain=DOMAIN):
 
         if user_input is not None:
             raw_url = str(user_input.get("ha_url", "")).strip().rstrip("/")
+            # R53-F8: Reject excessively long URLs before structural validation —
+            # a 10 000-char URL would still pass HTTPS/netloc checks and pollute
+            # the async_external_step WebSocket response with a very large frame.
+            _MAX_HA_URL_LEN = 512
             # R41-F4: Full URL structural validation — prefix-only check allowed
             # SSRF via userinfo trick (https://user@evil.host) and other bypasses.
             _parsed = urlparse(raw_url)
             if (
-                _parsed.scheme != "https"
+                len(raw_url) > _MAX_HA_URL_LEN
+                or _parsed.scheme != "https"
                 or not _parsed.netloc
                 or _parsed.username is not None  # reject https://user@host (SSRF)
                 or _parsed.fragment  # fragment is meaningless in a base URL
@@ -597,7 +603,9 @@ class TuyaCloudlessConfigFlow(ConfigFlow, domain=DOMAIN):
 
         schema = vol.Schema(
             {
-                vol.Optional(CONF_DEVICE_NAME, default=default_name): str,
+                vol.Optional(CONF_DEVICE_NAME, default=default_name): vol.All(
+                    str, vol.Length(max=128)
+                ),
                 vol.Optional(CONF_PROFILE, default=default_profile): SelectSelector(
                     SelectSelectorConfig(
                         options=profile_options,
@@ -731,7 +739,7 @@ class TuyaCloudlessConfigFlow(ConfigFlow, domain=DOMAIN):
         schema = vol.Schema(
             {
                 vol.Required(CONF_LOCAL_KEY): str,
-                vol.Optional(CONF_DEVICE_NAME, default=""): str,
+                vol.Optional(CONF_DEVICE_NAME, default=""): vol.All(str, vol.Length(max=128)),
                 vol.Optional(CONF_PROFILE, default=default_profile): SelectSelector(
                     SelectSelectorConfig(
                         options=profile_options,
@@ -899,7 +907,7 @@ class TuyaCloudlessConfigFlow(ConfigFlow, domain=DOMAIN):
                         mode=SelectSelectorMode.LIST,
                     )
                 ),
-                vol.Optional(CONF_DEVICE_NAME, default=""): str,
+                vol.Optional(CONF_DEVICE_NAME, default=""): vol.All(str, vol.Length(max=128)),
             }
         )
 
@@ -955,7 +963,7 @@ class TuyaCloudlessConfigFlow(ConfigFlow, domain=DOMAIN):
         schema = vol.Schema(
             {
                 vol.Required(CONF_LOCAL_KEY): str,
-                vol.Optional(CONF_DEVICE_NAME, default=""): str,
+                vol.Optional(CONF_DEVICE_NAME, default=""): vol.All(str, vol.Length(max=128)),
                 vol.Optional(CONF_PROFILE, default=default_profile): SelectSelector(
                     SelectSelectorConfig(
                         options=profile_options,
