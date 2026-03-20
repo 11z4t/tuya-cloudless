@@ -4024,6 +4024,44 @@ class TestSseBoundedQueues:
         # Keep-alive write was attempted and failed — handler exited without re-raising
         assert write_count >= 1, "write() must have been called at least once"
 
+    async def test_broken_pipe_on_message_write_exits_cleanly(self, server: PairingServer) -> None:
+        """R32-3: BrokenPipeError (EPIPE) on response.write() must exit cleanly.
+
+        BrokenPipeError is an OSError subclass (not ConnectionResetError) raised
+        when the browser sends FIN before the server finishes writing the event.
+        Previously only ConnectionResetError was caught, causing spurious ERROR
+        logs for every browser tab close during an active SSE session.
+        """
+        queue: asyncio.Queue[str | None] = asyncio.Queue()
+        await queue.put("data: test\n\n")
+
+        async def fake_wait_for(coro: object, timeout: float = 0) -> str | None:
+            return await queue.get()
+
+        async def failing_write(data: bytes) -> None:
+            if b"data:" in data:
+                raise BrokenPipeError("EPIPE — client closed connection")
+
+        mock_response = MagicMock()
+        mock_response.prepare = AsyncMock()
+        mock_response.write = AsyncMock(side_effect=failing_write)
+
+        with (
+            patch(
+                "custom_components.tuya_cloudless.pairing_server.asyncio.wait_for",
+                side_effect=fake_wait_for,
+            ),
+            patch(
+                "custom_components.tuya_cloudless.pairing_server.web.StreamResponse",
+                return_value=mock_response,
+            ),
+        ):
+            # Must complete without raising — BrokenPipeError must be caught
+            await server._handle_sse(MagicMock())
+
+        # Queue is cleaned up after exit
+        assert queue not in server._sse_queues
+
 
 # ── SEC-003: Strict CORS on result and SSE endpoints (PLAT-826) ──────────────
 

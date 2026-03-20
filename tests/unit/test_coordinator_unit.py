@@ -197,6 +197,47 @@ class TestCoordinatorDisconnect:
         assert coord.state.available is False  # type: ignore[union-attr]
 
     @pytest.mark.asyncio
+    async def test_disconnect_fires_event_and_updates_when_was_available(self) -> None:
+        """R32-1: EVENT_TUYA_DISCONNECTED fires even when writer is already None."""
+        coord = _make_coord()
+        coord.state.available = True  # type: ignore[union-attr]
+        coord._writer = None  # force-reconnect already cleared the writer
+
+        fired_events: list[str] = []
+        coord._hass.bus.async_fire = MagicMock(  # type: ignore[union-attr]
+            side_effect=lambda ev, *a, **k: fired_events.append(ev)
+        )
+        # async_update_listeners requires _listeners to be a dict (HA internals);
+        # mock it to avoid coupling to HA internals in this unit test.
+        coord.async_update_listeners = MagicMock()  # type: ignore[union-attr]
+
+        await coord._disconnect()  # type: ignore[union-attr]
+
+        assert coord.state.available is False  # type: ignore[union-attr]
+        assert any("disconnected" in ev.lower() for ev in fired_events), (
+            "EVENT_TUYA_DISCONNECTED must fire even when writer is already None"
+        )
+        coord.async_update_listeners.assert_called_once()  # type: ignore[union-attr]
+
+    @pytest.mark.asyncio
+    async def test_disconnect_no_event_when_already_unavailable(self) -> None:
+        """R32-1: No spurious EVENT_TUYA_DISCONNECTED when device was not available."""
+        coord = _make_coord()
+        coord.state.available = False  # type: ignore[union-attr]
+        coord._writer = None  # type: ignore[union-attr]
+
+        fired_events: list[str] = []
+        coord._hass.bus.async_fire = MagicMock(  # type: ignore[union-attr]
+            side_effect=lambda ev, *a, **k: fired_events.append(ev)
+        )
+        coord.async_update_listeners = MagicMock()  # type: ignore[union-attr]
+
+        await coord._disconnect()  # type: ignore[union-attr]
+
+        assert fired_events == [], "No event should fire when device was already unavailable"
+        coord.async_update_listeners.assert_not_called()  # type: ignore[union-attr]
+
+    @pytest.mark.asyncio
     async def test_disconnect_closes_writer(self) -> None:
         coord = _make_coord()
         writer = AsyncMock()
@@ -295,6 +336,24 @@ class TestCoordinatorHeartbeatLoop:
         with patch("custom_components.tuya_cloudless.coordinator.asyncio.sleep", new=AsyncMock()):
             await coord._heartbeat_loop()  # type: ignore[union-attr]
         # Should return without raising
+
+    @pytest.mark.asyncio
+    async def test_heartbeat_oserror_clears_writer_reference(self) -> None:
+        """R32-2: _heartbeat_loop must set _writer=None after close so async_send_dps
+        sees the device as unavailable instead of writing to a closed transport."""
+        coord = _make_coord()
+        writer = MagicMock()
+        writer.write = MagicMock(side_effect=OSError("broken pipe"))
+        writer.drain = AsyncMock()
+        coord._writer = writer  # type: ignore[union-attr]
+
+        with patch("custom_components.tuya_cloudless.coordinator.asyncio.sleep", new=AsyncMock()):
+            await coord._heartbeat_loop()  # type: ignore[union-attr]
+
+        assert coord._writer is None, (  # type: ignore[union-attr]
+            "_writer must be None after heartbeat failure so async_send_dps "
+            "returns HomeAssistantError(device_unavailable) not send_failed"
+        )
 
 
 class TestCoordinatorNegotiateSessionKey:

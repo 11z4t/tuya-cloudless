@@ -992,7 +992,10 @@ class PairingServer:
                 await response.write(message.encode())
         except asyncio.CancelledError:
             raise  # Re-raise to properly signal task cancellation to asyncio
-        except ConnectionResetError:
+        except (ConnectionResetError, OSError):
+            # R32-3: BrokenPipeError (EPIPE) is an OSError subclass raised when the
+            # browser closes the tab mid-stream. Catch it alongside ConnectionResetError
+            # to avoid spurious ERROR-level log entries on normal client disconnects.
             pass
         finally:
             if queue in self._sse_queues:

@@ -375,9 +375,18 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     async def _disconnect(self) -> None:
         """Close TCP connection if open."""
+        # R32-1: Fire disconnected event and notify listeners immediately, even
+        # when _receive_loop already set _writer=None before calling _disconnect
+        # (force-reconnect paths). Without this, EVENT_TUYA_DISCONNECTED is
+        # silently skipped and HA entities remain "available" until the
+        # connection-loop sleep expires.
+        was_available = self.state.available
+        self._session_key = None
+        self.state.available = False
+        if was_available:
+            self._fire_event(EVENT_TUYA_DISCONNECTED)
+            self.async_update_listeners()
         if self._writer is not None:
-            if self.state.available:
-                self._fire_event(EVENT_TUYA_DISCONNECTED)
             try:
                 self._writer.close()
                 await self._writer.wait_closed()
@@ -385,8 +394,6 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 pass
             self._writer = None
             self._reader = None
-        self._session_key = None
-        self.state.available = False
 
     async def _send_initial_dp_query(self, writer: asyncio.StreamWriter) -> None:
         """Send DP_QUERY (0x0a) immediately after connect to pre-populate entity state.
@@ -461,6 +468,7 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 _LOGGER.warning("[%s] Heartbeat failed: %s — closing connection", self._gw_id, exc)
                 if self._writer is not None:
                     self._writer.close()
+                    self._writer = None  # R32-2: clear ref so async_send_dps sees unavailable
                 break
 
     async def _receive_loop(self, reader: asyncio.StreamReader) -> None:
