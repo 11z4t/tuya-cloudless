@@ -66,6 +66,11 @@ __all__ = [
 
 # Protect against UDP amplification / memory exhaustion from spoofed packets
 _MAX_DISCOVERED = 256
+# R43-F5: Cap decryption trials per datagram to bound CPU cost of forged UDP
+# packets on the LAN.  Each trial attempts 3 AES ops (v3.3/v3.4/v3.5).
+# 16 devices x 3 versions = 48 AES calls worst-case per packet; acceptable.
+# Installations with >16 devices still work; old devices broadcast plain-JSON.
+_MAX_DECRYPT_ATTEMPTS = 16
 _MAX_GW_ID_LEN = 64
 _MAX_VERSION_LEN = 16
 _MAX_PRODUCT_KEY_LEN = 64
@@ -475,8 +480,9 @@ class DiscoveryListener:
         except (json.JSONDecodeError, UnicodeDecodeError):
             pass
 
-        # Try decrypting with known device keys
-        for _gw_id, local_key in self._known_devices.items():
+        # Try decrypting with known device keys (capped to _MAX_DECRYPT_ATTEMPTS
+        # to prevent LAN DoS via crafted UDP packets on busy installations).
+        for _gw_id, local_key in list(self._known_devices.items())[:_MAX_DECRYPT_ATTEMPTS]:
             for version in ("3.3", "3.4", "3.5"):
                 try:
                     decrypted = decrypt_payload(version, local_key, raw)

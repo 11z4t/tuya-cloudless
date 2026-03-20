@@ -662,3 +662,58 @@ class TestCoverRestoreExtraData:
         await _run_restore(e, "closed", attributes={"current_position": 35})
         assert e._optimistic_position == 35
         assert e._optimistic_open is True  # 35 > 0
+
+
+# ── R43 fixes ─────────────────────────────────────────────────────────────────
+
+
+class TestCoverStopErrorHandlingR43:
+    """R43-F2: async_stop_cover must propagate HomeAssistantError."""
+
+    @pytest.mark.asyncio
+    async def test_stop_cover_propagates_error(self) -> None:
+        """HomeAssistantError from async_send_dp must propagate out of stop."""
+        from unittest.mock import AsyncMock
+
+        from homeassistant.exceptions import HomeAssistantError
+
+        from custom_components.tuya_cloudless.cover import TuyaCloudlessCover
+
+        spec = EntitySpec(
+            platform="cover",
+            name="cover",
+            dp_open=DPSpec(id="1", type="bool"),
+            dp_stop=DPSpec(id="7", type="bool"),
+        )
+        coord = _make_coordinator({"1": True})
+        coord.async_send_dps = AsyncMock(side_effect=HomeAssistantError("device unreachable"))
+        entity = TuyaCloudlessCover(coord, spec)
+
+        with pytest.raises(HomeAssistantError):
+            await entity.async_stop_cover()
+
+
+class TestCoverRestoreClampR43:
+    """R43-F3: restored position/tilt must be clamped to [0, 100]."""
+
+    @pytest.mark.asyncio
+    async def test_restore_out_of_range_position_clamped_to_100(self) -> None:
+        """Position > 100 from saved state is clamped to 100."""
+        e = _make_cover({})
+        await _run_restore(e, "open", attributes={"current_position": 200})
+        assert e._optimistic_position == 100
+
+    @pytest.mark.asyncio
+    async def test_restore_negative_position_clamped_to_0(self) -> None:
+        """Negative position from saved state is clamped to 0."""
+        e = _make_cover({})
+        await _run_restore(e, "open", attributes={"current_position": -10})
+        assert e._optimistic_position == 0
+
+    @pytest.mark.asyncio
+    async def test_restore_out_of_range_tilt_clamped(self) -> None:
+        """Tilt > 100 from saved state is clamped to 100."""
+        spec = _make_cover_spec(dp_tilt_id="3")
+        e = _make_cover({}, spec=spec)
+        await _run_restore(e, "open", attributes={"current_tilt_position": 150})
+        assert e._optimistic_tilt == 100

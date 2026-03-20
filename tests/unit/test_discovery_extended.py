@@ -475,3 +475,42 @@ class TestTryDecodePayload:
         assert result is not None
         parsed = json.loads(result)
         assert parsed["gwId"] == "abc"
+
+
+# ── R43-F5: Decryption trial cap ────────────────────────────────────────────
+
+
+class TestDecryptAttemptCapR43:
+    """R43-F5: _try_decode_payload must not try more than _MAX_DECRYPT_ATTEMPTS keys."""
+
+    def test_only_first_n_keys_are_tried(self) -> None:
+        """With > _MAX_DECRYPT_ATTEMPTS known devices, only first N are tried."""
+        from unittest.mock import patch
+
+        from tuya_cloudless.discovery import _MAX_DECRYPT_ATTEMPTS, DiscoveryListener
+
+        # Build 20 known_devices (exceeds cap of 16)
+        known: dict[str, bytes] = {f"gw{i:03d}": b"1234567890123456" for i in range(20)}
+        listener = DiscoveryListener(known_devices=known)
+
+        encrypted_payload = b"\x00" * 64  # will fail all decryptions
+
+        calls: list[str] = []
+
+        original_decrypt = __import__(
+            "tuya_cloudless.crypto", fromlist=["decrypt_payload"]
+        ).decrypt_payload
+
+        def counting_decrypt(
+            version: str, key: bytes, data: bytes, session_key: object = None
+        ) -> bytes:
+            calls.append(version)
+            return original_decrypt(version, key, data, session_key)
+
+        with patch("tuya_cloudless.discovery.decrypt_payload", side_effect=counting_decrypt):
+            listener._try_decode_payload(encrypted_payload)
+
+        # Each key is tried with 3 versions; total calls <= _MAX_DECRYPT_ATTEMPTS * 3
+        assert len(calls) <= _MAX_DECRYPT_ATTEMPTS * 3, (
+            f"Expected <= {_MAX_DECRYPT_ATTEMPTS * 3} decrypt calls, got {len(calls)}"
+        )

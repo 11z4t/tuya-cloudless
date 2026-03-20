@@ -288,7 +288,10 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 return
             except (TimeoutError, OSError, TuyaCloudlessError) as exc:
                 self.state.available = False
-                self.state.last_error = str(exc)
+                # R43-F4: Truncate error string to avoid surfacing full OS
+                # error messages (which can embed IP:port) in the HA repair UI
+                # and diagnostics downloads.  Keep enough context for support.
+                self.state.last_error = str(exc)[:200]
                 self._consecutive_connection_failures += 1
                 _LOGGER.warning(
                     "[%s] Connection failed: %s — retrying in %.0fs",

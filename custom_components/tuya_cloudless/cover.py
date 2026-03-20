@@ -131,12 +131,14 @@ class TuyaCloudlessCover(RestoreStateMixin, TuyaCloudlessEntity, CoverEntity):
             raw_pos = attrs.get("current_position")
             if raw_pos is not None and self._spec.dp_position is not None:
                 with contextlib.suppress(ValueError, TypeError):
-                    self._optimistic_position = int(raw_pos)
+                    # R43-F3: clamp to [0, 100] — a manipulated backup or misbehaving
+                    # device could have saved an out-of-range position value.
+                    self._optimistic_position = max(0, min(100, int(raw_pos)))
                     self._optimistic_open = self._optimistic_position > 0
             raw_tilt = attrs.get("current_tilt_position")
             if raw_tilt is not None and self._spec.dp_tilt is not None:
                 with contextlib.suppress(ValueError, TypeError):
-                    self._optimistic_tilt = int(raw_tilt)
+                    self._optimistic_tilt = max(0, min(100, int(raw_tilt)))
 
     @callback
     def _handle_coordinator_update(self) -> None:
@@ -254,7 +256,10 @@ class TuyaCloudlessCover(RestoreStateMixin, TuyaCloudlessEntity, CoverEntity):
         until the device reports it.
         """
         if self._spec.dp_stop is not None:
-            await self.async_send_dp(self._spec.dp_stop.id, True)
+            try:
+                await self.async_send_dp(self._spec.dp_stop.id, True)
+            except HomeAssistantError:
+                raise
 
     async def async_set_cover_position(self, **kwargs: Any) -> None:
         """Move the cover to a specific position (0-100) with optimistic update.

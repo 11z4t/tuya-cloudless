@@ -351,3 +351,29 @@ class TestEncodeFrameSequenceOverflow:
         )
         _, seq, _, _ = struct.unpack_from(">4sIII", raw, 0)
         assert seq == 1, f"Expected sequence=1 after mask, got {seq}"
+
+
+# ── R43-F7: CRC error includes sequence + length context ─────────────────────
+
+
+class TestCrcErrorContextR43:
+    """R43-F7: CRC mismatch error must include seq and len for diagnostics."""
+
+    def _make_v31_frame(self, cmd: int, payload: bytes, seq: int = 1) -> bytes:
+        from tuya_cloudless.crypto import compute_crc32
+        from tuya_cloudless.protocol import _STRUCT_HEADER, FRAME_PREFIX, FRAME_SUFFIX
+
+        length = len(payload) + 8
+        body = _STRUCT_HEADER.pack(FRAME_PREFIX, seq, cmd, length) + payload
+        crc = compute_crc32(body)
+        return body + struct.pack(">I", crc) + FRAME_SUFFIX
+
+    def test_crc_error_includes_sequence_and_length(self) -> None:
+        """CryptoError from bad CRC must include seq= and len= in message."""
+        raw = bytearray(self._make_v31_frame(CMD_STATUS, b"data", seq=42))
+        raw[-8] ^= 0xFF  # corrupt CRC
+        with pytest.raises(CryptoError) as exc_info:
+            decode_frame(bytes(raw), version="3.1", local_key=_LOCAL_KEY)
+        msg = str(exc_info.value)
+        assert "seq=42" in msg, f"Expected seq=42 in CRC error message: {msg!r}"
+        assert "len=" in msg, f"Expected len= in CRC error message: {msg!r}"

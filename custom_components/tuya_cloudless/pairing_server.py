@@ -290,8 +290,11 @@ class PairingServer:
         self._background_tasks: set[asyncio.Task[None]] = set()
         # APs currently being paired — prevents duplicate concurrent pairing tasks
         self._wifi_ap_pairing_in_progress: set[str] = set()
-        # Cached static HTML (file read + path rewrites) for _handle_ha_index
+        # Cached static HTML (file read + path rewrites) for _handle_ha_index.
+        # _ha_index_html_mtime tracks the file's mtime at cache build time so
+        # the cache is invalidated if index.html is updated while HA is running.
         self._ha_index_html_cache: str | None = None
+        self._ha_index_html_mtime: float | None = None
 
     # ── Lifecycle ──────────────────────────────────────────────────────────
 
@@ -352,6 +355,7 @@ class PairingServer:
         # R37-2: Clear HTML cache so a subsequent start() (e.g. after HACS update)
         # re-reads index.html from disk rather than serving a potentially stale version.
         self._ha_index_html_cache = None
+        self._ha_index_html_mtime = None
         _LOGGER.info("Tuya Cloudless pairing server stopped")
 
     # ── Public helpers ─────────────────────────────────────────────────────
@@ -1303,8 +1307,10 @@ class PairingServer:
                 status=409, text="WiFi AP pairing already in progress for this device"
             )
 
-        # Cap total concurrent tasks to prevent resource exhaustion
-        if len(self._background_tasks) >= _MAX_WIFI_AP_TASKS:
+        # R43-F1: Cap concurrent WiFi-AP tasks using the dedicated set, not the
+        # shared _background_tasks (which also holds SSE/flow-resume tasks and
+        # would give a false count, blocking legitimate pairing requests).
+        if len(self._wifi_ap_pairing_in_progress) >= _MAX_WIFI_AP_TASKS:
             return web.Response(
                 status=429, text="Too many pairing operations in progress — please wait and retry"
             )
@@ -1535,7 +1541,10 @@ class PairingServer:
                 headers=_SECURITY_HEADERS,
             )
 
-        if self._ha_index_html_cache is None:
+        # R43-F6: Invalidate cache if index.html was modified on disk (e.g. HACS
+        # update while HA is running).  The mtime check is cheap (single stat(2)).
+        current_mtime = index_path.stat().st_mtime
+        if self._ha_index_html_cache is None or self._ha_index_html_mtime != current_mtime:
             html_raw = index_path.read_text(encoding="utf-8")
             static_base = _HA_PAIRING_PREFIX + "/static"
             provision_base = _HA_PAIRING_PREFIX + "/provision"
@@ -1547,6 +1556,7 @@ class PairingServer:
                 f'src="{provision_base}/qr.svg"',
             )
             self._ha_index_html_cache = html_raw
+            self._ha_index_html_mtime = current_mtime
 
         html = self._ha_index_html_cache
         static_base = _HA_PAIRING_PREFIX + "/static"

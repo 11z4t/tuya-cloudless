@@ -46,6 +46,7 @@ from tuya_cloudless.crypto import (
     verify_crc32,
 )
 from tuya_cloudless.exceptions import (
+    CryptoError,
     MalformedPacketError,
     UnsupportedVersionError,
 )
@@ -287,7 +288,15 @@ def decode_frame(
 
     # Verify CRC over header + payload (v3.1-3.3 only; v3.4/3.5 use GCM)
     if version not in VERSIONS_GCM:
-        verify_crc32(data[:payload_end], crc_received)
+        try:
+            verify_crc32(data[:payload_end], crc_received)
+        except CryptoError as exc:
+            # R43-F7: Re-raise with frame context to distinguish corruption
+            # from wrong local_key in logs and support tickets.
+            raise CryptoError(
+                f"CRC-32 mismatch at seq={sequence} len={length}"
+                " — frame corrupted or local_key wrong"
+            ) from exc
 
     # Decrypt payload
     if not raw_payload or version == PROTOCOL_31:
