@@ -343,3 +343,34 @@ class TestNumberValueOverflowR49:
 
         await entity.async_set_native_value(50.0)
         coord.async_send_dps.assert_called_once_with({"1": 500})
+
+
+class TestNumberEdgeCases:
+    """Cover remaining branches: ValueError in native_value, scale=0, HA error re-raise."""
+
+    def test_native_value_non_numeric_dp_returns_none(self) -> None:
+        """native_value returns None when DP is a non-numeric string (lines 117-118)."""
+        e = _make_number({"6": "not_a_number"})
+        assert e.native_value is None
+
+    def test_native_value_none_type_dp_returns_none(self) -> None:
+        """native_value returns None when DP value is a list (TypeError path)."""
+        e = _make_number({"6": [1, 2, 3]})
+        assert e.native_value is None
+
+    @pytest.mark.asyncio
+    async def test_set_native_value_scale_zero_logs_and_returns(self) -> None:
+        """scale=0 logs warning and returns without calling async_send_dps (lines 132-133)."""
+        e = _make_number({"6": 50}, scale=0.0)
+        await e.async_set_native_value(50.0)
+        e.coordinator.async_send_dps.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_set_native_value_reraises_ha_error(self) -> None:
+        """HomeAssistantError from coordinator is re-raised (lines 149-150)."""
+        from homeassistant.exceptions import HomeAssistantError
+
+        e = _make_number({"6": 50})
+        e.coordinator.async_send_dps.side_effect = HomeAssistantError("send failed")
+        with pytest.raises(HomeAssistantError):
+            await e.async_set_native_value(50.0)

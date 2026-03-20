@@ -397,3 +397,104 @@ class TestMessageBufferCorruptLengthErrors:
         buf.feed(encoded)
         buf.messages()
         assert buf.pop_error_count() == 0
+
+
+class TestDecodeMessageEdgeCases:
+    """Cover decode_message guard clauses not reached via MessageBuffer._try_extract."""
+
+    def _make_frame_with_len(self, payload_len_field: int, total_bytes: int = 24) -> bytes:
+        """Build a raw frame with custom payload_len_field and padded to total_bytes."""
+        # Header: prefix(4) + seq(4) + cmd(4) + payload_len(4) = 16 bytes
+        header = struct.pack(">IIII", 0x000055AA, 1, 0, payload_len_field)
+        # Pad to total_bytes (must be >= 24 for min_size check to pass)
+        data = header + b"\x00" * (total_bytes - len(header))
+        return data
+
+    def test_payload_size_negative_raises(self) -> None:
+        """payload_size < 0 raises InvalidMessageError (lines 339-340)."""
+        # v3.3: chk_size=4, suffix=4. payload_size = payload_len_field - 8.
+        # Use payload_len_field=3 → payload_size = -5 < 0.
+        # Frame must be >= HEADER_SIZE + CRC32_SIZE + SUFFIX_SIZE = 24 bytes.
+        frame = self._make_frame_with_len(payload_len_field=3, total_bytes=24)
+        with pytest.raises(InvalidMessageError, match="payload_len_field"):
+            decode_message(frame, ProtocolVersion.V33)
+
+    def test_payload_size_too_large_raises(self) -> None:
+        """payload_size > MAX_PAYLOAD_SIZE raises InvalidMessageError (lines 342-343)."""
+        from tuya_cloudless.const import MAX_PAYLOAD_SIZE
+
+        # payload_size = payload_len_field - chk - suffix = (MAX+1) + 8
+        oversized_len = MAX_PAYLOAD_SIZE + 1 + 8
+        frame = self._make_frame_with_len(payload_len_field=oversized_len, total_bytes=24)
+        with pytest.raises(InvalidMessageError, match="MAX_PAYLOAD_SIZE"):
+            decode_message(frame, ProtocolVersion.V33)
+
+    def test_data_truncated_raises(self) -> None:
+        """Truncated data (len < expected_total_bytes) raises InvalidMessageError (lines 347-348)."""  # noqa: E501
+        # payload_size=10, so expected_total = 16 + 10 + 4 + 4 = 34 bytes.
+        # Provide only 28 bytes.
+        frame = self._make_frame_with_len(payload_len_field=10 + 8, total_bytes=28)
+        with pytest.raises(InvalidMessageError, match="truncated"):
+            decode_message(frame, ProtocolVersion.V33)
+
+
+class TestDpsPropertyEdgeCases:
+    """Cover .dps property guard for non-dict JSON payload (line 204)."""
+
+    def test_dps_list_payload_raises(self) -> None:
+        """JSON array payload raises ProtocolError (line 204)."""
+        msg = TuyaMessage(sequence=1, command=CommandType.STATUS, payload=b"[1, 2, 3]")
+        with pytest.raises(ProtocolError, match="not a JSON object"):
+            _ = msg.dps
+
+    def test_dps_string_payload_raises(self) -> None:
+        """JSON string payload raises ProtocolError (line 204)."""
+        msg = TuyaMessage(sequence=1, command=CommandType.STATUS, payload=b'"hello"')
+        with pytest.raises(ProtocolError, match="not a JSON object"):
+            _ = msg.dps
+
+
+class TestDetectVersionFromSize:
+    """Cover _detect_version_from_size (lines 291-295)."""
+
+    def test_detects_crc32_version(self) -> None:
+        """Returns V33 when payload_len matches CRC32 checksum size."""
+        from tuya_cloudless.message import CRC32_SIZE, SUFFIX_SIZE, _detect_version_from_size
+
+        raw_size = 20
+        payload_len = raw_size + CRC32_SIZE + SUFFIX_SIZE
+        assert _detect_version_from_size(payload_len, raw_size) == ProtocolVersion.V33
+
+    def test_detects_hmac_version(self) -> None:
+        """Returns V34 when payload_len matches HMAC checksum size."""
+        from tuya_cloudless.message import HMAC_SIZE, SUFFIX_SIZE, _detect_version_from_size
+
+        raw_size = 20
+        payload_len = raw_size + HMAC_SIZE + SUFFIX_SIZE
+        assert _detect_version_from_size(payload_len, raw_size) == ProtocolVersion.V34
+
+    def test_returns_none_when_ambiguous(self) -> None:
+        """Returns None when payload_len doesn't match either checksum pattern."""
+        from tuya_cloudless.message import _detect_version_from_size
+
+        assert _detect_version_from_size(99, 20) is None
+
+
+class TestMessagesExceptionHandling:
+    """Cover messages() exception handler loop (lines 584-588)."""
+
+    def test_bad_suffix_counted_as_error(self) -> None:
+        """A frame with bad suffix triggers InvalidMessageError in decode_message,
+        which is caught by messages() and counted (lines 584-588)."""
+        # Build a valid-looking frame then corrupt the suffix bytes.
+        msg = TuyaMessage(sequence=1, command=CommandType.HEART_BEAT, payload=b"")
+        encoded = bytearray(encode_message(msg, ProtocolVersion.V33))
+        # Corrupt the last 4 bytes (suffix)
+        encoded[-4:] = b"\xde\xad\xbe\xef"
+        buf = MessageBuffer(ProtocolVersion.V33)
+        buf.feed(bytes(encoded))
+        result = buf.messages()
+        # The corrupt frame should not be in result
+        assert result == []
+        # But should have been counted as an error
+        assert buf.pop_error_count() >= 1
