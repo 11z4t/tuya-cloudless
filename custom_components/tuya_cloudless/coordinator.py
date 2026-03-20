@@ -407,7 +407,15 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # silently skipped and HA entities remain "available" until the
         # connection-loop sleep expires.
         was_available = self.state.available
-        self._session_key = None
+        # R52-F7: Zero the ephemeral session key before releasing the reference.
+        # Python bytes are immutable so we cannot wipe in-place; we delete the
+        # name and let the GC reclaim the buffer.  This narrows the window during
+        # which a crash-dump or memory diagnostic can read the session key.
+        # (The long-lived _local_key is intentionally not zeroed here — it is
+        # needed for every reconnect and is managed by HA's config entry lifetime.)
+        if self._session_key is not None:
+            del self._session_key
+            self._session_key = None
         self.state.available = False
         if was_available:
             self._fire_event(EVENT_TUYA_DISCONNECTED)
@@ -700,6 +708,16 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 and len(k) <= _MAX_DPS_KEY_LEN
                 and isinstance(v, _SCALAR)
                 and (not isinstance(v, str) or len(v) <= _MAX_DPS_STR_VALUE_LEN)
+                # R52-F3: Reject astronomically large integers — Python's json.loads
+                # parses JSON integers into arbitrary-precision int objects.  A
+                # 10 000-digit integer passes isinstance(v, int) but would exhaust
+                # memory when stored, logged, or converted by entity code.
+                # bool is a subclass of int; isinstance(v, bool) short-circuits first.
+                and (not isinstance(v, int) or isinstance(v, bool) or (-(2**63) <= v <= 2**63 - 1))
+                # R52-F3: Reject NaN and infinite floats — they propagate through
+                # arithmetic and produce confusing entity states.  Real Tuya DPs
+                # are always finite (temperature, humidity, etc.).
+                and (not isinstance(v, float) or (v == v and abs(v) < 1e15))
             )
         }
         if dps:

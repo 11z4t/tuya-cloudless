@@ -5693,3 +5693,81 @@ class TestR51SecurityFixes:
             "R51-F5 TOCTOU guard 'len(data) > _MAX_STATIC_FILE_BYTES' "
             "not found in pairing_server.py"
         )
+
+
+# ── Round 52 security findings ────────────────────────────────────────────────
+
+
+class TestR52SecurityFixes:
+    """Round 52 — pairing_server.py security hardening tests."""
+
+    @pytest.fixture
+    def server(self) -> PairingServer:
+        hass = _make_hass()
+        return PairingServer(hass, port=0)
+
+    @pytest.mark.asyncio
+    async def test_quick_scan_ssid_byte_length_guard(self, server: PairingServer) -> None:
+        """R52-F1: SSIDs > 32 bytes must be rejected in _handle_quick_scan."""
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        # An over-long SSID (33 bytes when UTF-8 encoded) that is a Tuya AP prefix
+        # _is_tuya_ap checks lowercase prefixes: "smartlife_", "sl_", "az_", "tuya_"
+        oversized_ssid = "SmartLife_" + "A" * 23  # > 32 bytes
+        assert len(oversized_ssid.encode()) > 32
+
+        valid_ssid = "SmartLife_AB12"  # matches "smartlife_" prefix, <= 32 bytes
+        assert len(valid_ssid.encode()) <= 32
+
+        stdout = f"{oversized_ssid}\n{valid_ssid}\n".encode()
+        proc_mock = MagicMock()
+        proc_mock.communicate = AsyncMock(return_value=(stdout, b""))
+
+        with patch(
+            "asyncio.create_subprocess_exec",
+            return_value=proc_mock,
+        ):
+            request = MagicMock()
+            request.remote = "127.0.0.1"
+            resp = await server._handle_quick_scan(request)
+
+        data = json.loads(resp.body)
+        ssids = [ap["ssid"] for ap in data["tuya_aps"]]
+        assert valid_ssid in ssids
+        assert oversized_ssid not in ssids
+
+    @pytest.mark.asyncio
+    async def test_quick_scan_result_capped_at_max(self, server: PairingServer) -> None:
+        """R52-F2: _handle_quick_scan must cap tuya_aps at _MAX_SSID_SCAN_RESULTS."""
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        from custom_components.tuya_cloudless.pairing_server import _MAX_SSID_SCAN_RESULTS
+
+        # Generate more SSIDs than the cap, all valid Tuya APs ("sl_" prefix)
+        many_ssids = [f"sl_{i:04d}" for i in range(_MAX_SSID_SCAN_RESULTS + 20)]
+        stdout = "\n".join(many_ssids).encode()
+        proc_mock = MagicMock()
+        proc_mock.communicate = AsyncMock(return_value=(stdout, b""))
+
+        with patch("asyncio.create_subprocess_exec", return_value=proc_mock):
+            request = MagicMock()
+            request.remote = "127.0.0.1"
+            resp = await server._handle_quick_scan(request)
+
+        data = json.loads(resp.body)
+        assert len(data["tuya_aps"]) == _MAX_SSID_SCAN_RESULTS
+
+    def test_sse_newline_re_blocks_unicode_line_separators(self) -> None:
+        """R52-F6: _SSE_NEWLINE_RE must match Unicode line terminators."""
+        from custom_components.tuya_cloudless.pairing_server import _SSE_NEWLINE_RE
+
+        # Standard ASCII newlines — must be blocked
+        assert _SSE_NEWLINE_RE.search("event\ndata")
+        assert _SSE_NEWLINE_RE.search("event\rdata")
+        # Unicode line terminators — must also be blocked
+        assert _SSE_NEWLINE_RE.search("event\u2028data")  # LINE SEPARATOR
+        assert _SSE_NEWLINE_RE.search("event\u2029data")  # PARAGRAPH SEPARATOR
+        assert _SSE_NEWLINE_RE.search("event\x85data")  # NEXT LINE (NEL)
+        # Clean strings — must pass
+        assert _SSE_NEWLINE_RE.search("clean-event-name") is None
+        assert _SSE_NEWLINE_RE.search('{"key":"value"}') is None

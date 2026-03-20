@@ -389,6 +389,17 @@ def build_provision_frames(
         BLE Write characteristic in order.
     """
     raw_payload = payload.to_bytes()
+    # R52-F5: Validate payload size before encryption/chunking.  A misconfigured
+    # HA instance with a very long internal_url can produce an activator_url that
+    # pushes the JSON payload past the Tuya firmware's expected range, causing
+    # silent BLE provisioning failures with no diagnostic.  Check before
+    # encryption so the error message shows the pre-encryption size.
+    if len(raw_payload) > _MAX_BLE_PAYLOAD:
+        raise PairingError(
+            f"Provisioning payload too large to transmit over BLE: "
+            f"{len(raw_payload)} bytes (max {_MAX_BLE_PAYLOAD}). "
+            f"Check that the HA internal URL is not excessively long."
+        )
     if session_key is not None:
         raw_payload = encrypt_ble_payload(session_key, raw_payload)
     frame = BleFrame(seq=seq, cmd=CMD_WIFI_CONFIG, payload=raw_payload)

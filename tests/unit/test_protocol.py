@@ -225,20 +225,25 @@ class TestSplitFrames:
         # depending on alignment, but we must not crash or hang
         assert isinstance(frames, list)
 
-    def test_many_valid_frames_not_capped_at_4096(self) -> None:
-        """R40-F4: split_frames must extract all valid frames in a large burst.
+    def test_many_valid_frames_capped_per_call(self) -> None:
+        """R40-F4 / R52-F4: split_frames must cap output at _MAX_FRAMES_PER_CALL (512).
 
-        Previously the iteration counter incremented on every loop pass including
-        successful extractions, capping output at 4096 frames.  After the fix
-        only non-productive (skip) iterations count toward the limit.
+        R40-F4 fixed the iteration counter so that productive extractions do not
+        count toward the skip limit, preventing missed DPS updates.
+        R52-F4 added a per-call frame cap so a burst of minimum-size frames cannot
+        monopolise the asyncio event loop.  The remainder is returned as the leftover
+        tail and processed on the next recv() call — no frames are silently dropped.
         """
         frame = self._simple_frame()
-        big_buf = frame * 5000
+        total = 600
+        big_buf = frame * total
         frames, leftover = split_frames(big_buf)
-        assert len(frames) == 5000, (
-            f"Expected 5000 frames but got {len(frames)} — iteration cap regression"
-        )
-        assert leftover == b""
+        # Capped at 512 per call
+        assert len(frames) == 512, f"Expected 512 frames (cap) but got {len(frames)}"
+        # Leftover contains the remaining frames
+        remaining, still_left = split_frames(leftover)
+        assert len(remaining) == total - 512
+        assert still_left == b""
 
 
 # ── Session key frames ─────────────────────────────────────────────────────────
@@ -460,3 +465,58 @@ class TestFrameLengthGuardR46:
         # or may not be found depending on alignment (suffix search), but we
         # must not crash.
         assert isinstance(frames, list)
+
+
+# ── R52-F4: split_frames frame-count cap ──────────────────────────────────────
+
+
+class TestSplitFramesCountCapR52:
+    """R52-F4: split_frames must stop at _MAX_FRAMES_PER_CALL to prevent event-loop starvation."""
+
+    def test_many_frames_capped(self) -> None:
+        """A buffer with > 512 valid frames must be capped at 512 per call.
+
+        The remainder must be returned as the leftover tail so the next call
+        can process it — no frames may be silently dropped.
+        """
+        from tuya_cloudless.protocol import split_frames
+
+        # Build 600 identical heartbeat frames
+        total = 600
+        single_frame = encode_frame(
+            CMD_HEARTBEAT, b"", sequence=1, version=_VERSION, local_key=_LOCAL_KEY
+        )
+        big_buffer = single_frame * total
+
+        frames, leftover = split_frames(big_buffer)
+
+        # Must be capped at 512
+        assert len(frames) == 512
+        # The leftover tail must contain the remaining frames exactly
+        remaining_frames, still_left = split_frames(leftover)
+        assert len(remaining_frames) == total - 512
+        assert still_left == b""
+
+    def test_exactly_512_frames_not_truncated(self) -> None:
+        """Exactly 512 frames must all be returned in one call."""
+        from tuya_cloudless.protocol import split_frames
+
+        single_frame = encode_frame(
+            CMD_HEARTBEAT, b"", sequence=1, version=_VERSION, local_key=_LOCAL_KEY
+        )
+        buf = single_frame * 512
+        frames, leftover = split_frames(buf)
+        assert len(frames) == 512
+        assert leftover == b""
+
+    def test_fewer_than_512_frames_all_returned(self) -> None:
+        """Fewer than 512 frames must all be returned without truncation."""
+        from tuya_cloudless.protocol import split_frames
+
+        single_frame = encode_frame(
+            CMD_HEARTBEAT, b"", sequence=1, version=_VERSION, local_key=_LOCAL_KEY
+        )
+        buf = single_frame * 10
+        frames, leftover = split_frames(buf)
+        assert len(frames) == 10
+        assert leftover == b""

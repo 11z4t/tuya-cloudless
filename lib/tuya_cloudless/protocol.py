@@ -339,6 +339,12 @@ def split_frames(buffer: bytes) -> tuple[list[bytes], bytes]:
     # triggers at most 4096 skip-passes before we bail out.
     _MAX_SKIP_ITERATIONS = 4096
     _skip_iterations = 0
+    # R52-F4: Cap the total frames extracted per call to prevent event-loop
+    # starvation.  A 128 KB buffer of minimum-size valid frames (~5 461 frames)
+    # processed synchronously in _receive_loop blocks the asyncio event loop for
+    # hundreds of ms.  512 frames per call is enough for any legitimate burst;
+    # the remainder is left in the tail and processed on the next recv().
+    _MAX_FRAMES_PER_CALL = 512
 
     while offset < len(buffer):
         # Find next prefix
@@ -383,6 +389,9 @@ def split_frames(buffer: bytes) -> tuple[list[bytes], bytes]:
         _skip_iterations = 0
         frames.append(buffer[idx:frame_end])
         offset = frame_end
+        # R52-F4: Stop when frame cap is reached; leave remainder for next call.
+        if len(frames) >= _MAX_FRAMES_PER_CALL:
+            break
 
     return frames, buffer[offset:]
 

@@ -1400,3 +1400,42 @@ class TestBlePayloadLenCapR51:
 
         with pytest.raises(PairingError, match="too large"):
             BleFrame.decode(frame)
+
+
+# ── R52-F5: build_provision_frames output size guard ──────────────────────────
+
+
+class TestBuildProvisionFramesSizeGuardR52:
+    """R52-F5: build_provision_frames must reject payloads > _MAX_BLE_PAYLOAD."""
+
+    def _make_payload(self, activator_url: str) -> ProvisionPayload:
+        from tuya_cloudless.ble_provision import ProvisionPayload
+
+        return ProvisionPayload(
+            ssid="TestNet",
+            password="wifipass1",
+            token="a" * 32,
+            region="az",
+            activator_url=activator_url,
+        )
+
+    def test_normal_payload_passes(self) -> None:
+        """A short activator URL must produce frames without error."""
+        from tuya_cloudless.ble_provision import build_provision_frames
+
+        payload = self._make_payload("http://192.168.1.1:8099/activate")
+        chunks = build_provision_frames(payload)
+        assert len(chunks) >= 1
+
+    def test_oversized_activator_url_raises(self) -> None:
+        """An activator URL that pushes JSON past _MAX_BLE_PAYLOAD must raise PairingError."""
+        from tuya_cloudless.ble_provision import _MAX_BLE_PAYLOAD, build_provision_frames
+        from tuya_cloudless.exceptions import PairingError
+
+        # Build a URL long enough to push the JSON past _MAX_BLE_PAYLOAD
+        long_url = "http://" + "a" * (_MAX_BLE_PAYLOAD + 50) + ":8099/activate"
+        payload = self._make_payload(long_url)
+        assert len(payload.to_bytes()) > _MAX_BLE_PAYLOAD
+
+        with pytest.raises(PairingError, match="too large"):
+            build_provision_frames(payload)

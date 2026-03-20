@@ -150,6 +150,13 @@ _MAX_SSE_DATA_LEN: Final[int] = 4096
 #: nmcli argument handling even when using list-based subprocess calls.
 _CTRL_CHAR_RE: Final[re.Pattern[str]] = re.compile(r"[\x00-\x1f\x7f]")
 
+#: R52-F6: Compiled pattern matching ASCII and Unicode line terminators for
+#: SSE header-injection defence.  The SSE spec treats LF (U+000A) and CR
+#: (U+000D) as line endings; ECMAScript also treats U+0085 (NEL),
+#: U+2028 (LINE SEPARATOR) and U+2029 (PARAGRAPH SEPARATOR) as terminators.
+#: Guard all of them to prevent injection by future callers.
+_SSE_NEWLINE_RE: Final[re.Pattern[str]] = re.compile(r"[\n\r\x85\u2028\u2029]")
+
 #: Allowed characters for Tuya device IDs (gwId, productKey).
 #: Alphanumeric + hyphens + underscores — matches all known Tuya ID formats.
 #: Excludes control characters and special chars that could inject into SSE/HA config.
@@ -1343,6 +1350,9 @@ class PairingServer:
                     ssid
                     and ssid != "--"
                     and not _CTRL_CHAR_RE.search(ssid)
+                    # R52-F1: Apply the same 32-byte SSID limit as _run_nmcli
+                    # (802.11 spec max) for consistent validation across all paths.
+                    and len(ssid.encode()) <= 32
                     and ssid not in seen
                     and _is_tuya_ap(ssid)
                 ):
@@ -1351,6 +1361,9 @@ class PairingServer:
         except (FileNotFoundError, TimeoutError, OSError) as exc:
             _LOGGER.debug("Quick WiFi scan unavailable: %s", exc)
 
+        # R52-F2: Cap response list to prevent oversized JSON body when nmcli
+        # cache contains many Tuya-prefixed SSIDs (e.g. large corporate network).
+        tuya_aps = tuya_aps[:_MAX_SSID_SCAN_RESULTS]
         return web.json_response(
             {"tuya_aps": tuya_aps},
             # No ACAO — same-origin endpoint (port 8099).
@@ -2168,10 +2181,12 @@ class PairingServer:
                 _MAX_SSE_DATA_LEN,
             )
             return
-        if "\n" in event or "\r" in event:
+        # R52-F6: Use regex that also catches Unicode line terminators
+        # (U+0085, U+2028, U+2029) to prevent SSE header injection.
+        if _SSE_NEWLINE_RE.search(event):
             _LOGGER.error("SSE event name contains illegal newline — event dropped: %r", event[:50])
             return
-        if "\n" in data or "\r" in data:
+        if _SSE_NEWLINE_RE.search(data):
             _LOGGER.error("SSE data contains raw newline — event dropped: %r", data[:50])
             return
         message = f"event: {event}\ndata: {data}\n\n"
