@@ -6476,3 +6476,231 @@ class TestResumeFlowEarlyReturn:
         await asyncio.sleep(0)  # second yield for SSE broadcast task
 
         assert flow_id not in server._pending_flows
+
+
+class TestHaStaticViewSecurity:
+    """Cover _PairingStaticView.get security branches (lines 1941-1983)."""
+
+    @pytest.fixture
+    async def static_view_in_tmp(self, tmp_path: Path):  # type: ignore[misc]
+        """Return (static_view, ui_dir, brand_dir) with _UI_DIR patched to tmp_path."""
+        from unittest.mock import patch
+
+        import custom_components.tuya_cloudless.pairing_server as ps_mod
+
+        ui_dir = tmp_path / "ui"
+        ui_dir.mkdir()
+        brand_dir = tmp_path / "brand"
+        brand_dir.mkdir()
+
+        hass = _make_hass()
+        server = PairingServer(hass, port=0)
+        with (
+            patch.object(ps_mod, "_UI_DIR", ui_dir),
+            patch.object(ps_mod, "_BRAND_DIR", brand_dir),
+        ):
+            await server._register_ha_views()
+
+        calls = server._hass.http.register_view.call_args_list
+        # _PairingStaticView is the 9th (index 8) registered view
+        static_view = calls[8][0][0]
+        yield static_view, ui_dir, brand_dir, server
+
+    @pytest.mark.asyncio
+    async def test_path_traversal_returns_403(self, static_view_in_tmp) -> None:  # type: ignore[misc]
+        """Path outside ui_dir returns 403 Forbidden (line 1939-1940)."""
+        from unittest.mock import MagicMock
+
+        static_view, _, _, _ = static_view_in_tmp
+        request = MagicMock()
+        request.remote = "127.0.0.1"
+        request.headers = {}
+        resp = await static_view.get(request, path="../../etc/passwd")
+        assert resp.status == 403
+
+    @pytest.mark.asyncio
+    async def test_resolve_oserror_returns_400(self, static_view_in_tmp) -> None:  # type: ignore[misc]
+        """OSError from Path.resolve returns 400 Bad Request (lines 1941-1942)."""
+        from unittest.mock import MagicMock, patch
+
+        static_view, _, _, _ = static_view_in_tmp
+        request = MagicMock()
+        request.remote = "127.0.0.1"
+        request.headers = {}
+        # First resolve() (file_path.resolve()) is outside the try/except.
+        # Raise on the second call (ui_resolved = ui_dir.resolve()) to hit lines 1941-1942.
+        call_count = 0
+
+        def fail_second_resolve(self_path):  # type: ignore[misc]
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                return type(self_path)(str(self_path))
+            raise OSError("symlink loop")
+
+        with patch("pathlib.Path.resolve", fail_second_resolve):
+            resp = await static_view.get(request, path="test.js")
+        assert resp.status == 400
+
+    @pytest.mark.asyncio
+    async def test_brand_path_resolve_oserror_returns_400(self, static_view_in_tmp) -> None:
+        """OSError from brand path resolve returns 400 (lines 1949-1950)."""
+        from unittest.mock import MagicMock, patch
+
+        static_view, _, _, _ = static_view_in_tmp
+        request = MagicMock()
+        request.remote = "127.0.0.1"
+        request.headers = {}
+        # File does not exist in ui_dir → brand fallback attempted
+        # Make brand path resolve fail
+        call_count = 0
+
+        def selective_resolve(self_path):  # type: ignore[misc]
+            nonlocal call_count
+            call_count += 1
+            if call_count <= 2:  # first two resolves: file_path and ui_resolved
+                return type(self_path)(str(self_path))
+            raise OSError("brand resolve failed")
+
+        with patch("pathlib.Path.resolve", selective_resolve):
+            resp = await static_view.get(request, path="missing.js")
+        assert resp.status == 400
+
+    @pytest.mark.asyncio
+    async def test_brand_file_served_as_fallback(self, static_view_in_tmp) -> None:
+        """File not in ui_dir but in brand_dir is served (line 1952)."""
+        from unittest.mock import MagicMock
+
+        static_view, _, brand_dir, _ = static_view_in_tmp
+        # Create a small file in brand_dir
+        brand_file = brand_dir / "icon.png"
+        brand_file.write_bytes(b"\x89PNG" + b"\x00" * 10)
+
+        request = MagicMock()
+        request.remote = "127.0.0.1"
+        request.headers = {}
+        resp = await static_view.get(request, path="icon.png")
+        assert resp.status == 200
+        assert resp.body.startswith(b"\x89PNG")
+
+    @pytest.mark.asyncio
+    async def test_stat_oserror_returns_404(self, static_view_in_tmp) -> None:
+        """stat() OSError after is_file() check returns 404 (lines 1962-1963)."""
+        from unittest.mock import MagicMock, patch
+
+        static_view, ui_dir, _, _ = static_view_in_tmp
+        ui_file = ui_dir / "app.js"
+        ui_file.write_bytes(b"console.log('hi')")
+
+        request = MagicMock()
+        request.remote = "127.0.0.1"
+        request.headers = {}
+        with (
+            patch("pathlib.Path.stat", side_effect=OSError("disk error")),
+            patch("pathlib.Path.is_file", return_value=True),
+        ):
+            resp = await static_view.get(request, path="app.js")
+        assert resp.status == 404
+
+    @pytest.mark.asyncio
+    async def test_oversized_static_file_returns_403(self, static_view_in_tmp) -> None:
+        """File exceeding size limit returns 403 (lines 1965-1971)."""
+        from unittest.mock import MagicMock, patch
+
+        from custom_components.tuya_cloudless.pairing_server import _MAX_STATIC_FILE_BYTES
+
+        static_view, ui_dir, _, _ = static_view_in_tmp
+        ui_file = ui_dir / "large.js"
+        ui_file.write_bytes(b"x")
+
+        stat_mock = MagicMock()
+        stat_mock.st_size = _MAX_STATIC_FILE_BYTES + 1
+
+        request = MagicMock()
+        request.remote = "127.0.0.1"
+        request.headers = {}
+        with (
+            patch("pathlib.Path.stat", return_value=stat_mock),
+            patch("pathlib.Path.is_file", return_value=True),
+        ):
+            resp = await static_view.get(request, path="large.js")
+        assert resp.status == 403
+
+    @pytest.mark.asyncio
+    async def test_read_bytes_oserror_returns_503(self, static_view_in_tmp) -> None:
+        """read_bytes() OSError returns 503 (lines 1976-1977)."""
+        from unittest.mock import MagicMock, patch
+
+        static_view, ui_dir, _, _ = static_view_in_tmp
+        ui_file = ui_dir / "ok.js"
+        ui_file.write_bytes(b"data")
+
+        stat_mock = MagicMock()
+        stat_mock.st_size = 100
+
+        request = MagicMock()
+        request.remote = "127.0.0.1"
+        request.headers = {}
+        with (
+            patch("pathlib.Path.stat", return_value=stat_mock),
+            patch("pathlib.Path.is_file", return_value=True),
+            patch("pathlib.Path.read_bytes", side_effect=OSError("read error")),
+        ):
+            resp = await static_view.get(request, path="ok.js")
+        assert resp.status == 503
+
+    @pytest.mark.asyncio
+    async def test_toctou_data_too_large_returns_403(self, static_view_in_tmp) -> None:
+        """Data larger than limit after read triggers TOCTOU guard (lines 1979-1983)."""
+        from unittest.mock import MagicMock, patch
+
+        from custom_components.tuya_cloudless.pairing_server import _MAX_STATIC_FILE_BYTES
+
+        static_view, ui_dir, _, _ = static_view_in_tmp
+        ui_file = ui_dir / "grew.js"
+        ui_file.write_bytes(b"x")
+
+        stat_mock = MagicMock()
+        stat_mock.st_size = 100  # stat reports small
+
+        oversized_data = b"x" * (_MAX_STATIC_FILE_BYTES + 1)
+
+        request = MagicMock()
+        request.remote = "127.0.0.1"
+        request.headers = {}
+        with (
+            patch("pathlib.Path.stat", return_value=stat_mock),
+            patch("pathlib.Path.is_file", return_value=True),
+            patch("pathlib.Path.read_bytes", return_value=oversized_data),
+        ):
+            resp = await static_view.get(request, path="grew.js")
+        assert resp.status == 403
+
+    @pytest.mark.asyncio
+    async def test_brand_path_inner_resolve_oserror_returns_400(self, static_view_in_tmp) -> None:
+        """brand_path.resolve() OSError returns 400 (lines 1949-1950).
+
+        This is distinct from test_resolve_oserror_returns_400: that test covers
+        the outer try/except (line 1941) by failing on ui_resolved.  This test
+        covers the inner try/except (line 1949) by letting ui_resolved and
+        brand_resolved succeed, then failing on brand_path.resolve().
+        """
+        from unittest.mock import MagicMock, patch
+
+        static_view, _, _, _ = static_view_in_tmp
+        request = MagicMock()
+        request.remote = "127.0.0.1"
+        request.headers = {}
+        # Let the first 3 resolve() calls succeed, fail on the 4th (brand_path)
+        call_count = 0
+
+        def fail_fourth_resolve(self_path):  # type: ignore[misc]
+            nonlocal call_count
+            call_count += 1
+            if call_count <= 3:
+                return type(self_path)(str(self_path))
+            raise OSError("brand path resolve failed")
+
+        with patch("pathlib.Path.resolve", fail_fourth_resolve):
+            resp = await static_view.get(request, path="nonexistent.js")
+        assert resp.status == 400
