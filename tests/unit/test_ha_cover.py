@@ -717,3 +717,37 @@ class TestCoverRestoreClampR43:
         e = _make_cover({}, spec=spec)
         await _run_restore(e, "open", attributes={"current_tilt_position": 150})
         assert e._optimistic_tilt == 100
+
+
+# ── R47 position clamping + OverflowError ─────────────────────────────────────
+
+
+class TestCoverPositionClampR47:
+    """R47-F5: current_cover_position must clamp live DP to [0, 100]."""
+
+    def test_position_above_100_clamped(self) -> None:
+        """Device sending 150 for position must be clamped to 100."""
+        e = _make_cover({"2": 150})
+        assert e.current_cover_position == 100
+
+    def test_position_below_0_clamped(self) -> None:
+        """Device sending -5 for position must be clamped to 0."""
+        e = _make_cover({"2": -5})
+        assert e.current_cover_position == 0
+
+    def test_position_inf_returns_none(self) -> None:
+        """int(float('inf')) raises OverflowError — must return None."""
+        e = _make_cover({"2": float("inf")})
+        assert e.current_cover_position is None
+
+    def test_tilt_above_100_clamped(self) -> None:
+        """Device sending 200 for tilt must be clamped to 100."""
+        spec = _make_cover_spec(dp_tilt_id="3")
+        e = _make_cover({"3": 200}, spec=spec)
+        assert e.current_cover_tilt_position == 100
+
+    def test_tilt_inf_returns_none(self) -> None:
+        """int(float('inf')) raises OverflowError for tilt — must return None."""
+        spec = _make_cover_spec(dp_tilt_id="3")
+        e = _make_cover({"3": float("inf")}, spec=spec)
+        assert e.current_cover_tilt_position is None

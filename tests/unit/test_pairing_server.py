@@ -5306,3 +5306,63 @@ class TestSsidCapR46:
         from custom_components.tuya_cloudless.pairing_server import _MAX_SSID_SCAN_RESULTS
 
         assert _MAX_SSID_SCAN_RESULTS == 50
+
+
+class TestR47SecurityFixes:
+    """R47 — tokenless TTL/cap, rate-limiter >=, _handle_index cache."""
+
+    @pytest.mark.asyncio
+    async def test_tokenless_results_ttl_expired_on_next_activation(
+        self, server: PairingServer
+    ) -> None:
+        """R47-F1: Expired tokenless entries are removed by _expire_old_results."""
+        import time
+
+        from custom_components.tuya_cloudless.pairing_server import (
+            _RESULT_TTL_SECS,
+            ActivationResult,
+        )
+
+        # Inject a stale entry (timestamp well past TTL)
+        old_result = ActivationResult(
+            gw_id="stale_gw",
+            product_key="pk",
+            local_key="a" * 16,
+            ip_address="10.0.0.1",
+        )
+        old_result.timestamp = time.monotonic() - (_RESULT_TTL_SECS + 1)
+        server._tokenless_results["stale_gw"] = old_result
+
+        # Calling _expire_old_results should remove the stale entry
+        server._expire_old_results()
+        assert "stale_gw" not in server._tokenless_results
+
+    def test_tokenless_results_size_cap_constant(self, server: PairingServer) -> None:
+        """R47-F1: _tokenless_results shares the same MAX_STORED_RESULTS cap."""
+        from custom_components.tuya_cloudless.pairing_server import _MAX_STORED_RESULTS
+
+        assert _MAX_STORED_RESULTS == 256  # sanity-check constant used in size cap
+
+    @pytest.mark.asyncio
+    async def test_rate_limit_cap_uses_ge(self, server: PairingServer) -> None:
+        """R47-F6: Rate limit hard-cap must evict at >= not > _MAX_RATE_LIMIT_IPS."""
+        import time
+
+        from custom_components.tuya_cloudless.pairing_server import _MAX_RATE_LIMIT_IPS
+
+        # Seed exactly _MAX_RATE_LIMIT_IPS entries in the rate limit table
+        for i in range(_MAX_RATE_LIMIT_IPS):
+            server._rate_limit[f"10.0.{i // 256}.{i % 256}"] = [time.monotonic()]
+        assert len(server._rate_limit) == _MAX_RATE_LIMIT_IPS
+
+        # Calling _is_rate_limited with a new IP should trigger eviction (>= condition)
+        server._is_rate_limited("192.168.1.1", max_requests=5, window=60.0)
+        # After eviction, the new IP is added, so count stays at _MAX_RATE_LIMIT_IPS
+        assert len(server._rate_limit) == _MAX_RATE_LIMIT_IPS
+
+    def test_index_html_mtime_cache_attributes_exist(self, server: PairingServer) -> None:
+        """R47-F3: PairingServer must initialise index HTML cache attributes."""
+        assert hasattr(server, "_index_html_cache")
+        assert hasattr(server, "_index_html_mtime")
+        assert server._index_html_cache is None
+        assert server._index_html_mtime is None

@@ -309,6 +309,10 @@ class PairingServer:
         # Tokenless activations keyed by gw_id — deduplication for devices that
         # retry the activation POST without a provisioning token (e.g. BLE path).
         self._tokenless_results: dict[str, ActivationResult] = {}
+        # Cached raw bytes for _handle_index (pairing UI served on port 8099 directly).
+        # Invalidated when index.html mtime changes so live-edit during development works.
+        self._index_html_cache: bytes | None = None
+        self._index_html_mtime: float | None = None
 
     # ── Lifecycle ──────────────────────────────────────────────────────────
 
@@ -542,8 +546,17 @@ class PairingServer:
                 text="Pairing UI not found. This is a bug — please report it.",
                 headers=_SECURITY_HEADERS,
             )
+        # R47-F3: Cache the file bytes in memory; invalidate on mtime change to
+        # avoid blocking the event loop on disk I/O for every request.
+        try:
+            current_mtime = index_path.stat().st_mtime
+        except OSError:
+            current_mtime = None
+        if self._index_html_cache is None or current_mtime != self._index_html_mtime:
+            self._index_html_cache = index_path.read_bytes()
+            self._index_html_mtime = current_mtime
         return web.Response(
-            body=index_path.read_bytes(),
+            body=self._index_html_cache,
             content_type="text/html",
             charset="utf-8",
             headers=_SECURITY_HEADERS,
@@ -811,7 +824,15 @@ class PairingServer:
                     del self._results[oldest]
                 self._results[token] = result
             else:
-                # Tokenless path: store by gw_id for deduplication (R46-F5)
+                # Tokenless path: store by gw_id for deduplication (R46-F5).
+                # R47-F1: apply same TTL-sweep + size cap as the token-keyed table.
+                self._expire_old_results()
+                if len(self._tokenless_results) >= _MAX_STORED_RESULTS:
+                    oldest = min(
+                        self._tokenless_results,
+                        key=lambda g: self._tokenless_results[g].timestamp,
+                    )
+                    del self._tokenless_results[oldest]
                 self._tokenless_results[gw_id] = result
 
         # Notify SSE subscribers.  local_key, ip_address, and token are
@@ -1946,7 +1967,7 @@ class PairingServer:
             return True
         # Hard cap on number of distinct tracked IPs — prevents memory exhaustion
         # from an IP-rotating attacker filling the dict with many source addresses.
-        if len(self._rate_limit) > _MAX_RATE_LIMIT_IPS:
+        if len(self._rate_limit) >= _MAX_RATE_LIMIT_IPS:
             oldest_ip = min(
                 self._rate_limit,
                 key=lambda ip: self._rate_limit[ip][0] if self._rate_limit[ip] else 0,
@@ -2006,6 +2027,15 @@ class PairingServer:
         ]
         for token in expired:
             del self._results[token]
+
+        # R47-F1: Also expire tokenless results (no TTL check existed before this fix)
+        expired_tokenless = [
+            gw_id
+            for gw_id, result in self._tokenless_results.items()
+            if now - result.timestamp > _RESULT_TTL_SECS
+        ]
+        for gw_id in expired_tokenless:
+            del self._tokenless_results[gw_id]
 
         # R36-4: Purge _token_to_flow entries whose flow is no longer active.
         # Without this, abandoned pairing flows (no browser cancel) accumulate

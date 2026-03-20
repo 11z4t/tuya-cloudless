@@ -949,3 +949,32 @@ class TestFanPresetModeAllowlistR39:
         # _attr_preset_modes is None (no options) → no allowlist → returns str value
         # (no allowlist means no validation, returning the raw string is acceptable)
         assert e.preset_mode == "sleep"
+
+
+# ── R47 OverflowError guard ────────────────────────────────────────────────────
+
+
+class TestFanOverflowErrorR47:
+    """R47-F2: percentage property must handle float('inf') without OverflowError."""
+
+    def test_percentage_inf_returns_none(self) -> None:
+        """int(float('inf')) raises OverflowError — property must return None."""
+        spec = EntitySpec(
+            platform="fan",
+            name="main_fan",
+            dp_power=DPSpec(id="1", type="bool"),
+            dp_value=DPSpec(id="3", type="int", min_raw=1, max_raw=6),
+        )
+        e = _make_fan({"3": float("inf")}, spec=spec)
+        assert e.percentage is None
+
+    def test_percentage_nan_returns_none(self) -> None:
+        """float('nan') also raises ValueError from int() — must return None."""
+        spec = EntitySpec(
+            platform="fan",
+            name="main_fan",
+            dp_power=DPSpec(id="1", type="bool"),
+            dp_value=DPSpec(id="3", type="int", min_raw=1, max_raw=6),
+        )
+        e = _make_fan({"3": float("nan")}, spec=spec)
+        assert e.percentage is None

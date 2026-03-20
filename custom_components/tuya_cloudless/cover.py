@@ -190,8 +190,9 @@ class TuyaCloudlessCover(RestoreStateMixin, TuyaCloudlessEntity, CoverEntity):
         raw = self.get_dp(self._spec.dp_position.id)
         if raw is None:
             return None
-        with contextlib.suppress(ValueError, TypeError):
-            return int(raw)
+        with contextlib.suppress(ValueError, TypeError, OverflowError):
+            # OverflowError: int(float("inf")) from malformed device JSON
+            return max(0, min(100, int(raw)))
         return None
 
     @property
@@ -207,8 +208,8 @@ class TuyaCloudlessCover(RestoreStateMixin, TuyaCloudlessEntity, CoverEntity):
         raw = self.get_dp(self._spec.dp_tilt.id)
         if raw is None:
             return None
-        with contextlib.suppress(ValueError, TypeError):
-            return int(raw)
+        with contextlib.suppress(ValueError, TypeError, OverflowError):
+            return max(0, min(100, int(raw)))
         return None
 
     async def async_open_cover(self, **kwargs: Any) -> None:
@@ -256,10 +257,7 @@ class TuyaCloudlessCover(RestoreStateMixin, TuyaCloudlessEntity, CoverEntity):
         until the device reports it.
         """
         if self._spec.dp_stop is not None:
-            try:
-                await self.async_send_dp(self._spec.dp_stop.id, True)
-            except HomeAssistantError:
-                raise
+            await self.async_send_dp(self._spec.dp_stop.id, True)
 
     async def async_set_cover_position(self, **kwargs: Any) -> None:
         """Move the cover to a specific position (0-100) with optimistic update.

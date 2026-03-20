@@ -312,7 +312,10 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                         await self._try_rediscover_ip()
                     except asyncio.CancelledError:
                         return
-                await asyncio.sleep(delay)
+                try:
+                    await asyncio.sleep(delay)
+                except asyncio.CancelledError:
+                    return
                 delay = min(delay * 2, self._reconnect_max_delay)
 
     async def _connect(self) -> None:

@@ -192,7 +192,11 @@ class TuyaCloudlessFan(RestoreStateMixin, TuyaCloudlessEntity, FanEntity):
         value = self.get_dp(self._spec.dp_value.id)
         if value is None:
             return None
-        return self._raw_to_percentage(int(value))
+        try:
+            return self._raw_to_percentage(int(value))
+        except (ValueError, TypeError, OverflowError):
+            # OverflowError: int(float("inf")) from malformed device JSON
+            return None
 
     @property
     def preset_mode(self) -> str | None:
