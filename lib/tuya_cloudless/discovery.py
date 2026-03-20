@@ -468,13 +468,15 @@ class DiscoveryListener:
             pass
 
         # Try decrypting with known device keys
-        for gw_id, local_key in self._known_devices.items():
+        for _gw_id, local_key in self._known_devices.items():
             for version in ("3.3", "3.4", "3.5"):
                 try:
                     decrypted = decrypt_payload(version, local_key, raw)
                     # Validate it's JSON
                     json.loads(decrypted.decode("utf-8", errors="strict"))
-                    _LOGGER.debug("Discovery payload decrypted with key for gwId=%s", gw_id)
+                    # R31-3: Don't log gwId — it creates a key↔device association
+                    # in log files that is sensitive diagnostic data.
+                    _LOGGER.debug("Discovery payload decrypted with a known device key")
                     return decrypted
                 except (CryptoError, json.JSONDecodeError, UnicodeDecodeError, ValueError):
                     continue

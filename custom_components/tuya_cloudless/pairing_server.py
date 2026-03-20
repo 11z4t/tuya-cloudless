@@ -1390,15 +1390,22 @@ class PairingServer:
                 json.dumps({"error": "Unexpected pairing error", "token": token}),
             )
         finally:
-            # Step 4: always try to restore connectivity
+            # Step 4: always try to restore connectivity.
+            # R31-1: Shield each _run call so HA shutdown (task.cancel()) cannot abort
+            # the cleanup mid-execution, which would leave the host's WiFi connected to
+            # the Tuya device's provisioning AP instead of the home network.
+            # asyncio.shield() protects the inner coroutine from cancellation; the
+            # CancelledError is caught here so cleanup runs to completion.
             if prev_connection:
                 _LOGGER.info("WiFi AP pair: reconnecting to %s", prev_connection)
                 try:
-                    await _run(
-                        ["nmcli", "connection", "up", prev_connection],
-                        timeout=_TUYA_AP_RECONNECT_TIMEOUT,
+                    await asyncio.shield(
+                        _run(
+                            ["nmcli", "connection", "up", prev_connection],
+                            timeout=_TUYA_AP_RECONNECT_TIMEOUT,
+                        )
                     )
-                except Exception as exc:
+                except (Exception, asyncio.CancelledError) as exc:
                     _LOGGER.warning("WiFi AP pair: reconnect failed: %s", exc)
             else:
                 # No saved connection — reconnect to home WiFi directly so we
@@ -1417,8 +1424,8 @@ class PairingServer:
                     ]
                     if home_pwd:
                         cmd += ["password", home_pwd]
-                    await _run(cmd, timeout=_TUYA_AP_RECONNECT_TIMEOUT)
-                except Exception as exc:
+                    await asyncio.shield(_run(cmd, timeout=_TUYA_AP_RECONNECT_TIMEOUT))
+                except (Exception, asyncio.CancelledError) as exc:
                     _LOGGER.warning("WiFi AP pair: home WiFi reconnect failed: %s", exc)
 
     # ── HA HTTPS views ─────────────────────────────────────────────────────
@@ -1603,6 +1610,21 @@ class PairingServer:
             ) -> web.Response:
                 return await server._handle_wifi_ap_pair(request)
 
+        class _PairingBindTokenView(HomeAssistantView):
+            # requires_auth = True (default) — R31-4: bind-token on the HA HTTPS path
+            # requires authentication so only the legitimate browser session can bind
+            # a provisioning token to a config flow.  The unauthenticated port-8099
+            # variant remains for HTTP-fallback compatibility, but the BLE/WiFi-AP
+            # browser (which is loaded from the HA HTTPS path and has auth) should
+            # prefer this endpoint.
+            url = _HA_PAIRING_PREFIX + "/provision/bind-token"
+            name = "api:tuya_cloudless:pairing:bind_token"
+
+            async def post(  # type: ignore[override]
+                self, request: web.Request
+            ) -> web.Response:
+                return await server._handle_bind_token(request)
+
         class _PairingStaticView(HomeAssistantView):
             requires_auth = False
             url = _HA_PAIRING_PREFIX + "/static/{path:.+}"
@@ -1643,6 +1665,7 @@ class PairingServer:
         self._hass.http.register_view(_PairingWifiScanView())
         self._hass.http.register_view(_PairingQuickScanView())
         self._hass.http.register_view(_PairingWifiApPairView())
+        self._hass.http.register_view(_PairingBindTokenView())
         self._hass.http.register_view(_PairingStaticView())
 
     # ── Private helpers ────────────────────────────────────────────────────
@@ -1762,19 +1785,24 @@ class PairingServer:
 
         now = time.monotonic()
         timestamps = [ts for ts in self._rate_limit.get(client_ip, []) if now - ts < window]
-        # Always persist the filtered list so stale timestamps are evicted even for
-        # rate-limited IPs that return early below (before the dict comprehension).
+        rate_limited = len(timestamps) >= max_requests
+        # Append BEFORE eviction so the current IP is never removed as "empty"
+        # even when not rate-limited (window could be empty after filtering).
+        if not rate_limited:
+            timestamps.append(now)
         self._rate_limit[client_ip] = timestamps
-        if len(timestamps) >= max_requests:
+        # R31-2: Always evict stale buckets (empty lists) from ALL IPs — was previously
+        # skipped for rate-limited callers, allowing stale entries to accumulate until
+        # the hard-cap eviction fired (which could then evict a legitimate user's bucket
+        # rather than the oldest attacker IP).
+        self._rate_limit = {ip: ts_list for ip, ts_list in self._rate_limit.items() if ts_list}
+        if rate_limited:
             _LOGGER.warning(
                 "Rate limit exceeded: ip=%s requests=%d",
                 client_ip,
                 len(timestamps),
             )
             return True
-        timestamps.append(now)
-        # Evict stale entries (empty lists = window has fully expired for that IP).
-        self._rate_limit = {ip: ts_list for ip, ts_list in self._rate_limit.items() if ts_list}
         # Hard cap on number of distinct tracked IPs — prevents memory exhaustion
         # from an IP-rotating attacker filling the dict with many source addresses.
         if len(self._rate_limit) > _MAX_RATE_LIMIT_IPS:

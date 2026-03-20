@@ -4390,16 +4390,16 @@ class TestRegisterHaViews:
         await server._register_ha_views()
         assert server._ha_views_registered is True
 
-    async def test_registers_eight_views(self) -> None:
-        """Exactly 8 views are registered.
+    async def test_registers_nine_views(self) -> None:
+        """Exactly 9 views are registered.
 
         Views: index, config, events, result, wifi-scan, quick-scan,
-        wifi-ap-pair, static.
+        wifi-ap-pair, bind-token (R31-4: authenticated HA HTTPS variant), static.
         """
         hass = MagicMock()
         server = PairingServer(hass, port=8099)
         await server._register_ha_views()
-        assert hass.http.register_view.call_count == 8
+        assert hass.http.register_view.call_count == 9
 
     async def test_sensitive_views_require_auth(self) -> None:
         """wifi-scan, quick-scan, and wifi-ap-pair HA views must require auth.
@@ -4418,6 +4418,8 @@ class TestRegisterHaViews:
             "api:tuya_cloudless:pairing:wifi_scan",
             "api:tuya_cloudless:pairing:quick_scan",
             "api:tuya_cloudless:pairing:wifi_ap_pair",
+            # R31-4: bind-token must require auth on the HA HTTPS path
+            "api:tuya_cloudless:pairing:bind_token",
         }
         for view in captured_views:
             name = getattr(view, "name", "")
