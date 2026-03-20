@@ -488,7 +488,12 @@ class PairingServer:
         app.router.add_get("/api/provision/wifi-scan", self._handle_wifi_scan)
         app.router.add_get("/api/provision/quick-scan", self._handle_quick_scan)
         app.router.add_post("/api/provision/wifi-ap-pair", self._handle_wifi_ap_pair)
-        app.router.add_post("/api/provision/bind-token", self._handle_bind_token)
+        # R33-1: bind-token is NOT exposed on the unauthenticated port-8099 server.
+        # It is available only via the HA HTTPS authenticated endpoint
+        # (_PairingBindTokenView, requires_auth=True).  The WiFi-AP path performs
+        # inline binding inside _handle_wifi_ap_pair; the BLE path calls the HA
+        # HTTPS endpoint when the page is served via HA (the normal case), and
+        # gracefully degrades to the unbound fallback when 8099 is used directly.
         # Serve brand icon at /static/icon.png (before the catch-all static mount)
         app.router.add_get("/static/icon.png", self._handle_icon)
         # Serve static assets from pairing_ui/
@@ -765,13 +770,14 @@ class PairingServer:
                     del self._results[oldest]
                 self._results[token] = result
 
-        # Notify SSE subscribers.  local_key and ip_address are intentionally
-        # excluded — both are sensitive and the SSE stream is open to all tabs.
-        # The browser retrieves the key and IP via GET /api/provision/result/{token}
-        # which is only useful to the holder of the session token.
+        # Notify SSE subscribers.  local_key, ip_address, and token are
+        # intentionally excluded — all are sensitive and the SSE stream is
+        # accessible to any LAN host (R33-3).  The browser already holds the
+        # token (returned by wifi-ap-pair or generated in JS for BLE), so it
+        # does not need the token from the SSE event.  Only gw_id is included
+        # to let the browser confirm which device activated.
         event_data = {
             "gw_id": gw_id,
-            "token": token,
         }
         await self._broadcast_sse("activated", json.dumps(event_data))
 
@@ -1336,9 +1342,11 @@ class PairingServer:
                         break
 
             # Step 2: connect to the Tuya AP (open network)
+            # R33-4: "--" end-of-options separator prevents nmcli from
+            # interpreting an SSID starting with "--" as a flag.
             _LOGGER.info("WiFi AP pair: connecting to %s", ap_ssid)
             rc, _ = await _run(
-                ["nmcli", "device", "wifi", "connect", ap_ssid],
+                ["nmcli", "device", "wifi", "connect", "--", ap_ssid],
                 timeout=15.0,  # Tuya APs are open; 15s is generous
             )
             if rc != 0:
@@ -1404,7 +1412,9 @@ class PairingServer:
                 try:
                     await asyncio.shield(
                         _run(
-                            ["nmcli", "connection", "up", prev_connection],
+                            # R33-4: "--" prevents profile names starting with
+                            # "--" from being misinterpreted as nmcli flags.
+                            ["nmcli", "connection", "up", "--", prev_connection],
                             timeout=_TUYA_AP_RECONNECT_TIMEOUT,
                         )
                     )
@@ -1423,6 +1433,7 @@ class PairingServer:
                         "device",
                         "wifi",
                         "connect",
+                        "--",  # R33-4: end-of-options before user-supplied SSID
                         home_ssid,
                     ]
                     if home_pwd:
@@ -1933,7 +1944,16 @@ async def ensure_pairing_server(hass: HomeAssistant) -> PairingServer:
         server = domain_data.get(_KEY_PAIRING_SERVER)
         if not isinstance(server, PairingServer):
             server = PairingServer(hass)
-            await server.start()
+            try:
+                await server.start()
+            except (OSError, asyncio.CancelledError):
+                # R33-5: If start() fails or is cancelled mid-way, clean up the
+                # partially started server so it does not hold a port or runner
+                # reference.  Without this, a cancelled start leaves an orphaned
+                # server that stop_pairing_server() can never reach.
+                with contextlib.suppress(Exception):
+                    await server.stop()
+                raise
             domain_data[_KEY_PAIRING_SERVER] = server
 
     return server

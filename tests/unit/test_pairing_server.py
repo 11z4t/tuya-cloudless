@@ -2882,80 +2882,80 @@ class TestActivateFlowResume:
 
 
 class TestBindTokenEndpoint:
-    """R28-1: Tests for POST /api/provision/bind-token."""
+    """R28-1/R33-1: bind-token is NOT on the unauthenticated port-8099 server.
 
-    async def test_bind_token_returns_204(self) -> None:
+    The handler logic remains (used by the HA HTTPS authenticated endpoint).
+    These tests call _handle_bind_token directly to verify handler logic, and
+    confirm the 8099 route returns 404.
+    """
+
+    async def test_bind_token_not_on_8099_server(self) -> None:
+        """R33-1: bind-token must NOT be accessible on the unauthenticated port-8099."""
+        hass = _make_hass()
+        fresh_server = PairingServer(hass, port=0)
+
+        ts = TestServer(fresh_server._app)
+        cli = TestClient(ts)
+        await cli.start_server()
+        try:
+            resp = await cli.post(
+                "/api/provision/bind-token",
+                json={"flow_id": "any-flow", "token": "aa" * 16},
+            )
+            assert resp.status == 404, (
+                "bind-token must return 404 on the unauthenticated 8099 server"
+            )
+        finally:
+            await cli.close()
+
+    async def test_bind_token_handler_binds_flow(self) -> None:
+        """Handler logic: valid token+flow_id returns 204 and stores binding."""
+
         hass = _make_hass()
         fresh_server = PairingServer(hass, port=0)
         token = "aa" * 16
         fresh_server._pending_flows.add("my-flow")
 
-        ts = TestServer(fresh_server._app)
-        cli = TestClient(ts)
-        await cli.start_server()
-        try:
-            resp = await cli.post(
-                "/api/provision/bind-token",
-                json={"flow_id": "my-flow", "token": token},
-            )
-            assert resp.status == 204
-            assert fresh_server._token_to_flow[token] == "my-flow"
-        finally:
-            await cli.close()
+        req = MagicMock()
+        req.json = AsyncMock(return_value={"flow_id": "my-flow", "token": token})
+        resp = await fresh_server._handle_bind_token(req)
+        assert resp.status == 204
+        assert fresh_server._token_to_flow[token] == "my-flow"
 
-    async def test_bind_unknown_flow_returns_400(self) -> None:
+    async def test_bind_token_handler_rejects_unknown_flow(self) -> None:
+        """Handler logic: unknown flow_id returns 400."""
         hass = _make_hass()
         fresh_server = PairingServer(hass, port=0)
         token = "bb" * 16
-        # "not-registered" is not in _pending_flows
 
-        ts = TestServer(fresh_server._app)
-        cli = TestClient(ts)
-        await cli.start_server()
-        try:
-            resp = await cli.post(
-                "/api/provision/bind-token",
-                json={"flow_id": "not-registered", "token": token},
-            )
-            assert resp.status == 400
-        finally:
-            await cli.close()
+        req = MagicMock()
+        req.json = AsyncMock(return_value={"flow_id": "not-registered", "token": token})
+        resp = await fresh_server._handle_bind_token(req)
+        assert resp.status == 400
 
-    async def test_bind_invalid_token_returns_400(self) -> None:
+    async def test_bind_token_handler_rejects_invalid_token(self) -> None:
+        """Handler logic: invalid token format returns 400."""
         hass = _make_hass()
         fresh_server = PairingServer(hass, port=0)
         fresh_server._pending_flows.add("flow-z")
 
-        ts = TestServer(fresh_server._app)
-        cli = TestClient(ts)
-        await cli.start_server()
-        try:
-            resp = await cli.post(
-                "/api/provision/bind-token",
-                json={"flow_id": "flow-z", "token": "not-hex!!"},
-            )
-            assert resp.status == 400
-        finally:
-            await cli.close()
+        req = MagicMock()
+        req.json = AsyncMock(return_value={"flow_id": "flow-z", "token": "not-hex!!"})
+        resp = await fresh_server._handle_bind_token(req)
+        assert resp.status == 400
 
-    async def test_rebind_returns_409(self) -> None:
+    async def test_bind_token_handler_rejects_rebind(self) -> None:
+        """Handler logic: rebinding an already-bound token returns 409."""
         hass = _make_hass()
         fresh_server = PairingServer(hass, port=0)
         token = "cc" * 16
         fresh_server._pending_flows.add("flow-one")
         fresh_server._token_to_flow[token] = "flow-one"
 
-        ts = TestServer(fresh_server._app)
-        cli = TestClient(ts)
-        await cli.start_server()
-        try:
-            resp = await cli.post(
-                "/api/provision/bind-token",
-                json={"flow_id": "flow-one", "token": token},
-            )
-            assert resp.status == 409
-        finally:
-            await cli.close()
+        req = MagicMock()
+        req.json = AsyncMock(return_value={"flow_id": "flow-one", "token": token})
+        resp = await fresh_server._handle_bind_token(req)
+        assert resp.status == 409
 
     def test_unregister_flow_cleans_up_token_binding(self) -> None:
         """R29-1: unregister_flow must remove any token→flow bindings for that flow.
@@ -3531,6 +3531,32 @@ class TestSseMessageDelivery:
             data = await asyncio.wait_for(resp.content.read(512), timeout=5)
             assert b"event: activated" in data
             assert b"ip_address" not in data, "ip_address must not appear in SSE broadcast"
+
+    async def test_sse_activated_event_omits_token(self, client: TestClient) -> None:
+        """R33-3: SSE activated event must NOT contain the provisioning token.
+
+        The SSE stream is unauthenticated and accessible to any LAN host. Including
+        the token would allow any LAN host to call GET /api/provision/result/{token}
+        and retrieve the local_key. The browser already holds the token from the
+        wifi-ap-pair response or from BLE JS generation.
+        """
+        async with client.session.get(
+            client.make_url("/api/provision/events"),
+        ) as resp:
+            assert resp.status == 200
+            await asyncio.wait_for(resp.content.read(64), timeout=5)  # skip connected comment
+
+            await client.post(
+                "/api/tuya/device/active",
+                json={"gw_id": "gw_sse_tok", "token": _TOKEN_SSE},
+            )
+
+            data = await asyncio.wait_for(resp.content.read(512), timeout=5)
+            assert b"event: activated" in data
+            assert _TOKEN_SSE.encode() not in data, (
+                "token must not appear in SSE broadcast — any LAN host could use it "
+                "to retrieve local_key from the result endpoint"
+            )
 
 
 # ── _handle_qr with mocked qrcode (lines 391, 401-409) ──────────────────────
