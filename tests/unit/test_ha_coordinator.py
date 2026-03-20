@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -594,8 +595,11 @@ class TestConnect:
         coord._receive_loop = mock_receive_loop
         coord._disconnect = AsyncMock()
 
-        with patch("asyncio.wait_for", new_callable=AsyncMock) as mock_wait:
-            mock_wait.return_value = (reader, writer)
+        # Patch open_connection directly to avoid leaking an unawaited coroutine
+        # (open_connection args are evaluated before patched wait_for is called).
+        with patch(
+            "asyncio.open_connection", new_callable=AsyncMock, return_value=(reader, writer)
+        ):
             await coord._connect()
 
         assert coord._session_key is None
@@ -619,8 +623,10 @@ class TestConnect:
         coord._disconnect = AsyncMock()
         coord._negotiate_session_key = AsyncMock(return_value=b"session_key12345")
 
-        with patch("asyncio.wait_for", new_callable=AsyncMock) as mock_wait:
-            mock_wait.return_value = (reader, writer)
+        # Patch open_connection directly to avoid leaking an unawaited coroutine.
+        with patch(
+            "asyncio.open_connection", new_callable=AsyncMock, return_value=(reader, writer)
+        ):
             await coord._connect()
 
         assert coord._session_key == b"session_key12345"
@@ -641,10 +647,12 @@ class TestConnect:
             side_effect=TuyaCloudlessError("negotiation failed")
         )
 
-        with patch("asyncio.wait_for", new_callable=AsyncMock) as mock_wait:
-            mock_wait.return_value = (reader, writer)
-            with pytest.raises(TuyaCloudlessError):
-                await coord._connect()
+        # Patch open_connection directly to avoid leaking an unawaited coroutine.
+        with (
+            patch("asyncio.open_connection", new_callable=AsyncMock, return_value=(reader, writer)),
+            pytest.raises(TuyaCloudlessError),
+        ):
+            await coord._connect()
 
 
 class TestReceiveLoop:
@@ -671,6 +679,8 @@ class TestReceiveLoop:
 
         async def mock_wait_for(coro: Any, timeout: float = 0) -> bytes:
             nonlocal call_count
+            if inspect.iscoroutine(coro):
+                coro.close()  # type: ignore[union-attr]
             call_count += 1
             if call_count == 1:
                 return big_chunk
@@ -698,6 +708,8 @@ class TestReceiveLoop:
 
         async def mock_wait_for(coro: Any, timeout: float = 0) -> bytes:
             nonlocal call_count
+            if inspect.iscoroutine(coro):
+                coro.close()  # type: ignore[union-attr]
             call_count += 1
             if call_count <= 1:
                 return fake_chunk
@@ -738,6 +750,8 @@ class TestReceiveLoop:
 
         async def mock_wait_for(coro: Any, timeout: float = 0) -> bytes:
             nonlocal call_count
+            if inspect.iscoroutine(coro):
+                coro.close()  # type: ignore[union-attr]
             call_count += 1
             if call_count == 1:
                 return b"data"
@@ -766,6 +780,8 @@ class TestReceiveLoop:
 
         async def mock_wait_for(coro: Any, timeout: float = 0) -> bytes:
             nonlocal call_count
+            if inspect.iscoroutine(coro):
+                coro.close()  # type: ignore[union-attr]
             call_count += 1
             if call_count == 1:
                 raise TimeoutError
@@ -801,6 +817,8 @@ class TestReceiveLoop:
 
         async def mock_wait_for(coro: Any, timeout: float = 0) -> bytes:
             nonlocal call_count
+            if inspect.iscoroutine(coro):
+                coro.close()  # type: ignore[union-attr]
             call_count += 1
             if call_count == 1:
                 return first_half
@@ -1274,8 +1292,10 @@ class TestSendInitialDpQuery:
         coord._disconnect = AsyncMock()
         coord._send_initial_dp_query = AsyncMock()
 
-        with patch("asyncio.wait_for", new_callable=AsyncMock) as mock_wait:
-            mock_wait.return_value = (reader, writer)
+        # Patch open_connection directly to avoid leaking an unawaited coroutine.
+        with patch(
+            "asyncio.open_connection", new_callable=AsyncMock, return_value=(reader, writer)
+        ):
             await coord._connect()
 
         # _send_initial_dp_query must have been awaited exactly once

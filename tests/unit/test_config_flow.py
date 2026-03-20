@@ -10,6 +10,7 @@ the HA runtime so they live in integration tests. Here we test:
 
 from __future__ import annotations
 
+import inspect
 import sys
 from pathlib import Path
 from typing import Any
@@ -525,12 +526,15 @@ class TestConfigFlowCheckConnection:
 
     @pytest.mark.asyncio
     async def test_check_connection_timeout(self) -> None:
-
+        # Patch open_connection directly so the coroutine is properly handled
+        # (avoids leaked unawaited coroutine if wait_for is patched while args are
+        # evaluated first).
         flow = _make_config_flow()
         _restore_method(flow, "_check_connection")
 
         with patch(
-            "custom_components.tuya_cloudless.config_flow.asyncio.wait_for",
+            "custom_components.tuya_cloudless.config_flow.asyncio.open_connection",
+            new_callable=AsyncMock,
             side_effect=TimeoutError(),
         ):
             errors = await flow._check_connection("10.0.0.1")
@@ -539,12 +543,13 @@ class TestConfigFlowCheckConnection:
 
     @pytest.mark.asyncio
     async def test_check_connection_os_error(self) -> None:
-
+        # Patch open_connection directly so the coroutine is properly handled.
         flow = _make_config_flow()
         _restore_method(flow, "_check_connection")
 
         with patch(
-            "custom_components.tuya_cloudless.config_flow.asyncio.wait_for",
+            "custom_components.tuya_cloudless.config_flow.asyncio.open_connection",
+            new_callable=AsyncMock,
             side_effect=OSError("connection refused"),
         ):
             errors = await flow._check_connection("10.0.0.1")
@@ -654,20 +659,17 @@ class TestValidateLocalKey:
         _restore_method(flow, "_validate_local_key")
 
         reader = AsyncMock()
+        # Configure reader.read to raise TimeoutError directly so no coroutine
+        # is leaked when wait_for wraps it.
+        reader.read = AsyncMock(side_effect=TimeoutError())
         writer = MagicMock()
         writer.write = MagicMock()
         writer.drain = AsyncMock()
         writer.get_extra_info = MagicMock(return_value=("10.0.0.1", 6668))
 
-        with (
-            patch(
-                "tuya_cloudless.protocol.encode_heartbeat",
-                return_value=b"\x00\x00U\xaa" + b"\x00" * 20,
-            ),
-            patch(
-                "custom_components.tuya_cloudless.config_flow.asyncio.wait_for",
-                side_effect=TimeoutError(),
-            ),
+        with patch(
+            "tuya_cloudless.protocol.encode_heartbeat",
+            return_value=b"\x00\x00U\xaa" + b"\x00" * 20,
         ):
             errors = await flow._validate_local_key(
                 reader, writer, local_key="0123456789abcdef", version="3.3"
@@ -2376,8 +2378,10 @@ class TestConfigFlowDhcpNew:
             CONF_PROTOCOL_VERSION: "3.3",
         }
 
-        with patch(
-            "custom_components.tuya_cloudless.config_flow.asyncio.wait_for",
+        # Patch _run_discovery directly to avoid leaking an unawaited coroutine.
+        with patch.object(
+            flow,
+            "_run_discovery",
             new_callable=AsyncMock,
             return_value=[device],
         ):
@@ -2406,8 +2410,10 @@ class TestConfigFlowDhcpNew:
             CONF_PROTOCOL_VERSION: "3.3",
         }
 
-        with patch(
-            "custom_components.tuya_cloudless.config_flow.asyncio.wait_for",
+        # Patch _run_discovery directly to avoid leaking an unawaited coroutine.
+        with patch.object(
+            flow,
+            "_run_discovery",
             new_callable=AsyncMock,
             return_value=[device],
         ):
@@ -2423,8 +2429,12 @@ class TestConfigFlowDhcpNew:
         discovery_info = MagicMock()
         discovery_info.ip = "10.0.0.1"
 
-        with patch(
-            "custom_components.tuya_cloudless.config_flow.asyncio.wait_for",
+        # Patch _run_discovery directly so no coroutine is leaked when wait_for
+        # would otherwise receive a real unawaited coroutine as its argument.
+        with patch.object(
+            flow,
+            "_run_discovery",
+            new_callable=AsyncMock,
             side_effect=TimeoutError(),
         ):
             await flow.async_step_dhcp(discovery_info)
@@ -2579,8 +2589,11 @@ class TestAutoDetectProfileNew:
         flow = _make_config_flow()
         _restore_method(flow, "_auto_detect_profile")
 
+        # Patch open_connection directly — avoids leaking an unawaited coroutine
+        # that would occur if wait_for is patched while args are evaluated first.
         with patch(
-            "custom_components.tuya_cloudless.config_flow.asyncio.wait_for",
+            "custom_components.tuya_cloudless.config_flow.asyncio.open_connection",
+            new_callable=AsyncMock,
             side_effect=TimeoutError(),
         ):
             result = await flow._auto_detect_profile(
@@ -2594,8 +2607,10 @@ class TestAutoDetectProfileNew:
         flow = _make_config_flow()
         _restore_method(flow, "_auto_detect_profile")
 
+        # Patch open_connection directly — avoids leaking an unawaited coroutine.
         with patch(
-            "custom_components.tuya_cloudless.config_flow.asyncio.wait_for",
+            "custom_components.tuya_cloudless.config_flow.asyncio.open_connection",
+            new_callable=AsyncMock,
             side_effect=OSError("connection refused"),
         ):
             result = await flow._auto_detect_profile(
@@ -2799,6 +2814,8 @@ class TestValidateLocalKeyOsErrorRead:
 
         async def fake_wait_for(coro: object, timeout: float = 0) -> object:
             nonlocal call_count
+            if inspect.iscoroutine(coro):
+                coro.close()  # type: ignore[union-attr]
             call_count += 1
             raise OSError("read error")
 
@@ -2857,6 +2874,8 @@ class TestAutoDetectProfileBody:
 
         async def fake_wait_for(coro: object, timeout: float = 0) -> object:
             nonlocal call_count
+            if inspect.iscoroutine(coro):
+                coro.close()  # type: ignore[union-attr]
             call_count += 1
             if call_count == 1:
                 # First call: open_connection
@@ -2886,6 +2905,8 @@ class TestAutoDetectProfileBody:
 
         async def fake_wait_for(coro: object, timeout: float = 0) -> object:
             nonlocal call_count
+            if inspect.iscoroutine(coro):
+                coro.close()  # type: ignore[union-attr]
             call_count += 1
             if call_count == 1:
                 return (mock_reader, mock_writer)
@@ -2916,6 +2937,8 @@ class TestAutoDetectProfileBody:
 
         async def fake_wait_for(coro: object, timeout: float = 0) -> object:
             nonlocal call_count
+            if inspect.iscoroutine(coro):
+                coro.close()  # type: ignore[union-attr]
             call_count += 1
             if call_count == 1:
                 return (mock_reader, mock_writer)
@@ -2946,6 +2969,8 @@ class TestAutoDetectProfileBody:
 
         async def fake_wait_for(coro: object, timeout: float = 0) -> object:
             nonlocal call_count
+            if inspect.iscoroutine(coro):
+                coro.close()  # type: ignore[union-attr]
             call_count += 1
             if call_count == 1:
                 return (mock_reader, mock_writer)
@@ -2976,6 +3001,8 @@ class TestAutoDetectProfileBody:
 
         async def fake_wait_for(coro: object, timeout: float = 0) -> object:
             nonlocal call_count
+            if inspect.iscoroutine(coro):
+                coro.close()  # type: ignore[union-attr]
             call_count += 1
             if call_count == 1:
                 return (mock_reader, mock_writer)
@@ -3014,6 +3041,8 @@ class TestAutoDetectProfileBody:
 
         async def fake_wait_for(coro: object, timeout: float = 0) -> object:
             nonlocal call_count
+            if inspect.iscoroutine(coro):
+                coro.close()  # type: ignore[union-attr]
             call_count += 1
             if call_count == 1:
                 return (mock_reader, mock_writer)
@@ -3057,6 +3086,8 @@ class TestAutoDetectProfileBody:
 
         async def fake_wait_for(coro: object, timeout: float = 0) -> object:
             nonlocal call_count
+            if inspect.iscoroutine(coro):
+                coro.close()  # type: ignore[union-attr]
             call_count += 1
             if call_count == 1:
                 return (mock_reader, mock_writer)
@@ -3103,6 +3134,8 @@ class TestAutoDetectProfileBody:
 
         async def fake_wait_for(coro: object, timeout: float = 0) -> object:
             nonlocal call_count
+            if inspect.iscoroutine(coro):
+                coro.close()  # type: ignore[union-attr]
             call_count += 1
             if call_count == 1:
                 return (mock_reader, mock_writer)
@@ -3156,6 +3189,8 @@ class TestAutoDetectProfileBody:
 
         async def fake_wait_for(coro: object, timeout: float = 0) -> object:
             nonlocal call_count
+            if inspect.iscoroutine(coro):
+                coro.close()  # type: ignore[union-attr]
             call_count += 1
             if call_count == 1:
                 return (mock_reader, mock_writer)
@@ -3528,6 +3563,8 @@ class TestAutoDetectProfileEdgeCases:
 
         async def fake_wait_for(coro: object, timeout: float = 0) -> object:
             nonlocal call_count
+            if inspect.iscoroutine(coro):
+                coro.close()  # type: ignore[union-attr]
             call_count += 1
             if call_count == 1:
                 return (mock_reader, mock_writer)
@@ -3572,6 +3609,8 @@ class TestAutoDetectProfileEdgeCases:
 
         async def fake_wait_for(coro: object, timeout: float = 0) -> object:
             nonlocal call_count
+            if inspect.iscoroutine(coro):
+                coro.close()  # type: ignore[union-attr]
             call_count += 1
             if call_count == 1:
                 return (mock_reader, mock_writer)
@@ -3618,6 +3657,8 @@ class TestAutoDetectProfileEdgeCases:
 
         async def fake_wait_for(coro: object, timeout: float = 0) -> object:
             nonlocal call_count
+            if inspect.iscoroutine(coro):
+                coro.close()  # type: ignore[union-attr]
             call_count += 1
             if call_count == 1:
                 return (mock_reader, mock_writer)

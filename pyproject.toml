@@ -64,6 +64,18 @@ markers = [
     "requires_ha: requires Home Assistant dependencies",
     "requires_ble: requires Bluetooth hardware and bleak installed",
 ]
+filterwarnings = [
+    # Python 3.12 AsyncMock internal bug: _execute_mock_call coroutines occasionally
+    # leak when a mock is called with side_effect/return_value.  Fixed in Python 3.13.
+    "ignore:coroutine 'AsyncMockMixin._execute_mock_call' was never awaited:RuntimeWarning",
+    # Tests that verify hass.async_create_task call-count deliberately use MagicMock,
+    # which stores coroutines as call-args without running them.  The background-task
+    # coroutines (_auto_stop_after_idle, _broadcast_sse, _resume_flow) are exercised in
+    # dedicated unit tests; the warnings here are a test-infrastructure artefact only.
+    "ignore:coroutine 'PairingServer._auto_stop_after_idle' was never awaited:RuntimeWarning",
+    "ignore:coroutine 'PairingServer._broadcast_sse' was never awaited:RuntimeWarning",
+    "ignore:coroutine 'PairingServer._handle_activate.<locals>._resume_flow' was never awaited:RuntimeWarning",
+]
 
 [tool.bandit]
 exclude_dirs = ["tests"]

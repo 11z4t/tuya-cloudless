@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import inspect
 import json
 import sys
 import time
@@ -84,9 +85,30 @@ def _make_hass() -> MagicMock:
 
 
 @pytest.fixture
-async def server(tmp_path: Path) -> PairingServer:
-    """Return a PairingServer with a free port (not started)."""
-    return PairingServer(_make_hass(), port=0)
+async def server(tmp_path: Path) -> PairingServer:  # type: ignore[misc]
+    """Return a PairingServer with a free port (not started).
+
+    Teardown cancels any pending background tasks (e.g. _auto_stop_after_idle,
+    SSE broadcasts) so that unawaited coroutine warnings don't pollute tests.
+    """
+    srv = PairingServer(_make_hass(), port=0)
+    yield srv  # type: ignore[misc]
+    # Cancel all pending tasks scheduled by the server during the test.
+    # Give any pending callbacks/tasks a chance to start before cancellation,
+    # otherwise tasks that haven't yet begun generate "coroutine never awaited"
+    # warnings when the task is cancelled and its coroutine is GC'd.
+    await asyncio.sleep(0)
+    tasks_to_cancel: list[asyncio.Task[object]] = []
+    if srv._auto_stop_task is not None and not srv._auto_stop_task.done():
+        tasks_to_cancel.append(srv._auto_stop_task)
+    for t in list(srv._background_tasks):
+        if not t.done():
+            tasks_to_cancel.append(t)
+    for t in tasks_to_cancel:
+        t.cancel()
+    for t in tasks_to_cancel:
+        with contextlib.suppress(asyncio.CancelledError):
+            await t
 
 
 @pytest.fixture
@@ -2896,9 +2918,11 @@ class TestActivateFlowResume:
                     assert "_resume_flow" not in coro_name, (
                         "Flow resume task must NOT be created for tokenless activation"
                     )
-                    not_sse = not coro_name or "_broadcast_sse" not in coro_name
-                    if not_sse and hasattr(coro, "close"):
-                        coro.close()
+                    # Close all coroutines passed to the mock (no real Tasks are
+                    # created since async_create_task is a MagicMock), otherwise
+                    # Python warns about unawaited coroutines at GC time.
+                    if hasattr(coro, "close"):
+                        coro.close()  # type: ignore[union-attr]
             assert "victim-flow-123" in fresh_server._pending_flows
         finally:
             await cli.close()
@@ -3840,6 +3864,10 @@ class TestSseKeepaliveAndMessage:
             nonlocal call_count
             # Only intercept queue.get calls (short timeout = 25.0)
             if abs(timeout - 25.0) < 1.0:
+                # Close the coroutine — we're not awaiting it so it must be
+                # explicitly closed to avoid "coroutine never awaited" warnings.
+                if inspect.iscoroutine(coro):
+                    coro.close()  # type: ignore[union-attr]
                 call_count += 1
                 if call_count == 1:
                     raise TimeoutError()  # triggers keepalive
@@ -4066,6 +4094,9 @@ class TestSseBoundedQueues:
 
         async def fake_wait_for(coro: object, timeout: float = 0) -> object:
             nonlocal call_count
+            # Close the coroutine (Queue.get()) so it doesn't emit a warning.
+            if inspect.iscoroutine(coro):
+                coro.close()  # type: ignore[union-attr]
             call_count += 1
             if call_count == 1:
                 return None  # close immediately
@@ -4160,6 +4191,9 @@ class TestSseBoundedQueues:
 
         async def fake_wait_for(coro: object, timeout: float = 0) -> object:
             nonlocal call_count
+            # Close the coroutine (Queue.get()) to avoid "never awaited" warnings.
+            if inspect.iscoroutine(coro):
+                coro.close()  # type: ignore[union-attr]
             call_count += 1
             return None  # close immediately on first call
 
@@ -4193,6 +4227,9 @@ class TestSseBoundedQueues:
 
         async def fake_wait_for(coro: object, timeout: float = 0) -> object:
             nonlocal call_count
+            # Close the coroutine (Queue.get()) to avoid "never awaited" warnings.
+            if inspect.iscoroutine(coro):
+                coro.close()  # type: ignore[union-attr]
             call_count += 1
             if call_count == 1:
                 # First call: simulate timeout (triggers keep-alive send)
@@ -4240,6 +4277,10 @@ class TestSseBoundedQueues:
         await queue.put("data: test\n\n")
 
         async def fake_wait_for(coro: object, timeout: float = 0) -> str | None:
+            # Close the production Queue.get() coroutine — we're not awaiting it,
+            # we drive the SSE loop via our own local queue instead.
+            if inspect.iscoroutine(coro):
+                coro.close()  # type: ignore[union-attr]
             return await queue.get()
 
         async def failing_write(data: bytes) -> None:

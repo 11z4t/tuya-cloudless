@@ -16,6 +16,8 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import hashlib
+import hmac
 import logging
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -893,9 +895,6 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         session_key = derive_session_key(keypair.private_key, device_pubkey, self._local_key)
 
         # Step 4 — send FINISH confirmation
-        import hashlib
-        import hmac
-
         # R45-F3: Use keyword arguments for hmac.new() to prevent silent bugs if
         # the argument order were ever changed, and to make the intent explicit.
         confirmation = hmac.new(

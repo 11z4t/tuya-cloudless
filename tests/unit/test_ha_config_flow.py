@@ -487,22 +487,38 @@ class TestCheckConnection:
         writer = MagicMock()
         writer.close = MagicMock()
         writer.wait_closed = AsyncMock()
-        with patch("asyncio.wait_for", new_callable=AsyncMock) as mock_wait:
-            mock_wait.return_value = (MagicMock(), writer)
+        # Patch open_connection directly to avoid leaking an unawaited coroutine
+        # (open_connection args are evaluated before patched wait_for is called).
+        with patch(
+            "custom_components.tuya_cloudless.config_flow.asyncio.open_connection",
+            new_callable=AsyncMock,
+            return_value=(MagicMock(), writer),
+        ):
             errors = await flow._check_connection("1.2.3.4")
         assert errors == {}
 
     @pytest.mark.asyncio
     async def test_connection_timeout(self) -> None:
         flow = _make_flow()
-        with patch("asyncio.wait_for", side_effect=TimeoutError):
+        # Patch open_connection directly to avoid leaking an unawaited coroutine
+        # (open_connection args are evaluated before patched wait_for is called).
+        with patch(
+            "custom_components.tuya_cloudless.config_flow.asyncio.open_connection",
+            new_callable=AsyncMock,
+            side_effect=TimeoutError(),
+        ):
             errors = await flow._check_connection("1.2.3.4")
         assert errors[CONF_IP_ADDRESS] == "cannot_connect"
 
     @pytest.mark.asyncio
     async def test_connection_oserror(self) -> None:
         flow = _make_flow()
-        with patch("asyncio.wait_for", side_effect=OSError("refused")):
+        # Patch open_connection directly to avoid leaking an unawaited coroutine.
+        with patch(
+            "custom_components.tuya_cloudless.config_flow.asyncio.open_connection",
+            new_callable=AsyncMock,
+            side_effect=OSError("refused"),
+        ):
             errors = await flow._check_connection("1.2.3.4")
         assert errors[CONF_IP_ADDRESS] == "cannot_connect"
 

@@ -23,6 +23,7 @@ References:
 
 from __future__ import annotations
 
+import hmac as _hmac_mod
 import json
 import os
 import secrets
@@ -220,8 +221,6 @@ class BleFrame:
         payload = data[_FRAME_HEADER_SIZE:frame_end]
         received_crc = struct.unpack_from("<H", data, frame_end)[0]
         computed_crc = crc16_modbus(data[:frame_end])
-
-        import hmac as _hmac_mod
 
         if not _hmac_mod.compare_digest(
             struct.pack("<H", received_crc), struct.pack("<H", computed_crc)
