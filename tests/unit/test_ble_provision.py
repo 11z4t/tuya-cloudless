@@ -1439,3 +1439,229 @@ class TestBuildProvisionFramesSizeGuardR52:
 
         with pytest.raises(PairingError, match="too large"):
             build_provision_frames(payload)
+
+
+# ── _chunk_frame too-many-chunks guard (line 260) ─────────────────────────────
+
+
+class TestChunkFrameTooManyChunksR52:
+    """R52: _chunk_frame must raise PairingError when frame produces > 255 chunks."""
+
+    def test_too_many_chunks_raises(self) -> None:
+        """A frame that would split into > 255 transport chunks must raise PairingError."""
+        from tuya_cloudless.ble_provision import (
+            BLE_MAX_FRAME_SIZE,
+            _chunk_frame,
+        )
+        from tuya_cloudless.exceptions import PairingError
+
+        # Each chunk carries (BLE_MAX_FRAME_SIZE - 2) bytes of data.
+        # We need more than 255 * (BLE_MAX_FRAME_SIZE - 2) bytes to trigger the guard.
+        transport_payload = BLE_MAX_FRAME_SIZE - 2
+        # 256 chunks worth of data
+        huge_payload = b"\x00" * (transport_payload * 256)
+        with pytest.raises(PairingError, match="too large"):
+            _chunk_frame(huge_payload)
+
+
+# ── _reassemble_chunks inconsistent totals (line 298) ─────────────────────────
+
+
+class TestReassembleChunksInconsistentTotals:
+    """Line 298: _reassemble_chunks must raise if chunks disagree on total_chunks."""
+
+    def test_inconsistent_total_chunks_raises(self) -> None:
+        """Two chunks with different total_chunks values must raise PairingError."""
+        from tuya_cloudless.ble_provision import _reassemble_chunks
+        from tuya_cloudless.exceptions import PairingError
+
+        # chunk_no=0, total=2, data=x; chunk_no=1, total=3 (inconsistent!)
+        chunks = [bytes([0, 2, 0xAA]), bytes([1, 3, 0xBB])]
+        with pytest.raises(PairingError, match="inconsistent"):
+            _reassemble_chunks(chunks)
+
+
+# ── _reassemble_chunks sequence gap (line 305) ────────────────────────────────
+
+
+class TestReassembleChunksSequenceGap:
+    """Line 305: _reassemble_chunks must raise when chunk indices have a gap."""
+
+    def test_sequence_gap_raises(self) -> None:
+        """Chunks with a gap in indices (0, 2 instead of 0, 1) must raise PairingError."""
+        from tuya_cloudless.ble_provision import _reassemble_chunks
+        from tuya_cloudless.exceptions import PairingError
+
+        # chunk_no=0, total=3; chunk_no=2, total=3; chunk_no=... (missing index 1)
+        # We need len(chunks) == total (3), so provide 3 chunks but skip index 1
+        chunks = [
+            bytes([0, 3, 0xAA]),  # chunk_no=0, total=3
+            bytes([2, 3, 0xBB]),  # chunk_no=2, total=3 (gap — index 1 missing)
+            bytes([3, 3, 0xCC]),  # chunk_no=3, total=3 (duplicate of total but wrong)
+        ]
+        with pytest.raises(PairingError):
+            _reassemble_chunks(chunks)
+
+
+# ── _on_notify malformed chunk (line 618) ─────────────────────────────────────
+
+
+class TestOnNotifyMalformedChunkLine618:
+    """Line 618: _on_notify must silently drop chunks with < 2 bytes."""
+
+    def _make_payload(self) -> ProvisionPayload:
+        return ProvisionPayload(
+            ssid="TestNet",
+            password="wifi-secret",
+            token=ProvisionPayload.generate_token(),
+            activator_url="http://192.168.1.1:8099",
+        )
+
+    @pytest.mark.asyncio
+    async def test_malformed_chunk_dropped_provision_still_succeeds(self) -> None:
+        """A 1-byte chunk triggers line 618 early-return; provision still completes."""
+        import asyncio
+        import sys
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        from tuya_cloudless.ble_provision import (
+            BLE_NOTIFY_CHAR_UUID,
+            CMD_PAIR_SUCCESS,
+            BleFrame,
+            BleProvisioner,
+            _chunk_frame,
+        )
+
+        device_nonce = bytes(range(16))
+        resp_frame = BleFrame(seq=0, cmd=0x00, payload=device_nonce)
+        resp_chunks = _chunk_frame(resp_frame.encode())
+        ack_frame = BleFrame(seq=2, cmd=CMD_PAIR_SUCCESS, payload=b"")
+        ack_chunks = _chunk_frame(ack_frame.encode())
+
+        notify_callbacks: dict = {}
+        mock_client = MagicMock()
+        mock_client.write_gatt_char = AsyncMock()
+
+        async def fake_start_notify(char_uuid: str, callback):  # type: ignore[no-untyped-def]
+            notify_callbacks[char_uuid] = callback
+
+        mock_client.start_notify = fake_start_notify
+        mock_gatt_char = MagicMock()
+        mock_client_cm = MagicMock()
+        mock_client_cm.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client_cm.__aexit__ = AsyncMock(return_value=False)
+        GATTCharType = type("BleakGATTCharacteristic", (), {})
+        mock_char_module = MagicMock()
+        mock_char_module.BleakGATTCharacteristic = GATTCharType
+        mock_bleak = MagicMock()
+        mock_bleak.BleakClient = MagicMock(return_value=mock_client_cm)
+        mock_backends = MagicMock()
+        mock_backends.characteristic = mock_char_module
+
+        with patch.dict(
+            sys.modules,
+            {
+                "bleak": mock_bleak,
+                "bleak.backends": mock_backends,
+                "bleak.backends.characteristic": mock_char_module,
+            },
+        ):
+            p = BleProvisioner()
+
+            async def run_provision() -> None:
+                task = asyncio.create_task(
+                    p.provision("AA:BB:CC:DD:EE:FF", self._make_payload(), pair_timeout=5.0)
+                )
+                await asyncio.sleep(0)
+                cb = notify_callbacks.get(BLE_NOTIFY_CHAR_UUID)
+                if cb is not None:
+                    # Inject a malformed 1-byte chunk (triggers line 618 early-return)
+                    cb(mock_gatt_char, bytearray(b"\x00"))
+                    for chunk in resp_chunks:
+                        cb(mock_gatt_char, bytearray(chunk))
+                await asyncio.sleep(0)
+                cb = notify_callbacks.get(BLE_NOTIFY_CHAR_UUID)
+                if cb is not None:
+                    for chunk in ack_chunks:
+                        cb(mock_gatt_char, bytearray(chunk))
+                await task
+
+            await run_provision()
+
+        mock_client.write_gatt_char.assert_awaited()
+
+
+# ── _on_notify overflow R36-5 mid-frame guard (lines 622-629) ─────────────────
+
+
+class TestOnNotifyOverflowR365Line622:
+    """Lines 622-629: overflow clears recv_chunks; mid-frame chunk (chunk_no>0) is dropped."""
+
+    def _make_payload(self) -> ProvisionPayload:
+        return ProvisionPayload(
+            ssid="TestNet",
+            password="wifi-secret",
+            token=ProvisionPayload.generate_token(),
+            activator_url="http://192.168.1.1:8099",
+        )
+
+    @pytest.mark.asyncio
+    async def test_overflow_and_mid_frame_guard_causes_timeout(self) -> None:
+        """Filling recv_chunks to 512 then mid-frame chunk triggers R36-5 drop and timeout."""
+        import asyncio
+        import sys
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        from tuya_cloudless.ble_provision import (
+            BLE_NOTIFY_CHAR_UUID,
+            BleProvisioner,
+        )
+        from tuya_cloudless.exceptions import PairingError
+
+        notify_callbacks: dict = {}
+        mock_client = MagicMock()
+        mock_client.write_gatt_char = AsyncMock()
+
+        async def fake_start_notify(char_uuid: str, callback):  # type: ignore[no-untyped-def]
+            notify_callbacks[char_uuid] = callback
+
+        mock_client.start_notify = fake_start_notify
+        mock_gatt_char = MagicMock()
+        mock_client_cm = MagicMock()
+        mock_client_cm.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client_cm.__aexit__ = AsyncMock(return_value=False)
+        GATTCharType = type("BleakGATTCharacteristic", (), {})
+        mock_char_module = MagicMock()
+        mock_char_module.BleakGATTCharacteristic = GATTCharType
+        mock_bleak = MagicMock()
+        mock_bleak.BleakClient = MagicMock(return_value=mock_client_cm)
+        mock_backends = MagicMock()
+        mock_backends.characteristic = mock_char_module
+
+        with patch.dict(
+            sys.modules,
+            {
+                "bleak": mock_bleak,
+                "bleak.backends": mock_backends,
+                "bleak.backends.characteristic": mock_char_module,
+            },
+        ):
+            p = BleProvisioner()
+
+            async def run_provision() -> None:
+                task = asyncio.create_task(
+                    p.provision("AA:BB:CC:DD:EE:FF", self._make_payload(), pair_timeout=0.1)
+                )
+                await asyncio.sleep(0)
+                cb = notify_callbacks.get(BLE_NOTIFY_CHAR_UUID)
+                if cb is not None:
+                    # Fill recv_chunks to 512 with first-chunks of 2-chunk frames
+                    for _ in range(512):
+                        cb(mock_gatt_char, bytearray([0, 2, 0xAA]))
+                    # Inject a mid-frame chunk (chunk_no=1 > 0) → lines 622-629:
+                    # clears, notify_event.clear(), checks chunk_no != 0, returns early
+                    cb(mock_gatt_char, bytearray([1, 2, 0xBB]))
+                return await task
+
+            with pytest.raises(PairingError):
+                await run_provision()

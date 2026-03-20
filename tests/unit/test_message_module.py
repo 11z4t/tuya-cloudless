@@ -498,3 +498,27 @@ class TestMessagesExceptionHandling:
         assert result == []
         # But should have been counted as an error
         assert buf.pop_error_count() >= 1
+
+
+class TestMessagesNoProgressGuard:
+    """Cover messages() no-progress guard (lines 571-580)."""
+
+    def test_no_progress_guard_clears_buffer_and_counts_error(self) -> None:
+        """When _try_extract raises without consuming bytes the guard fires (lines 571-580)."""
+        from unittest.mock import patch
+
+        from tuya_cloudless.crypto import ProtocolVersion
+        from tuya_cloudless.exceptions import InvalidMessageError
+        from tuya_cloudless.message import MessageBuffer
+
+        buf = MessageBuffer(ProtocolVersion.V33)
+        buf.feed(b"\x00\x00\x55\xaa" + b"\x00" * 20)  # fake data to fill buffer
+
+        # Patch _try_extract to always raise without consuming any bytes
+        with patch.object(buf, "_try_extract", side_effect=InvalidMessageError("stuck")):
+            result = buf.messages()
+
+        assert result == []
+        assert buf.pending_bytes == 0  # buffer cleared by guard
+        # Both the exception handler (+1) and the no-progress guard (+1) increment
+        assert buf.pop_error_count() >= 1

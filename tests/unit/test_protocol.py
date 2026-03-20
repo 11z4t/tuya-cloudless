@@ -520,3 +520,68 @@ class TestSplitFramesCountCapR52:
         frames, leftover = split_frames(buf)
         assert len(frames) == 10
         assert leftover == b""
+
+
+# ── decode_frame further edge cases ───────────────────────────────────────────
+
+
+class TestDecodeFrameLengthEdgeCases:
+    """Cover decode_frame guards at lines 259 and 264."""
+
+    def test_length_field_below_8_raises(self) -> None:
+        """length < 8 in header must raise MalformedPacketError (line 259)."""
+        length = 7  # < 8 minimum
+        header = struct.pack(">4sIII", FRAME_PREFIX, 1, CMD_HEARTBEAT, length)
+        data = header + b"\xff" * 8  # total 24 bytes = _MIN_FRAME_SIZE
+        with pytest.raises(MalformedPacketError, match="too small"):
+            decode_frame(data, version="3.1", local_key=_LOCAL_KEY)
+
+    def test_length_exceeds_available_data_raises(self) -> None:
+        """length field larger than remaining bytes must raise (line 264)."""
+        length = 100  # plausible size but data is only 24 bytes
+        header = struct.pack(">4sIII", FRAME_PREFIX, 1, CMD_HEARTBEAT, length)
+        data = header + b"\xff" * 8  # total 24 bytes; suffix_offset+4 = 116 > 24
+        with pytest.raises(MalformedPacketError, match="exceeds available data"):
+            decode_frame(data, version="3.1", local_key=_LOCAL_KEY)
+
+
+# ── split_frames incomplete-frame and skip-limit guards ───────────────────────
+
+
+class TestSplitFramesIncompleteAndSkipLimit:
+    """Cover split_frames lines 375-376 (incomplete frame) and 368, 384 (skip limit)."""
+
+    def test_frame_extends_beyond_buffer(self) -> None:
+        """Frame with valid-size length that extends past buffer end (lines 375-376)."""
+        length = 100  # <= MAX_PAYLOAD_SIZE+36, so not oversized
+        header = struct.pack(">4sIII", FRAME_PREFIX, 1, CMD_HEARTBEAT, length)
+        buf = bytes(header + b"\xff" * 8)  # 24 bytes; frame_end = 116 > 24
+        frames, leftover = split_frames(buf)
+        assert frames == []
+        assert leftover == buf  # offset set back to idx=0
+
+    def test_oversized_length_exceeds_skip_limit(self) -> None:
+        """4097 oversized-length frames must trigger the skip-limit break (line 368)."""
+        from tuya_cloudless.const import MAX_PAYLOAD_SIZE
+
+        oversized_length = MAX_PAYLOAD_SIZE + 100  # > MAX_PAYLOAD_SIZE + 36
+        fake_header = struct.pack(">4sIII", FRAME_PREFIX, 1, 0, oversized_length)
+        # Each fake frame = 24 bytes (_MIN_FRAME_SIZE); padding avoids false prefix matches
+        fake_frame = fake_header + b"\xff" * 8
+        buf = fake_frame * (4096 + 1)  # _MAX_SKIP_ITERATIONS + 1 iterations needed
+        frames, _ = split_frames(bytes(buf))
+        assert frames == []
+
+    def test_bad_suffix_exceeds_skip_limit(self) -> None:
+        """4097 frames with wrong suffix must trigger the skip-limit break (line 384)."""
+        # length=8 is the minimum valid value; frame_end = 24, bad suffix at byte 20
+        length = 8
+        bad_frame = (
+            struct.pack(">4sIII", FRAME_PREFIX, 1, 0, length)
+            + b"\x00" * 4  # CRC placeholder
+            + b"\xff\xff\xff\xff"  # wrong suffix (not FRAME_SUFFIX)
+        )
+        assert len(bad_frame) == 24  # exactly _MIN_FRAME_SIZE
+        buf = bad_frame * (4096 + 1)
+        frames, _ = split_frames(bytes(buf))
+        assert frames == []

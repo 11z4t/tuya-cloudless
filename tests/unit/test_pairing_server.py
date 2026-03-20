@@ -6704,3 +6704,145 @@ class TestHaStaticViewSecurity:
         with patch("pathlib.Path.resolve", fail_fourth_resolve):
             resp = await static_view.get(request, path="nonexistent.js")
         assert resp.status == 400
+
+
+# ── HA view delegation lines 1838-1922 ────────────────────────────────────────
+
+
+class TestHaViewDelegation:
+    """Cover the thin delegation methods in locally-defined HA view classes.
+
+    Lines 1838, 1853, 1863, 1876-1877, 1887, 1897, 1907, 1922 are single-line
+    bodies that forward to server._handle_xxx().  We capture each registered view
+    and call its get()/post() with a mocked handler to exercise these lines.
+    """
+
+    @pytest.fixture
+    async def views(self) -> list:  # type: ignore[misc]
+        """Register all HA views and return the list of registered view instances."""
+        hass = _make_hass()
+        server = PairingServer(hass, port=0)
+        await server._register_ha_views()
+        return [call[0][0] for call in server._hass.http.register_view.call_args_list]
+
+    @pytest.mark.asyncio
+    async def test_index_view_delegates_to_handle_ha_index(self, views: list) -> None:
+        """_PairingIndexView.get delegates to server._handle_ha_index (line 1838)."""
+        index_view = views[0]
+        request = MagicMock()
+        request.remote = "127.0.0.1"
+        request.headers = {}
+        with patch(
+            "custom_components.tuya_cloudless.pairing_server.PairingServer._handle_ha_index",
+            new_callable=AsyncMock,
+            return_value=MagicMock(status=200),
+        ):
+            resp = await index_view.get(request)
+        assert resp.status == 200
+
+    @pytest.mark.asyncio
+    async def test_config_view_delegates_to_handle_ha_config(self, views: list) -> None:
+        """_PairingConfigView.get delegates to server._handle_ha_config (line 1853)."""
+        config_view = views[1]
+        request = MagicMock()
+        request.remote = "127.0.0.1"
+        request.headers = {}
+        with patch(
+            "custom_components.tuya_cloudless.pairing_server.PairingServer._handle_ha_config",
+            new_callable=AsyncMock,
+            return_value=MagicMock(status=200),
+        ):
+            resp = await config_view.get(request)
+        assert resp.status == 200
+
+    @pytest.mark.asyncio
+    async def test_events_view_delegates_to_handle_sse(self, views: list) -> None:
+        """_PairingEventsView.get delegates to server._handle_sse (line 1863)."""
+        events_view = views[2]
+        request = MagicMock()
+        request.remote = "127.0.0.1"
+        request.headers = {}
+        with patch(
+            "custom_components.tuya_cloudless.pairing_server.PairingServer._handle_sse",
+            new_callable=AsyncMock,
+            return_value=MagicMock(status=200),
+        ):
+            resp = await events_view.get(request)
+        assert resp.status == 200
+
+    @pytest.mark.asyncio
+    async def test_result_view_injects_token_and_delegates(self, views: list) -> None:
+        """_PairingResultView.get injects token and delegates (lines 1876-1877)."""
+        result_view = views[3]
+        request = MagicMock()
+        request.remote = "127.0.0.1"
+        request.headers = {}
+        request.match_info = {}
+        with patch(
+            "custom_components.tuya_cloudless.pairing_server.PairingServer._handle_get_result",
+            new_callable=AsyncMock,
+            return_value=MagicMock(status=200),
+        ):
+            resp = await result_view.get(request, "tok123")
+        assert resp.status == 200
+        assert request.match_info.get("token") == "tok123"
+
+    @pytest.mark.asyncio
+    async def test_wifi_scan_view_delegates(self, views: list) -> None:
+        """_PairingWifiScanView.get delegates to server._handle_wifi_scan (line 1887)."""
+        wifi_scan_view = views[4]
+        request = MagicMock()
+        request.remote = "127.0.0.1"
+        request.headers = {}
+        with patch(
+            "custom_components.tuya_cloudless.pairing_server.PairingServer._handle_wifi_scan",
+            new_callable=AsyncMock,
+            return_value=MagicMock(status=200),
+        ):
+            resp = await wifi_scan_view.get(request)
+        assert resp.status == 200
+
+    @pytest.mark.asyncio
+    async def test_quick_scan_view_delegates(self, views: list) -> None:
+        """_PairingQuickScanView.get delegates to server._handle_quick_scan (line 1897)."""
+        quick_scan_view = views[5]
+        request = MagicMock()
+        request.remote = "127.0.0.1"
+        request.headers = {}
+        with patch(
+            "custom_components.tuya_cloudless.pairing_server.PairingServer._handle_quick_scan",
+            new_callable=AsyncMock,
+            return_value=MagicMock(status=200),
+        ):
+            resp = await quick_scan_view.get(request)
+        assert resp.status == 200
+
+    @pytest.mark.asyncio
+    async def test_wifi_ap_pair_view_delegates(self, views: list) -> None:
+        """_PairingWifiApPairView.post delegates to server._handle_wifi_ap_pair (line 1907)."""
+        wifi_ap_pair_view = views[6]
+        request = MagicMock()
+        request.remote = "127.0.0.1"
+        request.headers = {}
+        with patch(
+            "custom_components.tuya_cloudless.pairing_server.PairingServer._handle_wifi_ap_pair",
+            new_callable=AsyncMock,
+            return_value=MagicMock(status=200),
+        ):
+            resp = await wifi_ap_pair_view.post(request)
+        assert resp.status == 200
+
+    @pytest.mark.asyncio
+    async def test_bind_token_view_delegates(self, views: list) -> None:
+        """_PairingBindTokenView.post delegates to server._handle_bind_token (line 1922)."""
+        bind_token_view = views[7]
+        request = MagicMock()
+        request.remote = "127.0.0.1"
+        request.headers = {}
+        with patch(
+            "custom_components.tuya_cloudless.pairing_server.PairingServer._handle_bind_token",
+            new_callable=AsyncMock,
+            return_value=MagicMock(status=200),
+        ):
+            resp = await bind_token_view.post(request)
+        assert resp.status == 200

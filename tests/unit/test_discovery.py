@@ -360,3 +360,132 @@ class TestDiscoveryR26Fixes:
         device = listener._parse_datagram(raw, "1.2.3.4")
         assert device is not None
         assert isinstance(device.active, int)
+
+
+# ── Lines 317-318 — CancelledError in _process_loop ──────────────────────────
+
+
+class TestProcessLoopCancelledError:
+    """Lines 317-318: asyncio.CancelledError must break the process loop."""
+
+    @pytest.mark.asyncio
+    async def test_cancelled_error_breaks_process_loop(self) -> None:
+        """Cancelling the task running _process_loop must exit cleanly."""
+        listener = DiscoveryListener()
+        listener._running = True
+
+        import contextlib
+
+        task = asyncio.create_task(listener._process_loop())
+        await asyncio.sleep(0.05)  # let it reach the wait_for
+        task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
+
+
+# ── Lines 325-330 — discovery table full ─────────────────────────────────────
+
+
+class TestDiscoveryTableFull:
+    """Lines 325-330: new devices are dropped when table is at _MAX_DISCOVERED."""
+
+    @pytest.mark.asyncio
+    async def test_table_full_drops_new_device(self) -> None:
+        from tuya_cloudless.discovery import DiscoveredDevice, DiscoveryListener
+
+        listener = DiscoveryListener()
+        listener._running = True
+
+        # Fill the table to _MAX_DISCOVERED (256) with fake entries
+        for i in range(256):
+            fake_device = DiscoveredDevice(
+                gw_id=f"fake_{i:04d}",
+                ip="1.2.3.4",
+                version="3.3",
+                product_key="pk",
+                encrypt=False,
+                active=2,
+                ability=0,
+            )
+            listener._discovered[fake_device.gw_id] = fake_device
+
+        assert len(listener._discovered) == 256
+
+        # Queue a valid new device packet
+        new_device_info = {
+            "gwId": "new_device_0001",
+            "ip": "10.0.0.99",
+            "version": "3.3",
+            "productKey": "pk_new",
+            "encrypt": False,
+            "active": 2,
+        }
+        packet = _make_discovery_packet(new_device_info)
+        await listener._queue.put((packet, ("10.0.0.99", 6666)))
+
+        async def stop_after() -> None:
+            await asyncio.sleep(0.1)
+            listener._running = False
+
+        task = asyncio.create_task(stop_after())
+        await listener._process_loop()
+        await task
+
+        # The new device must NOT be in the table
+        assert "new_device_0001" not in listener._discovered
+        assert len(listener._discovered) == 256
+
+
+# ── Lines 409-411 — JSON decode failure (defensive guard) ────────────────────
+
+
+class TestParseDatagramJsonFailure:
+    """Lines 409-411: json.loads failure triggers the defensive guard."""
+
+    def test_json_parse_failure_returns_none(self) -> None:
+        from unittest.mock import patch
+
+        listener = DiscoveryListener()
+        valid_frame = _make_discovery_packet({"gwId": "gw1", "version": "3.3"})
+
+        # Patch _try_decode_payload to return non-JSON bytes to trigger lines 409-411
+        with patch.object(listener, "_try_decode_payload", return_value=b"not_valid_json!!!"):
+            result = listener._parse_datagram(valid_frame, "10.0.0.1")
+        assert result is None
+
+
+# ── Lines 444-452 — field-too-long guard ─────────────────────────────────────
+
+
+class TestParseDatagramFieldTooLong:
+    """Lines 444-452: oversized gwId field triggers the drop guard."""
+
+    def test_gw_id_too_long_returns_none(self) -> None:
+        listener = DiscoveryListener()
+        # gwId > 64 chars
+        info = {
+            "gwId": "x" * 65,
+            "ip": "192.168.1.10",
+            "version": "3.3",
+            "productKey": "pk123",
+            "encrypt": False,
+            "active": 2,
+        }
+        packet = _make_discovery_packet(info)
+        result = listener._parse_datagram(packet, "192.168.1.10")
+        assert result is None
+
+    def test_product_key_too_long_returns_none(self) -> None:
+        listener = DiscoveryListener()
+        # productKey > 64 chars
+        info = {
+            "gwId": "gw001",
+            "ip": "192.168.1.10",
+            "version": "3.3",
+            "productKey": "p" * 65,
+            "encrypt": False,
+            "active": 2,
+        }
+        packet = _make_discovery_packet(info)
+        result = listener._parse_datagram(packet, "192.168.1.10")
+        assert result is None

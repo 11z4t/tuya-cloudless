@@ -546,3 +546,22 @@ class TestSendRawDpsHandlerHomeAssistantError:
 
         with pytest.raises(HomeAssistantError):
             await handler(call)  # type: ignore[operator]
+
+
+# ── _safe_device_url invalid IP (lines 83-84) ─────────────────────────────────
+
+
+class TestSafeDeviceUrlInvalidInput:
+    """Lines 83-84: _safe_device_url returns None for non-IP strings."""
+
+    def test_invalid_ip_returns_none(self) -> None:
+        """A hostname (not an IP literal) must return None."""
+        from custom_components.tuya_cloudless import _safe_device_url
+
+        assert _safe_device_url("not-an-ip.example.com") is None
+
+    def test_empty_string_returns_none(self) -> None:
+        """An empty string must return None."""
+        from custom_components.tuya_cloudless import _safe_device_url
+
+        assert _safe_device_url("") is None

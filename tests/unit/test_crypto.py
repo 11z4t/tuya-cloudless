@@ -481,3 +481,37 @@ class TestEncryptGcmAllZeroNonceR53:
         key = b"0123456789abcdef"
         ct = encrypt_gcm(key, b"hello", extra_nonce=None)
         assert decrypt_gcm(key, ct) == b"hello"
+
+
+# ── Bad-key-length guards ────────────────────────────────────────────────────
+
+
+class TestBadKeyLengthGuards:
+    """Cover CryptoError raises for bad key lengths (lines 214, 360)."""
+
+    def test_encrypt_ble_payload_bad_key_length_raises(self) -> None:
+        """encrypt_ble_payload with key != 16 bytes must raise CryptoError (line 214)."""
+        from tuya_cloudless.crypto import encrypt_ble_payload
+
+        with pytest.raises(CryptoError, match="must be 16 bytes"):
+            encrypt_ble_payload(b"short", b"wifi credentials")
+
+    def test_decrypt_gcm_bad_key_length_raises(self) -> None:
+        """decrypt_gcm with key != 16 bytes must raise CryptoError (line 360)."""
+        with pytest.raises(CryptoError, match="must be 16 bytes"):
+            decrypt_gcm(b"short", b"\x00" * 30)
+
+
+class TestDeriveSessionKeyInvalidExchange:
+    """Cover KeyDerivationError from bad X25519 public key (lines 426-427)."""
+
+    def test_invalid_public_key_raises_key_derivation_error(self) -> None:
+        """An all-zero public key is rejected by X25519 and must raise KeyDerivationError."""
+        from tuya_cloudless.crypto import derive_session_key, generate_ecdh_keypair
+
+        private_key, _ = generate_ecdh_keypair()
+        local_key = b"0123456789abcdef"
+        # All-zero public key is the low-order point — X25519 rejects it
+        bad_peer_public = b"\x00" * 32
+        with pytest.raises(KeyDerivationError, match="X25519 ECDH exchange failed"):
+            derive_session_key(private_key, bad_peer_public, local_key)
