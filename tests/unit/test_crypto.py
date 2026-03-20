@@ -400,3 +400,42 @@ class TestUnifiedPayload:
         ct = encrypt_payload("3.3", self._LOCAL_KEY, plaintext)
         pt = decrypt_payload("3.3", self._LOCAL_KEY, ct)
         assert pt == plaintext
+
+
+# ── strip_v33_header edge cases (R25-2) ──────────────────────────────────────
+
+
+class TestStripV33Header:
+    """strip_v33_header must raise CryptoError on payloads shorter than the header."""
+
+    def test_short_v33_payload_raises(self) -> None:
+        """Payload that starts with b'3.3' but is fewer than 12 bytes must raise."""
+        from tuya_cloudless.crypto import CryptoError, strip_v33_header
+
+        # 5 bytes starting with '3.3' — too short for the 12-byte header
+        with pytest.raises(CryptoError, match="too short"):
+            strip_v33_header(b"3.3\x00\x00")
+
+    def test_exactly_header_length_returns_empty(self) -> None:
+        """Exactly 12 bytes starting with '3.3' must return empty payload (no error)."""
+        from tuya_cloudless.crypto import strip_v33_header
+
+        header_only = b"3.3\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+        result = strip_v33_header(header_only)
+        assert result == b""
+
+    def test_normal_payload_stripped_correctly(self) -> None:
+        """Normal v3.3 payload must have header stripped correctly."""
+        from tuya_cloudless.const import V33_PAYLOAD_HEADER
+        from tuya_cloudless.crypto import strip_v33_header
+
+        payload = b'{"dps":{"1":true}}'
+        data = V33_PAYLOAD_HEADER + payload
+        assert strip_v33_header(data) == payload
+
+    def test_no_v33_prefix_returned_unchanged(self) -> None:
+        """Payload not starting with b'3.3' must be returned unchanged."""
+        from tuya_cloudless.crypto import strip_v33_header
+
+        raw = b"hello world"
+        assert strip_v33_header(raw) is raw

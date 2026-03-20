@@ -1488,7 +1488,7 @@ class PairingServer:
                 return await server._handle_get_result(request)
 
         class _PairingWifiScanView(HomeAssistantView):
-            requires_auth = False
+            # requires_auth = True (default) — scans reveal nearby SSIDs/home network
             url = _HA_PAIRING_PREFIX + "/provision/wifi-scan"
             name = "api:tuya_cloudless:pairing:wifi_scan"
 
@@ -1498,7 +1498,7 @@ class PairingServer:
                 return await server._handle_wifi_scan(request)
 
         class _PairingQuickScanView(HomeAssistantView):
-            requires_auth = False
+            # requires_auth = True (default) — reveals Tuya AP SSIDs on the LAN
             url = _HA_PAIRING_PREFIX + "/provision/quick-scan"
             name = "api:tuya_cloudless:pairing:quick_scan"
 
@@ -1508,7 +1508,7 @@ class PairingServer:
                 return await server._handle_quick_scan(request)
 
         class _PairingWifiApPairView(HomeAssistantView):
-            requires_auth = False
+            # requires_auth = True (default) — executes nmcli; must not be unauthenticated
             url = _HA_PAIRING_PREFIX + "/provision/wifi-ap-pair"
             name = "api:tuya_cloudless:pairing:wifi_ap_pair"
 

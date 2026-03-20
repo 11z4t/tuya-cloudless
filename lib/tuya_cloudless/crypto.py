@@ -275,12 +275,22 @@ def strip_v33_header(data: bytes) -> bytes:
 
     Returns:
         Payload bytes with 12-byte header stripped if the magic prefix is present.
+
+    Raises:
+        CryptoError: If the payload starts with the v3.3 magic prefix but is
+            shorter than the expected 12-byte header length.
     """
+    _header_len = len(V33_PAYLOAD_HEADER)  # always 12
     if data[:3] == b"3.3":
         # The header is always prepended by add_v33_header for v3.3 devices.
         # The version prefix check avoids corrupting a payload that starts with
         # something other than the 12-byte header (firmware edge case).
-        return data[_AES_BLOCK - 4 :]  # 12-byte header: b"3.3" (3 bytes) + 9 null padding bytes
+        if len(data) < _header_len:
+            raise CryptoError(
+                f"v3.3 payload too short to contain version header: "
+                f"{len(data)} bytes (expected ≥ {_header_len})"
+            )
+        return data[_header_len:]
     return data
 
 

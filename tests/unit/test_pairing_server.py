@@ -4144,6 +4144,54 @@ class TestRegisterHaViews:
         await server._register_ha_views()
         assert hass.http.register_view.call_count == 8
 
+    async def test_sensitive_views_require_auth(self) -> None:
+        """wifi-scan, quick-scan, and wifi-ap-pair HA views must require auth.
+
+        These endpoints reveal home WiFi SSIDs (scan) or execute nmcli on the
+        host (wifi-ap-pair).  Allowing unauthenticated access would let any
+        browser on the LAN (or via Nabu Casa remote) trigger network changes.
+        """
+        hass = MagicMock()
+        server = PairingServer(hass, port=8099)
+        captured_views: list[object] = []
+        hass.http.register_view.side_effect = captured_views.append
+        await server._register_ha_views()
+
+        sensitive_names = {
+            "api:tuya_cloudless:pairing:wifi_scan",
+            "api:tuya_cloudless:pairing:quick_scan",
+            "api:tuya_cloudless:pairing:wifi_ap_pair",
+        }
+        for view in captured_views:
+            name = getattr(view, "name", "")
+            if name in sensitive_names:
+                requires = getattr(view, "requires_auth", True)
+                assert requires is not False, f"View {name} must not have requires_auth=False"
+
+    async def test_unauthenticated_views_allowed(self) -> None:
+        """The pairing UI pages (index, config, events, result, static) correctly
+        remain unauthenticated — the browser opens these before HA auth is set up."""
+        hass = MagicMock()
+        server = PairingServer(hass, port=8099)
+        captured_views: list[object] = []
+        hass.http.register_view.side_effect = captured_views.append
+        await server._register_ha_views()
+
+        ui_names = {
+            "api:tuya_cloudless:pairing:index",
+            "api:tuya_cloudless:pairing:config",
+            "api:tuya_cloudless:pairing:events",
+            "api:tuya_cloudless:pairing:result",
+            "api:tuya_cloudless:pairing:static",
+        }
+        for view in captured_views:
+            name = getattr(view, "name", "")
+            if name in ui_names:
+                requires = getattr(view, "requires_auth", True)
+                assert requires is False, (
+                    f"View {name} must have requires_auth=False (pairing UI access)"
+                )
+
 
 # ── Static file view (path traversal guard) ───────────────────────────────────
 
