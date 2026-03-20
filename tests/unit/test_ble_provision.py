@@ -1126,6 +1126,59 @@ class TestBleProvisionerProvisionInternalErrors:
             with pytest.raises(PairingError, match="Unexpected ACK command"):
                 await run_with_bad_ack()
 
+    @pytest.mark.asyncio
+    async def test_provision_zero_nonce_raises_pairing_error(self) -> None:
+        """R35-6: all-zeros device nonce raises PairingError (rogue device guard)."""
+        import asyncio
+        import sys
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        from tuya_cloudless.ble_provision import (
+            BLE_NONCE_SIZE,
+            BLE_NOTIFY_CHAR_UUID,
+            CMD_HANDSHAKE_RESP,
+            BleFrame,
+            BleProvisioner,
+            _chunk_frame,
+        )
+
+        zero_nonce_resp = BleFrame(seq=0, cmd=CMD_HANDSHAKE_RESP, payload=bytes(BLE_NONCE_SIZE))
+        zero_nonce_chunks = _chunk_frame(zero_nonce_resp.encode())
+
+        notify_callbacks: dict = {}
+        mock_client = MagicMock()
+        mock_client.write_gatt_char = AsyncMock()
+        mock_gatt_char = MagicMock()
+
+        async def fake_start_notify(char_uuid: str, callback):  # type: ignore[no-untyped-def]
+            notify_callbacks[char_uuid] = callback
+
+        mock_client.start_notify = fake_start_notify
+
+        mock_bleak, mock_backends, mock_char_module, _ = self._build_bleak_mock(mock_client)
+
+        with patch.dict(
+            sys.modules,
+            {
+                "bleak": mock_bleak,
+                "bleak.backends": mock_backends,
+                "bleak.backends.characteristic": mock_char_module,
+            },
+        ):
+            p = BleProvisioner()
+
+            async def run_with_zero_nonce() -> None:
+                task = asyncio.create_task(p.provision("AA:BB:CC:DD:EE:FF", self._make_payload()))
+                await asyncio.sleep(0)
+                cb = notify_callbacks.get(BLE_NOTIFY_CHAR_UUID)
+                if cb is not None:
+                    for chunk in zero_nonce_chunks:
+                        cb(mock_gatt_char, bytearray(chunk))
+                await task
+
+            with pytest.raises(PairingError, match="all-zeros nonce"):
+                await run_with_zero_nonce()
+
 
 class TestBleProvisionerDisconnectConnected:
     @pytest.mark.asyncio

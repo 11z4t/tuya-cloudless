@@ -353,15 +353,17 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self._session_key = None
 
         self._consecutive_decode_errors = 0
-        self.state.available = True
         self.state.last_error = None
         _LOGGER.info("[%s] Connected to %s", self._gw_id, self._ip)
+
+        # Send initial DP_QUERY BEFORE marking available so entity commands cannot
+        # race the unlocked initial write (R35-1).  available=True + listener notify
+        # are deferred to after the query completes.
+        await self._send_initial_dp_query(writer)
+
+        self.state.available = True
         self.async_update_listeners()
         self._fire_event(EVENT_TUYA_CONNECTED)
-
-        # Send initial DP_QUERY so entities are populated immediately after connect
-        # without waiting for the device to push an unsolicited update (PLAT-761).
-        await self._send_initial_dp_query(writer)
 
         # Start heartbeat
         self._heartbeat_task = self.hass.async_create_task(

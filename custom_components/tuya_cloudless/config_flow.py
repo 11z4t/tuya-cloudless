@@ -310,6 +310,10 @@ class TuyaCloudlessConfigFlow(ConfigFlow, domain=DOMAIN):
             local_key = str(user_input.get(CONF_LOCAL_KEY, "")).strip()
             ip_address = str(user_input.get("ip_address", "")).strip()
             product_key = str(user_input.get("product_key", "")).strip()
+            # R35-7: product_key is device-controlled; sanitise to empty string
+            # if it contains unexpected characters so it cannot corrupt entity IDs.
+            if product_key and not _GW_ID_RE.match(product_key):
+                product_key = ""
             if (
                 not _GW_ID_RE.match(gw_id)
                 or not _LOCAL_KEY_RE.match(local_key)

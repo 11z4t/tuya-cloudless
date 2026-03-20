@@ -1997,6 +1997,31 @@ class TestBlePairSecondCallNew:
         assert result["type"] == "create_entry"
         assert flow._device["gw_id"] == "bf456"
 
+    @pytest.mark.asyncio
+    async def test_invalid_product_key_is_cleared(self) -> None:
+        """R35-7: device-controlled product_key with invalid chars is sanitised to empty string."""
+        from custom_components.tuya_cloudless.config_flow import TuyaCloudlessConfigFlow
+
+        flow = TuyaCloudlessConfigFlow.__new__(TuyaCloudlessConfigFlow)
+        flow._discovered = []
+        flow._device = {}
+        flow.hass = MagicMock()
+        flow.flow_id = "test-flow-id"
+        flow.async_external_step_done = MagicMock(return_value={"type": "create_entry"})
+        flow.async_external_step = MagicMock(return_value={"type": "external"})
+        flow.async_abort = MagicMock(return_value={"type": "abort"})
+
+        user_input = {
+            "gw_id": "bf456",
+            "local_key": "abcdef0123456789",
+            "ip_address": "10.0.1.2",
+            "product_key": "../../etc/passwd",  # path traversal attempt
+        }
+        await flow.async_step_ble_pair(user_input=user_input)
+
+        # Invalid product_key must be sanitised to empty string (R35-7)
+        assert flow._device.get("product_key") == ""
+
 
 # ── async_step_ble_pair OSError (lines 230-232) ──────────────────────────────
 

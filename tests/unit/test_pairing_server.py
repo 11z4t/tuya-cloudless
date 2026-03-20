@@ -1380,10 +1380,10 @@ class TestWifiApPair:
         assert any(ev == "wifi_ap_error" for ev, _ in broadcast_calls), (
             "wifi_ap_error SSE must be emitted when nmcli connect returns non-zero"
         )
-        # The token must be included so the client can match this error to its session
+        # R35-9: token must NOT appear in SSE payload (unauthenticated stream)
         error_payloads = [data for ev, data in broadcast_calls if ev == "wifi_ap_error"]
-        assert any("tok_fail" in p for p in error_payloads), (
-            "wifi_ap_error SSE payload must include the session token"
+        assert not any("tok_fail" in p for p in error_payloads), (
+            "wifi_ap_error SSE payload must NOT include the session token (R35-9)"
         )
 
     async def test_nmcli_connect_timeout_kills_process(self, client: TestClient) -> None:

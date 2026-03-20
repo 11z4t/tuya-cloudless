@@ -626,6 +626,13 @@ class BleProvisioner:
                     )
 
                 device_nonce = resp.payload[:BLE_NONCE_SIZE]
+                # R35-6: Reject all-zeros nonce — XOR key derivation with a zero
+                # nonce produces session_key == controller_nonce, which a rogue
+                # device (knowing only the public nonce) could exploit.
+                if device_nonce == b"\x00" * BLE_NONCE_SIZE:
+                    raise PairingError(
+                        "Device returned invalid all-zeros nonce — potential rogue device"
+                    )
                 session_key = derive_session_key(controller_nonce, device_nonce)
                 # Clear event BEFORE chunks to close the TOCTOU window where a
                 # spurious notification between the two clears would leave the

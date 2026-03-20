@@ -1400,7 +1400,8 @@ class PairingServer:
             _LOGGER.warning("WiFi AP pair task failed: %s", exc)
             await self._broadcast_sse(
                 "wifi_ap_error",
-                json.dumps({"error": "WiFi control unavailable or connect failed", "token": token}),
+                # R35-9: token excluded from SSE broadcast
+                json.dumps({"error": "WiFi control unavailable or connect failed"}),
             )
         except Exception as exc:
             # Use warning (not exception) to avoid printing a traceback that
@@ -1408,7 +1409,7 @@ class PairingServer:
             _LOGGER.warning("Unexpected error in WiFi AP pair task: %s", type(exc).__name__)
             await self._broadcast_sse(
                 "wifi_ap_error",
-                json.dumps({"error": "Unexpected pairing error", "token": token}),
+                json.dumps({"error": "Unexpected pairing error"}),  # R35-9: token excluded
             )
         finally:
             # Step 4: always try to restore connectivity.

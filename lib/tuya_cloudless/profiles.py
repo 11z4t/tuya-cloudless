@@ -169,6 +169,13 @@ def _parse_dp_spec(data: dict[str, Any] | None) -> DPSpec | None:
     )
 
 
+# R35-3: Allowlist of supported HA platforms.  Prevents malformed YAML profiles
+# from creating entities for unsupported platforms (e.g. "script", "automation").
+_VALID_PLATFORMS: frozenset[str] = frozenset(
+    {"switch", "light", "sensor", "binary_sensor", "cover", "fan", "climate", "select", "number"}
+)
+
+
 def _parse_entity_spec(data: dict[str, Any]) -> EntitySpec:
     """Parse an entity specification dict from YAML.
 
@@ -180,9 +187,15 @@ def _parse_entity_spec(data: dict[str, Any]) -> EntitySpec:
 
     Raises:
         KeyError: If required keys ``platform`` or ``name`` are missing.
+        ValueError: If ``platform`` is not in the supported allowlist.
     """
+    platform = str(data["platform"])
+    if platform not in _VALID_PLATFORMS:
+        raise ValueError(
+            f"Unknown platform {platform!r}; must be one of {sorted(_VALID_PLATFORMS)}"
+        )
     return EntitySpec(
-        platform=str(data["platform"]),
+        platform=platform,
         name=str(data.get("name", "")),
         dp_power=_parse_dp_spec(data.get("dp_power")),
         dp_value=_parse_dp_spec(data.get("dp_value")),

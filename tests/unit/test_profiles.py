@@ -545,3 +545,34 @@ def test_registry_len(profiles_dir: Path) -> None:
     assert len(registry) == 0
     registry.init(profiles_dir)
     assert len(registry) == 2
+
+
+# ── R35-3: platform allowlist ─────────────────────────────────────────────────
+
+
+def test_parse_entity_spec_rejects_unknown_platform() -> None:
+    """R35-3: _parse_entity_spec raises ValueError for unsupported platforms."""
+    from tuya_cloudless.profiles import _parse_entity_spec  # type: ignore[attr-defined]
+
+    with pytest.raises(ValueError, match="Unknown platform"):
+        _parse_entity_spec({"platform": "automation", "name": "test"})
+
+
+def test_parse_entity_spec_rejects_script_platform() -> None:
+    """R35-3: 'script' is not a valid entity platform."""
+    from tuya_cloudless.profiles import _parse_entity_spec  # type: ignore[attr-defined]
+
+    with pytest.raises(ValueError, match="Unknown platform"):
+        _parse_entity_spec({"platform": "script", "name": "test"})
+
+
+def test_parse_entity_spec_accepts_valid_platforms() -> None:
+    """R35-3: All allowlisted platforms parse without error."""
+    from tuya_cloudless.profiles import (  # type: ignore[attr-defined]
+        _VALID_PLATFORMS,
+        _parse_entity_spec,
+    )
+
+    for platform in sorted(_VALID_PLATFORMS):
+        spec = _parse_entity_spec({"platform": platform, "name": "test"})
+        assert spec.platform == platform
