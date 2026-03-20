@@ -5124,3 +5124,60 @@ class TestR38SecurityDesign:
                 "R33-3 violated: SSE 'activated' broadcast must not expose local_key — "
                 "the SSE stream is accessible to any LAN host"
             )
+
+
+# ── TestR40Security ────────────────────────────────────────────────────────────
+
+_TOKEN_R40 = "40" * 16  # R40 tests
+
+
+class TestR40Security:
+    """R40 security fixes: burn-after-read, flow_id validation."""
+
+    @pytest.mark.asyncio
+    async def test_result_endpoint_burn_after_read(self, client: TestClient) -> None:
+        """R40-F1: second GET of result/{token} returns 404 (burn-after-read)."""
+        # Activate the device so a result exists
+        await client.post(
+            "/api/tuya/device/active",
+            json={"gw_id": "r40_bar_gw", "token": _TOKEN_R40},
+        )
+        # First read — should succeed
+        resp1 = await client.get(f"/api/provision/result/{_TOKEN_R40}")
+        assert resp1.status == 200
+        body1 = await resp1.json()
+        assert "local_key" in body1
+
+        # Second read — must be refused (burn-after-read)
+        resp2 = await client.get(f"/api/provision/result/{_TOKEN_R40}")
+        assert resp2.status == 404, "R40-F1 violated: result endpoint returned key on second read"
+
+    @pytest.mark.asyncio
+    async def test_flow_id_hint_long_string_rejected(self, server: PairingServer) -> None:
+        """R40-F7: flow_id_hint longer than 128 chars must be discarded (no hash-DoS)."""
+        from custom_components.tuya_cloudless.pairing_server import _FLOW_ID_RE
+
+        long_hint = "a" * 200
+        assert not _FLOW_ID_RE.match(long_hint), (
+            "R40-F7: _FLOW_ID_RE incorrectly accepted 200-char string"
+        )
+
+    @pytest.mark.asyncio
+    async def test_flow_id_hint_invalid_chars_rejected(self, server: PairingServer) -> None:
+        """R40-F7: flow_id_hint with path-traversal chars must be rejected by regex."""
+        from custom_components.tuya_cloudless.pairing_server import _FLOW_ID_RE
+
+        bad_hint = "../../../etc/passwd"
+        assert not _FLOW_ID_RE.match(bad_hint), (
+            "R40-F7: _FLOW_ID_RE incorrectly accepted path-traversal string"
+        )
+
+    @pytest.mark.asyncio
+    async def test_flow_id_hint_valid_uuid_accepted(self, server: PairingServer) -> None:
+        """R40-F7: a valid UUID-style flow_id must pass the regex check."""
+        from custom_components.tuya_cloudless.pairing_server import _FLOW_ID_RE
+
+        uuid_hint = "550e8400-e29b-41d4-a716-446655440000"
+        assert _FLOW_ID_RE.match(uuid_hint), (
+            "R40-F7: _FLOW_ID_RE incorrectly rejected a valid UUID flow_id"
+        )

@@ -138,6 +138,9 @@ _DEVICE_ID_RE: Final[re.Pattern[str]] = re.compile(r"^[a-zA-Z0-9_\-]{1,64}$")
 #: The BLE JS randomToken() uses crypto.getRandomValues(16 bytes); wifi-ap-pair uses
 #: secrets.token_hex(16).  The GET result endpoint enforces this same format.
 _TOKEN_RE: Final[re.Pattern[str]] = re.compile(r"^[0-9a-f]{32}$")
+#: HA config flow IDs are UUIDs (hex + hyphens); allow also plain hex without hyphens.
+#: Bounded to 128 chars — prevents hash-DoS from very long strings in membership tests.
+_FLOW_ID_RE: Final[re.Pattern[str]] = re.compile(r"^[a-zA-Z0-9_\-]{1,128}$")
 #: Firmware version allowlist — only printable ASCII chars found in real Tuya versions
 #: like "1.0.4" or "2.3.1-beta".  A positive allowlist is safer than the ctrl-char
 #: denylist: it also blocks Unicode line terminators (U+2028/U+2029) that bypass
@@ -236,6 +239,7 @@ class ActivationResult:
     ip_address: str
     sw_ver: str = ""
     timestamp: float = field(default_factory=time.monotonic)
+    consumed: bool = False  # R40-F1: set True after first successful read (burn-after-read)
 
 
 # ── PairingServer ─────────────────────────────────────────────────────────────
@@ -785,10 +789,16 @@ class PairingServer:
         # token (returned by wifi-ap-pair or generated in JS for BLE), so it
         # does not need the token from the SSE event.  Only gw_id is included
         # to let the browser confirm which device activated.
+        # R40-F5: Fire-and-forget SSE broadcast so we don't delay the HTTP response
+        # to the device.  _broadcast_sse can block up to 10 s (10 stalled clients x
+        # 1 s timeout each) — longer than the device's own activation-POST timeout.
         event_data = {
             "gw_id": gw_id,
         }
-        await self._broadcast_sse("activated", json.dumps(event_data))
+        asyncio.get_event_loop().create_task(
+            self._broadcast_sse("activated", json.dumps(event_data)),
+            name="tuya-cloudless-sse-activated",
+        )
 
         # Resume any waiting HA config flows.
         # Only resume when token is non-empty (R27-5): a tokenless POST from any
@@ -882,6 +892,13 @@ class PairingServer:
                 status=202,
                 headers={"Cache-Control": "no-cache"},
             )
+
+        # R40-F1: Burn-after-read — refuse a second fetch of local_key.
+        # The browser retrieves the key exactly once after the SSE "activated" event.
+        # Any subsequent GET (replay, brute-force enumeration) gets 404.
+        if result.consumed:
+            return web.Response(status=404, text="Not Found")
+        result.consumed = True
 
         return web.json_response(
             {
@@ -1080,7 +1097,13 @@ class PairingServer:
             result: list[str] = []
             for line in stdout.decode(errors="replace").splitlines():
                 ssid = line.strip()
-                if ssid and ssid != "--" and not _CTRL_CHAR_RE.search(ssid):
+                # R40-F11: Match _get_default_ssid — cap at 32 bytes (WiFi 802.11 spec limit)
+                if (
+                    ssid
+                    and ssid != "--"
+                    and not _CTRL_CHAR_RE.search(ssid)
+                    and len(ssid.encode()) <= 32
+                ):
                     result.append(ssid)
             return result
 
@@ -1216,7 +1239,10 @@ class PairingServer:
         home_password = str(body.get("home_password") or "")
         # Optional: caller's config flow ID — used to bind the generated token to this
         # specific flow so only it receives the credentials on activation (R28-1).
-        flow_id_hint = str(body.get("flow_id") or "")
+        # R40-F7: Validate format before membership test to prevent hash-DoS from
+        # an attacker submitting a very long string as flow_id.
+        _raw_hint = str(body.get("flow_id") or "")
+        flow_id_hint = _raw_hint if _FLOW_ID_RE.match(_raw_hint) else ""
 
         if not ap_ssid or not home_ssid:
             return web.Response(status=400, text="ap_ssid and home_ssid are required")

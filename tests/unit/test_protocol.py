@@ -225,6 +225,21 @@ class TestSplitFrames:
         # depending on alignment, but we must not crash or hang
         assert isinstance(frames, list)
 
+    def test_many_valid_frames_not_capped_at_4096(self) -> None:
+        """R40-F4: split_frames must extract all valid frames in a large burst.
+
+        Previously the iteration counter incremented on every loop pass including
+        successful extractions, capping output at 4096 frames.  After the fix
+        only non-productive (skip) iterations count toward the limit.
+        """
+        frame = self._simple_frame()
+        big_buf = frame * 5000
+        frames, leftover = split_frames(big_buf)
+        assert len(frames) == 5000, (
+            f"Expected 5000 frames but got {len(frames)} — iteration cap regression"
+        )
+        assert leftover == b""
+
 
 # ── Session key frames ─────────────────────────────────────────────────────────
 
@@ -321,3 +336,18 @@ class TestEncodeFrameSequenceOverflow:
         )
         _, seq, _, _ = struct.unpack_from(">4sIII", raw, 0)
         assert seq == 7  # (2**32 + 7) & 0xFFFFFFFF == 7
+
+    def test_encode_session_key_finish_large_sequence(self) -> None:
+        """R40-F9: encode_session_key_finish must mask sequence to 32 bits."""
+        import struct
+
+        from tuya_cloudless.protocol import encode_session_key_finish
+
+        raw = encode_session_key_finish(
+            b"\xcd" * 32,
+            sequence=2**32 + 1,
+            local_key=_LOCAL_KEY,
+            session_key=b"\xab" * 16,
+        )
+        _, seq, _, _ = struct.unpack_from(">4sIII", raw, 0)
+        assert seq == 1, f"Expected sequence=1 after mask, got {seq}"

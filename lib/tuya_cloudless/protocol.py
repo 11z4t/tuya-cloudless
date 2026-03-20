@@ -319,17 +319,15 @@ def split_frames(buffer: bytes) -> tuple[list[bytes], bytes]:
     """
     frames: list[bytes] = []
     offset = 0
-    # Bound iterations to prevent a pathological buffer (e.g., all prefix bytes)
-    # from causing O(N) loop iterations in the asyncio event loop.
-    # In practice a 64 KB buffer has at most ~1000 legitimate frames.
-    _MAX_ITERATIONS = 4096
-    _iterations = 0
+    # R40-F4: Count only non-productive iterations (skipped junk bytes), not
+    # successful frame extractions.  Counting all iterations incorrectly capped
+    # large bursts of valid frames at 4096 total, causing missed DPS updates.
+    # A pathological adversarial buffer (e.g. 64 KB of prefix bytes) still
+    # triggers at most 4096 skip-passes before we bail out.
+    _MAX_SKIP_ITERATIONS = 4096
+    _skip_iterations = 0
 
     while offset < len(buffer):
-        _iterations += 1
-        if _iterations > _MAX_ITERATIONS:
-            break  # Prevent pathological O(N) loop on adversarial prefix-heavy buffers
-
         # Find next prefix
         idx = buffer.find(FRAME_PREFIX, offset)
         if idx == -1:
@@ -346,6 +344,9 @@ def split_frames(buffer: bytes) -> tuple[list[bytes], bytes]:
         # crafted device from causing memory amplification via a huge length
         # field.  Legitimate frames are bounded by MAX_PAYLOAD_SIZE + overhead.
         if length > MAX_PAYLOAD_SIZE + 8:  # +8 for CRC(4) + suffix(4)
+            _skip_iterations += 1
+            if _skip_iterations > _MAX_SKIP_ITERATIONS:
+                break  # Prevent O(N) loop on adversarial prefix-heavy buffers
             offset = idx + 1  # skip this prefix byte and search for next frame
             continue
 
@@ -359,9 +360,14 @@ def split_frames(buffer: bytes) -> tuple[list[bytes], bytes]:
         expected_suffix_offset = frame_end - 4
         if buffer[expected_suffix_offset:frame_end] != FRAME_SUFFIX:
             # Misaligned — skip this prefix byte and search again
+            _skip_iterations += 1
+            if _skip_iterations > _MAX_SKIP_ITERATIONS:
+                break  # Prevent O(N) loop on adversarial prefix-heavy buffers
             offset = idx + 1
             continue
 
+        # Successful frame extraction — reset skip counter and advance
+        _skip_iterations = 0
         frames.append(buffer[idx:frame_end])
         offset = frame_end
 
@@ -434,7 +440,11 @@ def encode_session_key_finish(
 
     encrypted = encrypt_gcm(session_key, confirmation_bytes)
     length = len(encrypted) + 8
-    header = _STRUCT_HEADER.pack(FRAME_PREFIX, sequence, CMD_SESS_KEY_NEG_FINISH, length)
+    # R40-F9: Mask sequence to 32 bits (consistent with encode_frame — prevents
+    # struct.error when callers pass values larger than 0xFFFFFFFF).
+    header = _STRUCT_HEADER.pack(
+        FRAME_PREFIX, sequence & 0xFFFFFFFF, CMD_SESS_KEY_NEG_FINISH, length
+    )
     body = header + encrypted
     # v3.4/3.5 uses sequence counter in place of CRC for GCM frames
     seq_bytes = struct.pack(">I", sequence & 0xFFFFFFFF)
