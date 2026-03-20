@@ -238,6 +238,22 @@ class TuyaCloudlessClimate(RestoreStateMixin, TuyaCloudlessEntity, ClimateEntity
                 "[%s] Temperature scale is 0 — cannot set temperature", self.coordinator.gw_id
             )
             return
+        # R49-F6: Guard against OverflowError from inf/nan temperatures.
+        # float() can return inf from certain string coercions; round(inf / scale)
+        # raises OverflowError which is NOT a HomeAssistantError and would bypass the
+        # except clause below, leaving _optimistic_target_temp stuck with a bad value.
+        # Clamp to [min_temp, max_temp] — nan comparisons are always False so clamping
+        # also coerces nan to min_temp (safe: device receives a valid value or we return).
+        import math
+
+        if not math.isfinite(temperature):
+            _LOGGER.warning(
+                "[%s] Non-finite temperature %s — ignoring set_temperature",
+                self.coordinator.gw_id,
+                temperature,
+            )
+            return
+        temperature = max(self._attr_min_temp, min(self._attr_max_temp, temperature))
         raw_value = round(temperature / scale)
         self._optimistic_target_temp = round(float(raw_value) * scale, 1)
         self.async_write_ha_state()

@@ -985,3 +985,38 @@ class TestClimateNonNumericDPR42:
         e._spec = _make_climate_spec(scale=0.1)
         # 200 * 0.1 = 20.0
         assert e.target_temperature == pytest.approx(20.0)
+
+
+class TestClimateTemperatureOverflowR49:
+    """R49-F6: async_set_temperature must guard against inf/nan temperatures."""
+
+    @pytest.mark.asyncio
+    async def test_inf_temperature_is_rejected(self) -> None:
+        """float('inf') temperature must log and return without crashing."""
+        import math
+
+        e = _make_climate({"3": 220})
+        e._spec = _make_climate_spec(scale=0.1)
+        e.coordinator.async_send_dps = AsyncMock()
+        await e.async_set_temperature(**{ATTR_TEMPERATURE: float("inf")})
+        e.coordinator.async_send_dps.assert_not_called()
+        # optimistic state should NOT be set
+        assert e._optimistic_target_temp is None or not math.isinf(e._optimistic_target_temp or 0.0)
+
+    @pytest.mark.asyncio
+    async def test_nan_temperature_is_rejected(self) -> None:
+        """float('nan') temperature must log and return without crashing."""
+        e = _make_climate({"3": 220})
+        e._spec = _make_climate_spec(scale=0.1)
+        e.coordinator.async_send_dps = AsyncMock()
+        await e.async_set_temperature(**{ATTR_TEMPERATURE: float("nan")})
+        e.coordinator.async_send_dps.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_normal_temperature_is_sent(self) -> None:
+        """A normal float temperature is sent normally."""
+        e = _make_climate({"3": 220})
+        e._spec = _make_climate_spec(scale=0.1)
+        e.coordinator.async_send_dps = AsyncMock()
+        await e.async_set_temperature(**{ATTR_TEMPERATURE: 22.5})
+        e.coordinator.async_send_dps.assert_called_once()

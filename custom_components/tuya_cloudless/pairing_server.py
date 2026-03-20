@@ -134,6 +134,15 @@ _MAX_WIFI_AP_TASKS: Final[int] = 3
 #: this cap is a secondary bound on response payload size.
 _MAX_SSID_SCAN_RESULTS: Final[int] = 50
 
+#: Maximum size of a static UI file served by _PairingStaticView (5 MiB).
+#: Prevents in-memory DoS if a large file is accidentally placed in pairing_ui/.
+_MAX_STATIC_FILE_BYTES: Final[int] = 5 * 1024 * 1024
+
+#: Maximum length of an SSE event name.  All internal callers use short literals.
+_MAX_SSE_EVENT_LEN: Final[int] = 64
+#: Maximum byte length of an SSE data payload (per-event).
+_MAX_SSE_DATA_LEN: Final[int] = 4096
+
 # ── WiFi AP discovery constants ────────────────────────────────────────────────
 
 #: Compiled pattern matching ASCII control characters (0x00-0x1F, 0x7F).
@@ -1282,7 +1291,10 @@ class PairingServer:
             try:
                 stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=5.0)
             except TimeoutError:
+                # R49-F2: reap zombie after kill (same pattern as R48-F3 in _run/_run_nmcli).
                 proc.kill()
+                with contextlib.suppress(Exception):
+                    await asyncio.wait_for(proc.communicate(), timeout=2.0)
                 raise
             seen: set[str] = set()
             for line in stdout.decode(errors="replace").splitlines():
@@ -1626,9 +1638,21 @@ class PairingServer:
 
         # R43-F6: Invalidate cache if index.html was modified on disk (e.g. HACS
         # update while HA is running).  The mtime check is cheap (single stat(2)).
-        current_mtime = index_path.stat().st_mtime
+        # R49-F3: Guard stat() — NFS/HACS mid-write can raise OSError; fall back to
+        # unconditional re-read rather than returning a 500 traceback.
+        try:
+            current_mtime: float | None = index_path.stat().st_mtime
+        except OSError:
+            current_mtime = None
         if self._ha_index_html_cache is None or self._ha_index_html_mtime != current_mtime:
-            html_raw = index_path.read_text(encoding="utf-8")
+            try:
+                html_raw = index_path.read_text(encoding="utf-8")
+            except OSError:
+                return web.Response(
+                    status=503,
+                    text="Pairing UI temporarily unavailable — please retry",
+                    headers=_SECURITY_HEADERS,
+                )
             static_base = _HA_PAIRING_PREFIX + "/static"
             provision_base = _HA_PAIRING_PREFIX + "/provision"
             # Rewrite /static/ asset references to the HA-relative path
@@ -1833,6 +1857,22 @@ class PairingServer:
                     else:
                         return web.Response(status=404, text="Not found")
                 content_type = mimetypes.guess_type(str(file_path))[0] or "application/octet-stream"
+                # R49-F4: Guard against oversized files in the UI directory.
+                # Path-traversal checks prevent reaching arbitrary FS paths, but a
+                # large file accidentally or intentionally placed in pairing_ui/ would
+                # be read entirely into memory per request — cap at _MAX_STATIC_FILE_BYTES.
+                try:
+                    file_size = file_path.stat().st_size
+                except OSError:
+                    return web.Response(status=404, text="Not found")
+                if file_size > _MAX_STATIC_FILE_BYTES:
+                    _LOGGER.warning(
+                        "Static file %s exceeds size limit (%d > %d) — denied",
+                        file_path.name,
+                        file_size,
+                        _MAX_STATIC_FILE_BYTES,
+                    )
+                    return web.Response(status=403, text="File too large")
                 return web.Response(
                     body=file_path.read_bytes(),
                     content_type=content_type,
@@ -1874,7 +1914,14 @@ class PairingServer:
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.DEVNULL,
             )
-            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=8.0)
+            try:
+                stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=8.0)
+            except TimeoutError:
+                # R49-F1: reap zombie after kill to prevent OS process-table accumulation.
+                proc.kill()
+                with contextlib.suppress(Exception):
+                    await asyncio.wait_for(proc.communicate(), timeout=2.0)
+                raise
             for line in stdout.decode(errors="replace").splitlines():
                 if line.startswith("yes:"):
                     ssid = line[4:].strip()
@@ -1896,7 +1943,14 @@ class PairingServer:
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.DEVNULL,
                 )
-                stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=3.0)
+                try:
+                    stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=3.0)
+                except TimeoutError:
+                    # R49-F1: reap iwgetid zombie on timeout.
+                    proc.kill()
+                    with contextlib.suppress(Exception):
+                        await asyncio.wait_for(proc.communicate(), timeout=2.0)
+                    raise
                 ssid = stdout.decode(errors="replace").strip()
                 if (
                     ssid
@@ -2008,6 +2062,23 @@ class PairingServer:
         # to the aiohttp handler (500 error) or silently kill a background asyncio Task.
         # The guard is defensive; current callers cannot trigger it, but future callers
         # might pass non-JSON strings.  Drop the event rather than crash the pairing flow.
+        # R49-F8: Bound event name and data lengths so future callers (or device-
+        # controlled gw_id values that reach _broadcast_sse) cannot enqueue large
+        # strings into every connected browser queue (_MAX_SSE_CONNECTIONS x maxsize).
+        if len(event) > _MAX_SSE_EVENT_LEN:
+            _LOGGER.error(
+                "SSE event name too long (%d > %d) — dropped",
+                len(event),
+                _MAX_SSE_EVENT_LEN,
+            )
+            return
+        if len(data) > _MAX_SSE_DATA_LEN:
+            _LOGGER.error(
+                "SSE data too large (%d > %d bytes) — dropped",
+                len(data),
+                _MAX_SSE_DATA_LEN,
+            )
+            return
         if "\n" in event or "\r" in event:
             _LOGGER.error("SSE event name contains illegal newline — event dropped: %r", event[:50])
             return
@@ -2069,6 +2140,12 @@ class PairingServer:
     async def _auto_stop_after_idle(self) -> None:
         """Stop the server 60 s after the last flow unregisters, if still idle."""
         await asyncio.sleep(60)
+        # R49-F5: Drive TTL sweep for tokenless results even when no HTTP polls
+        # arrive.  get_result() triggers _expire_old_results() only for the
+        # token-based table (poll clients); tokenless results can accumulate until
+        # the next activation unless we sweep here too.  The size cap (R47-F1)
+        # is the primary bound; this sweep ensures the TTL also fires.
+        self._expire_old_results()
         if self._pending_flows:
             # A new flow registered while we were sleeping — do nothing.
             self._auto_stop_task = None

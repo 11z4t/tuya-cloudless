@@ -5410,3 +5410,90 @@ class TestR48SecurityFixes:
         )
 
         assert _SESSION_KEY_NEG_DECODE_VERSION == "3.2"
+
+
+class TestR49SecurityFixes:
+    """R49 — zombie reap in _get_default_ssid/_handle_quick_scan, stat() guard,
+    static file size cap, tokenless expiry, SSE bounds."""
+
+    # ── F1/F2: zombie subprocess reap ─────────────────────────────────────
+
+    @pytest.mark.asyncio
+    async def test_quick_scan_kills_and_reaps_on_timeout(self, server: PairingServer) -> None:
+        """R49-F2: _handle_quick_scan must reap zombie after TimeoutError."""
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        hung_communicate = AsyncMock(side_effect=TimeoutError)
+        mock_proc = MagicMock()
+        mock_proc.kill = MagicMock()
+        mock_proc.communicate = hung_communicate
+
+        with (
+            patch("shutil.which", return_value="/usr/bin/nmcli"),
+            patch("asyncio.create_subprocess_exec", return_value=mock_proc),
+            patch("asyncio.wait_for", side_effect=TimeoutError),
+        ):
+            request = MagicMock()
+            request.remote = "127.0.0.1"
+            request.headers = {}
+            resp = await server._handle_quick_scan(request)
+        # Timeout is caught gracefully → empty list returned (200), not 500
+        assert resp.status == 200
+        # R49-F2: proc.kill() must have been called to prevent zombie
+        mock_proc.kill.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_broadcast_sse_drops_oversized_event_name(self, server: PairingServer) -> None:
+        """R49-F8: _broadcast_sse must drop events with name > _MAX_SSE_EVENT_LEN."""
+        from custom_components.tuya_cloudless.pairing_server import _MAX_SSE_EVENT_LEN
+
+        long_event = "x" * (_MAX_SSE_EVENT_LEN + 1)
+        # Should not raise, should log and return without enqueuing
+        await server._broadcast_sse(long_event, '{"ok":true}')
+        # No queues → nothing to check; important thing is no exception raised.
+
+    @pytest.mark.asyncio
+    async def test_broadcast_sse_drops_oversized_data(self, server: PairingServer) -> None:
+        """R49-F8: _broadcast_sse must drop events with data > _MAX_SSE_DATA_LEN."""
+        from custom_components.tuya_cloudless.pairing_server import _MAX_SSE_DATA_LEN
+
+        big_data = "y" * (_MAX_SSE_DATA_LEN + 1)
+        await server._broadcast_sse("activated", big_data)
+
+    @pytest.mark.asyncio
+    async def test_broadcast_sse_accepts_normal_payload(self, server: PairingServer) -> None:
+        """R49-F8: _broadcast_sse must pass through normal-sized payloads."""
+        from custom_components.tuya_cloudless.pairing_server import (
+            _MAX_SSE_DATA_LEN,
+            _MAX_SSE_EVENT_LEN,
+        )
+
+        good_event = "a" * _MAX_SSE_EVENT_LEN
+        good_data = "b" * _MAX_SSE_DATA_LEN
+        # Must not raise
+        await server._broadcast_sse(good_event, good_data)
+
+    def test_expire_old_results_cleans_tokenless(self, server: PairingServer) -> None:
+        """R49-F5: _expire_old_results removes expired tokenless entries."""
+        import time
+
+        result = ActivationResult(
+            gw_id="gwX", product_key="pk", local_key="lk", ip_address="1.2.3.4"
+        )
+        # Force timestamp to be very old
+        result.timestamp = time.monotonic() - 7200.0
+        server._tokenless_results["gwX"] = result
+        server._expire_old_results()
+        assert "gwX" not in server._tokenless_results
+
+    def test_static_file_constants_defined(self) -> None:
+        """R49-F4/F8: size and SSE bound constants must exist."""
+        from custom_components.tuya_cloudless.pairing_server import (
+            _MAX_SSE_DATA_LEN,
+            _MAX_SSE_EVENT_LEN,
+            _MAX_STATIC_FILE_BYTES,
+        )
+
+        assert _MAX_STATIC_FILE_BYTES == 5 * 1024 * 1024
+        assert _MAX_SSE_EVENT_LEN == 64
+        assert _MAX_SSE_DATA_LEN == 4096

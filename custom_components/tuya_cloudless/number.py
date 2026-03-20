@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import math
 
 from homeassistant.components.number import NumberEntity, NumberMode
 from homeassistant.config_entries import ConfigEntry
@@ -130,7 +131,19 @@ class TuyaCloudlessNumber(TuyaCloudlessEntity, NumberEntity):
         if scale == 0.0:
             _LOGGER.warning("[%s] DP scale is 0 — cannot convert value", self.coordinator.gw_id)
             return
-        raw_value = round(value / scale)
+        # R49-F7: Guard against OverflowError when scale is extremely small (e.g.
+        # 1e-300 from a malformed profile). round(value / scale) would raise
+        # OverflowError which is not caught below (only HomeAssistantError is).
+        result = value / scale
+        if not math.isfinite(result):
+            _LOGGER.warning(
+                "[%s] DP value overflow (value=%s scale=%s) — ignoring set_native_value",
+                self.coordinator.gw_id,
+                value,
+                scale,
+            )
+            return
+        raw_value = round(result)
         try:
             await self.coordinator.async_send_dps({dp_id: raw_value})
         except HomeAssistantError:

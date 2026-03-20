@@ -274,3 +274,72 @@ class TestNumberScaleBoundsR42:
         entity = TuyaCloudlessNumber(coord, spec)
         # 1500 * 0.1 = 150.0, but max is 100.0
         assert entity.native_value == pytest.approx(100.0)
+
+
+class TestNumberValueOverflowR49:
+    """R49-F7: async_set_native_value must guard against overflow from tiny scale."""
+
+    @pytest.mark.asyncio
+    async def test_tiny_scale_overflow_is_ignored(self) -> None:
+        """Scale near zero causing inf result must log and not send DP."""
+        from tuya_cloudless.profiles import DPSpec, EntitySpec
+
+        from custom_components.tuya_cloudless.coordinator import DeviceState
+        from custom_components.tuya_cloudless.number import TuyaCloudlessNumber
+
+        coord = MagicMock()
+        coord.gw_id = "gw1"
+        coord.device_name = "gw1"
+        coord.profile_name = ""
+        coord._version = "3.3"
+        coord.version = "3.3"
+        coord.state = DeviceState(available=True, dps={}, last_seen=None, reconnect_count=0)
+        coord.async_send_dps = AsyncMock()
+
+        spec = EntitySpec(
+            platform="number",
+            name="brightness",
+            dp_value=DPSpec(id="1", type="int", scale=0.1, min_raw=0, max_raw=1000),
+        )
+        entity = TuyaCloudlessNumber.__new__(TuyaCloudlessNumber)
+        entity.coordinator = coord
+        entity._dp_id = "1"
+        entity._spec = spec
+        entity._attr_native_min_value = 0.0
+        entity._attr_native_max_value = 100.0
+
+        # value=inf / scale=0.1 → inf, which is not finite → guard fires, DP not sent
+        await entity.async_set_native_value(float("inf"))
+        coord.async_send_dps.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_normal_value_is_sent(self) -> None:
+        """Normal value/scale combination is sent correctly."""
+        from tuya_cloudless.profiles import DPSpec, EntitySpec
+
+        from custom_components.tuya_cloudless.coordinator import DeviceState
+        from custom_components.tuya_cloudless.number import TuyaCloudlessNumber
+
+        coord = MagicMock()
+        coord.gw_id = "gw1"
+        coord.device_name = "gw1"
+        coord.profile_name = ""
+        coord._version = "3.3"
+        coord.version = "3.3"
+        coord.state = DeviceState(available=True, dps={}, last_seen=None, reconnect_count=0)
+        coord.async_send_dps = AsyncMock()
+
+        spec = EntitySpec(
+            platform="number",
+            name="brightness",
+            dp_value=DPSpec(id="1", type="int", scale=0.1, min_raw=0, max_raw=1000),
+        )
+        entity = TuyaCloudlessNumber.__new__(TuyaCloudlessNumber)
+        entity.coordinator = coord
+        entity._dp_id = "1"
+        entity._spec = spec
+        entity._attr_native_min_value = 0.0
+        entity._attr_native_max_value = 100.0
+
+        await entity.async_set_native_value(50.0)
+        coord.async_send_dps.assert_called_once_with({"1": 500})
