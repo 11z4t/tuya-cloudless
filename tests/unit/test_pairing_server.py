@@ -2354,6 +2354,40 @@ class TestConfigEndpoint:
         data = await resp.json()
         assert data["default_ssid"] == "MyFallbackNet"
 
+    async def test_default_ssid_iwgetid_timeout_returns_none(self, client: TestClient) -> None:
+        """iwgetid timeout triggers proc.kill() cleanup and returns None (lines 2056-2061)."""
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        mock_proc = MagicMock()
+        mock_proc.communicate = AsyncMock(side_effect=TimeoutError)
+
+        with (
+            patch(
+                "asyncio.create_subprocess_exec",
+                side_effect=[FileNotFoundError, mock_proc],
+            ),
+            patch("shutil.which", return_value="/sbin/iwgetid"),
+        ):
+            resp = await client.get("/api/provision/config")
+        data = await resp.json()
+        assert data["default_ssid"] is None
+        mock_proc.kill.assert_called_once()
+
+    async def test_default_ssid_iwgetid_oserror_returns_none(self, client: TestClient) -> None:
+        """OSError from iwgetid subprocess returns None (lines 2070-2071)."""
+        from unittest.mock import patch
+
+        with (
+            patch(
+                "asyncio.create_subprocess_exec",
+                side_effect=[FileNotFoundError, OSError("no iwgetid device")],
+            ),
+            patch("shutil.which", return_value="/sbin/iwgetid"),
+        ):
+            resp = await client.get("/api/provision/config")
+        data = await resp.json()
+        assert data["default_ssid"] is None
+
     async def test_config_includes_integration_version(self, client: TestClient) -> None:
         """integration_version key must be a non-empty string from manifest.json."""
         resp = await client.get("/api/provision/config")
@@ -3670,6 +3704,60 @@ class TestEnsurePairingServer:
 
         assert result is existing
         assert len(start_calls) == 0
+
+    async def test_start_oserror_calls_stop_and_reraises(self) -> None:
+        """OSError in start() triggers cleanup via stop() and re-raises (lines 2331-2338)."""
+        from custom_components.tuya_cloudless.const import DOMAIN
+        from custom_components.tuya_cloudless.pairing_server import _KEY_PAIRING_SERVER
+
+        hass = _make_hass()
+        hass.data = {}
+        stop_called = False
+
+        async def failing_start(self_srv: PairingServer) -> None:
+            raise OSError("port in use")
+
+        async def fake_stop(self_srv: PairingServer) -> None:
+            nonlocal stop_called
+            stop_called = True
+
+        with (
+            patch.object(PairingServer, "start", failing_start),
+            patch.object(PairingServer, "stop", fake_stop),
+            pytest.raises(OSError, match="port in use"),
+        ):
+            await ensure_pairing_server(hass)
+
+        assert stop_called, "stop() must be called to clean up after start() failure"
+        # Server must NOT be stored in domain_data on failure
+        assert DOMAIN not in hass.data or _KEY_PAIRING_SERVER not in hass.data.get(DOMAIN, {})
+
+    async def test_start_cancelled_calls_stop_and_reraises(self) -> None:
+        """CancelledError in start() triggers cleanup via stop() and re-raises (lines 2331-2338)."""
+        from custom_components.tuya_cloudless.pairing_server import _KEY_PAIRING_SERVER
+
+        hass = _make_hass()
+        hass.data = {}
+        stop_called = False
+
+        async def failing_start(self_srv: PairingServer) -> None:
+            raise asyncio.CancelledError()
+
+        async def fake_stop(self_srv: PairingServer) -> None:
+            nonlocal stop_called
+            stop_called = True
+
+        with (
+            patch.object(PairingServer, "start", failing_start),
+            patch.object(PairingServer, "stop", fake_stop),
+            pytest.raises(asyncio.CancelledError),
+        ):
+            await ensure_pairing_server(hass)
+
+        assert stop_called
+        from custom_components.tuya_cloudless.const import DOMAIN
+
+        assert _KEY_PAIRING_SERVER not in hass.data.get(DOMAIN, {})
 
 
 # ── PairingRedirectView ───────────────────────────────────────────────────────
