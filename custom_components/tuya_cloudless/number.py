@@ -68,15 +68,21 @@ class TuyaCloudlessNumber(TuyaCloudlessEntity, NumberEntity):
         super().__init__(coordinator, dp_id=dp_id, spec=spec)
 
         dp = spec.dp_value
+        # R42-F3: apply scale factor so HA displays the correct display range,
+        # not the raw DP range.  target_min/max override as explicit display bounds.
         self._attr_native_min_value = (
             spec.target_min
             if spec.target_min is not None
-            else (float(dp.min_raw) if dp is not None and dp.min_raw is not None else 0.0)
+            else (
+                float(dp.min_raw) * dp.scale if dp is not None and dp.min_raw is not None else 0.0
+            )
         )
         self._attr_native_max_value = (
             spec.target_max
             if spec.target_max is not None
-            else (float(dp.max_raw) if dp is not None and dp.max_raw is not None else 100.0)
+            else (
+                float(dp.max_raw) * dp.scale if dp is not None and dp.max_raw is not None else 100.0
+            )
         )
         self._attr_native_step = spec.step
 

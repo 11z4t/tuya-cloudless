@@ -369,23 +369,31 @@ class DiscoveryListener:
             _LOGGER.debug("Discovery datagram has bad prefix: %s", data[:4].hex())
             return None
 
-        import struct
-
         _, _, cmd, length = struct.unpack_from(">4sIII", data, 0)
 
         if cmd not in (CMD_UDP, 0x12):  # 0x12 = encrypted discovery
             _LOGGER.debug("Discovery datagram cmd=0x%02x is not a discovery command", cmd)
             return None
 
-        payload_end = FRAME_HEADER_SIZE + length - 8  # exclude CRC(4) + suffix(4)
-        if payload_end > len(data) or payload_end <= FRAME_HEADER_SIZE:
-            raise MalformedPacketError(f"Discovery payload bounds invalid (length={length})")
-
-        raw_payload = data[FRAME_HEADER_SIZE:payload_end]
-
-        # Attempt to decode: try plain JSON first, then decrypt
-        json_bytes = self._try_decode_payload(raw_payload)
+        # R42-F1: Try both checksum overheads to support v3.4/v3.5 encrypted discovery.
+        # v3.1/v3.3 use CRC32 (4 bytes) + suffix (4 bytes) = 8 bytes overhead.
+        # v3.4/v3.5 use HMAC-SHA256 (32 bytes) + suffix (4 bytes) = 36 bytes overhead.
+        # The `length` field encodes (payload + checksum + suffix), so we subtract the
+        # appropriate overhead to isolate the payload bytes.
+        json_bytes: bytes | None = None
+        for overhead in (8, 36):
+            candidate_end = FRAME_HEADER_SIZE + length - overhead
+            if FRAME_HEADER_SIZE < candidate_end <= len(data):
+                decoded = self._try_decode_payload(data[FRAME_HEADER_SIZE:candidate_end])
+                if decoded is not None:
+                    json_bytes = decoded
+                    break
         if json_bytes is None:
+            # Raise for structurally invalid frames: length too small to hold
+            # even the minimal 8-byte overhead, or length too large for packet.
+            min_end = FRAME_HEADER_SIZE + length - 8
+            if min_end <= FRAME_HEADER_SIZE or min_end > len(data):
+                raise MalformedPacketError(f"Discovery payload bounds invalid (length={length})")
             return None
 
         try:

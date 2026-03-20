@@ -198,7 +198,11 @@ class TuyaCloudlessClimate(RestoreStateMixin, TuyaCloudlessEntity, ClimateEntity
         raw = self.get_dp(self._spec.dp_temp_current.id)
         if raw is None:
             return None
-        return round(float(raw) * self._spec.dp_temp_current.scale, 1)
+        try:
+            return round(float(raw) * self._spec.dp_temp_current.scale, 1)
+        except (ValueError, TypeError):
+            _LOGGER.debug("[%s] current_temperature non-numeric DP %r", self.coordinator.gw_id, raw)
+            return None
 
     @property
     def target_temperature(self) -> float | None:
@@ -213,7 +217,11 @@ class TuyaCloudlessClimate(RestoreStateMixin, TuyaCloudlessEntity, ClimateEntity
         raw = self.get_dp(self._spec.dp_temp_set.id)
         if raw is None:
             return None
-        return round(float(raw) * self._spec.dp_temp_set.scale, 1)
+        try:
+            return round(float(raw) * self._spec.dp_temp_set.scale, 1)
+        except (ValueError, TypeError):
+            _LOGGER.debug("[%s] target_temperature: non-numeric DP %r", self.coordinator.gw_id, raw)
+            return None
 
     async def async_set_temperature(self, **kwargs: Any) -> None:
         """Set the target temperature with optimistic update.
@@ -285,7 +293,9 @@ class TuyaCloudlessClimate(RestoreStateMixin, TuyaCloudlessEntity, ClimateEntity
         """Turn the climate device on with optimistic update."""
         if self._spec.dp_power is None:
             return
-        self._optimistic_hvac_mode = HVACMode.AUTO
+        # R42-F4: use first non-OFF mode from profile, not hardcoded AUTO
+        non_off = [m for m in self._attr_hvac_modes if m != HVACMode.OFF]
+        self._optimistic_hvac_mode = non_off[0] if non_off else HVACMode.AUTO
         self.async_write_ha_state()
         try:
             await self.coordinator.async_send_dps({self._spec.dp_power.id: True})

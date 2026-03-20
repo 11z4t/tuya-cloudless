@@ -233,3 +233,44 @@ class TestNumberSetupEntry:
         added: list[Any] = []
         await async_setup_entry(MagicMock(), entry, lambda entities: added.extend(entities))
         assert len(added) == 0
+
+
+# ── R42-F3: Scale applied to min/max ────────────────────────────────────────
+
+
+class TestNumberScaleBoundsR42:
+    """R42-F3: native_min/max_value must apply scale factor from DP spec."""
+
+    def test_min_max_scaled_via_init(self) -> None:
+        """When built via __init__, min/max use scale (e.g. raw 0-1000, scale=0.1 → 0.0-100.0)."""
+        coord = _make_coordinator({})
+        spec = _make_number_spec(min_raw=0, max_raw=1000, scale=0.1)
+        entity = TuyaCloudlessNumber(coord, spec)
+        assert entity._attr_native_min_value == pytest.approx(0.0)
+        assert entity._attr_native_max_value == pytest.approx(100.0)
+
+    def test_min_max_scale_applied_correctly(self) -> None:
+        """min_raw=100, max_raw=500, scale=0.5 → display 50.0-250.0."""
+        coord = _make_coordinator({})
+        spec = _make_number_spec(min_raw=100, max_raw=500, scale=0.5)
+        entity = TuyaCloudlessNumber(coord, spec)
+        assert entity._attr_native_min_value == pytest.approx(50.0)
+        assert entity._attr_native_max_value == pytest.approx(250.0)
+
+    def test_target_min_max_override_raw_scale(self) -> None:
+        """Explicit target_min/target_max override scale computation."""
+        coord = _make_coordinator({})
+        spec = _make_number_spec(
+            min_raw=0, max_raw=1000, scale=0.1, target_min=5.0, target_max=80.0
+        )
+        entity = TuyaCloudlessNumber(coord, spec)
+        assert entity._attr_native_min_value == pytest.approx(5.0)
+        assert entity._attr_native_max_value == pytest.approx(80.0)
+
+    def test_native_value_clamped_to_scaled_bounds(self) -> None:
+        """native_value is clamped to [native_min_value, native_max_value]."""
+        coord = _make_coordinator({"6": 1500})  # exceeds max_raw=1000
+        spec = _make_number_spec(min_raw=0, max_raw=1000, scale=0.1)
+        entity = TuyaCloudlessNumber(coord, spec)
+        # 1500 * 0.1 = 150.0, but max is 100.0
+        assert entity.native_value == pytest.approx(100.0)

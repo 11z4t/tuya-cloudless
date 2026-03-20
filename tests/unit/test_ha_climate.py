@@ -343,12 +343,28 @@ class TestClimateOptimisticState:
         assert e.target_temperature == 22.0
 
     @pytest.mark.asyncio
-    async def test_turn_on_sets_optimistic_auto(self) -> None:
-        """async_turn_on sets optimistic hvac_mode to AUTO immediately."""
+    async def test_turn_on_sets_first_non_off_mode(self) -> None:
+        """R42-F4: async_turn_on sets optimistic hvac_mode to first non-OFF mode."""
+        # options=("heat", "cool", "auto") → first non-OFF is HEAT
         e = _make_climate({"1": False})
         await e.async_turn_on()
+        assert e._optimistic_hvac_mode == HVACMode.HEAT
+        assert e.hvac_mode == HVACMode.HEAT
+
+    @pytest.mark.asyncio
+    async def test_turn_on_sets_auto_when_only_auto(self) -> None:
+        """R42-F4: async_turn_on uses AUTO when it is the only non-OFF mode."""
+        e = _make_climate({"1": False}, options=("auto",))
+        await e.async_turn_on()
         assert e._optimistic_hvac_mode == HVACMode.AUTO
-        assert e.hvac_mode == HVACMode.AUTO
+
+    @pytest.mark.asyncio
+    async def test_turn_on_falls_back_to_auto_when_no_modes(self) -> None:
+        """R42-F4: async_turn_on falls back to AUTO when hvac_modes is empty."""
+        e = _make_climate({"1": False}, options=())
+        # _attr_hvac_modes = [OFF] only → non_off is empty → fallback AUTO
+        await e.async_turn_on()
+        assert e._optimistic_hvac_mode == HVACMode.AUTO
 
     @pytest.mark.asyncio
     async def test_turn_off_sets_optimistic_off(self) -> None:
@@ -936,3 +952,36 @@ class TestTurnOnOffErrorRevert:
 
         await entity.async_turn_off()
         entity.coordinator.async_send_dps.assert_not_awaited()
+
+
+# ── R42-F2: Non-numeric DP guard ────────────────────────────────────────────
+
+
+class TestClimateNonNumericDPR42:
+    """R42-F2: current/target temperature must return None for non-numeric DPs."""
+
+    def test_current_temperature_non_numeric_returns_none(self) -> None:
+        """A string DP value in current_temperature returns None, not a crash."""
+        e = _make_climate({"4": "error"})
+        e._spec = _make_climate_spec(scale=0.1)
+        assert e.current_temperature is None
+
+    def test_target_temperature_non_numeric_returns_none(self) -> None:
+        """A string DP value in target_temperature returns None, not a crash."""
+        e = _make_climate({"3": "n/a"})
+        e._spec = _make_climate_spec(scale=0.1)
+        assert e.target_temperature is None
+
+    def test_current_temperature_numeric_string_is_accepted(self) -> None:
+        """A numeric string DP value is correctly converted to float."""
+        e = _make_climate({"4": "215"})
+        e._spec = _make_climate_spec(scale=0.1)
+        # 215 * 0.1 = 21.5
+        assert e.current_temperature == pytest.approx(21.5)
+
+    def test_target_temperature_numeric_string_is_accepted(self) -> None:
+        """A numeric string DP value for target temperature is correctly converted."""
+        e = _make_climate({"3": "200"})
+        e._spec = _make_climate_spec(scale=0.1)
+        # 200 * 0.1 = 20.0
+        assert e.target_temperature == pytest.approx(20.0)
