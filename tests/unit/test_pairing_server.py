@@ -5262,3 +5262,47 @@ class TestR41Security:
         assert len(server._token_to_flow) == 256, (
             "token_to_flow must stay at cap after eviction + insert"
         )
+
+
+# ── R46 security fixes ─────────────────────────────────────────────────────────
+
+
+class TestTokenlessDedupR46:
+    """R46-F5: Tokenless activations must be deduplicated by gw_id."""
+
+    @pytest.mark.asyncio
+    async def test_tokenless_retry_gets_same_local_key(self, client: TestClient) -> None:
+        """Second POST without token for same gw_id reuses local_key (not a new one)."""
+        payload = {"gw_id": "testgw001", "product_key": "abc123"}
+        resp1 = await client.post("/api/tuya/device/active", json=payload)
+        data1 = await resp1.json()
+        assert resp1.status == 200
+        key1 = data1["result"]["localKey"]
+
+        # Retry — same gw_id, no token
+        resp2 = await client.post("/api/tuya/device/active", json=payload)
+        data2 = await resp2.json()
+        assert resp2.status == 200
+        key2 = data2["result"]["localKey"]
+
+        assert key1 == key2, "Tokenless retry must return same localKey as first activation"
+
+    @pytest.mark.asyncio
+    async def test_different_gw_ids_get_different_keys_tokenless(self, client: TestClient) -> None:
+        """Two different gw_ids without tokens must each get their own local_key."""
+        payload_a = {"gw_id": "gwAAA", "product_key": "pk1"}
+        payload_b = {"gw_id": "gwBBB", "product_key": "pk2"}
+        resp_a = await client.post("/api/tuya/device/active", json=payload_a)
+        resp_b = await client.post("/api/tuya/device/active", json=payload_b)
+        data_a = await resp_a.json()
+        data_b = await resp_b.json()
+        assert data_a["result"]["localKey"] != data_b["result"]["localKey"]
+
+
+class TestSsidCapR46:
+    """R46-F7: WiFi scan must cap SSID list at _MAX_SSID_SCAN_RESULTS."""
+
+    def test_ssid_cap_constant_is_50(self) -> None:
+        from custom_components.tuya_cloudless.pairing_server import _MAX_SSID_SCAN_RESULTS
+
+        assert _MAX_SSID_SCAN_RESULTS == 50

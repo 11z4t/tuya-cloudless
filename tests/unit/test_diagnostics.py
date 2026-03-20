@@ -270,6 +270,25 @@ class TestSanitizeLastError:
         assert "10.0.0.1" not in result
         assert "192.168.0.99" not in result
 
+    def test_ipv6_address_in_error_is_redacted(self) -> None:
+        """R46-F4: IPv6 addresses embedded in error strings must be redacted."""
+        from custom_components.tuya_cloudless.diagnostics import _sanitize_last_error
+
+        raw = "Connect failed to 2001:db8::1 port 6668"
+        result = _sanitize_last_error(raw)
+        assert result is not None
+        assert "2001:db8::1" not in result
+        assert "[IPv6-REDACTED]" in result
+
+    def test_loopback_ipv6_redacted(self) -> None:
+        """::1 (IPv6 loopback) must be redacted from error strings."""
+        from custom_components.tuya_cloudless.diagnostics import _sanitize_last_error
+
+        raw = "Connection refused (::1, 6668)"
+        result = _sanitize_last_error(raw)
+        assert result is not None
+        assert "[IPv6-REDACTED]" in result
+
 
 class TestSanitizeDpsNested:
     def test_nested_dict_is_redacted(self) -> None:

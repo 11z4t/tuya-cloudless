@@ -136,6 +136,6 @@ async def async_create_fix_flow(
     elif issue_id.startswith("connectivity_"):
         entry_id = issue_id[len("connectivity_") :]
 
-    if issue_id.startswith("connectivity"):
+    if issue_id.startswith("connectivity_"):
         return TuyaCloudlessConnectivityRepairFlow(entry_id, data)
     return TuyaCloudlessAuthRepairFlow(entry_id)

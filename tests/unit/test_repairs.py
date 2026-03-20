@@ -25,7 +25,7 @@ class TestRepairFlows:
             async_create_fix_flow,
         )
 
-        flow = await async_create_fix_flow(None, "connectivity", None)  # type: ignore[arg-type]
+        flow = await async_create_fix_flow(None, "connectivity_abc123", None)  # type: ignore[arg-type]
         assert isinstance(flow, TuyaCloudlessConnectivityRepairFlow)
 
     @pytest.mark.asyncio
@@ -298,3 +298,39 @@ class TestConnectivityRepairFlow:
         result = await flow.async_step_confirm(user_input={})
         flow.async_create_entry.assert_called_once_with(data={})
         assert result["type"] == "create_entry"
+
+
+# ── R46 routing fix ────────────────────────────────────────────────────────────
+
+
+class TestRoutingFixR46:
+    """R46-F2: Bare 'connectivity' issue_id must NOT route to connectivity flow."""
+
+    @pytest.mark.asyncio
+    async def test_connectivity_prefix_requires_underscore(self) -> None:
+        """issue_id='connectivity' (no underscore) must fall through to auth flow.
+
+        Before R46-F2, startswith('connectivity') matched both 'connectivity'
+        and 'connectivity_<entry_id>', so a typo or unknown issue would
+        incorrectly invoke the connectivity repair flow.
+        """
+        from custom_components.tuya_cloudless.repairs import (
+            TuyaCloudlessAuthRepairFlow,
+            async_create_fix_flow,
+        )
+
+        flow = await async_create_fix_flow(None, "connectivity", None)  # type: ignore[arg-type]
+        assert isinstance(flow, TuyaCloudlessAuthRepairFlow), (
+            "Bare 'connectivity' without underscore must NOT route to connectivity flow"
+        )
+
+    @pytest.mark.asyncio
+    async def test_connectivity_with_underscore_routes_correctly(self) -> None:
+        """issue_id='connectivity_<entry_id>' must route to connectivity flow."""
+        from custom_components.tuya_cloudless.repairs import (
+            TuyaCloudlessConnectivityRepairFlow,
+            async_create_fix_flow,
+        )
+
+        flow = await async_create_fix_flow(None, "connectivity_entry42", None)  # type: ignore[arg-type]
+        assert isinstance(flow, TuyaCloudlessConnectivityRepairFlow)

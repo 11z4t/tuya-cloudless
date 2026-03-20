@@ -356,7 +356,7 @@ def split_frames(buffer: bytes) -> tuple[list[bytes], bytes]:
         # Reject implausibly large frames before allocating — prevents a
         # crafted device from causing memory amplification via a huge length
         # field.  Legitimate frames are bounded by MAX_PAYLOAD_SIZE + overhead.
-        if length > MAX_PAYLOAD_SIZE + 8:  # +8 for CRC(4) + suffix(4)
+        if length > MAX_PAYLOAD_SIZE + 36:  # +36 for max overhead: HMAC-SHA256(32) + suffix(4)
             _skip_iterations += 1
             if _skip_iterations > _MAX_SKIP_ITERATIONS:
                 break  # Prevent O(N) loop on adversarial prefix-heavy buffers

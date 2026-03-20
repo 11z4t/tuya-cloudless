@@ -128,6 +128,12 @@ _MAX_SSE_CONNECTIONS: Final[int] = 10
 #: prevents resource exhaustion in case many requests arrive rapidly.
 _MAX_WIFI_AP_TASKS: Final[int] = 3
 
+#: Maximum number of SSIDs returned by the wifi-scan endpoint.
+#: Limits data exposure — the UI only needs the user's immediate vicinity,
+#: not a city-wide survey. Rate-limiting (5/min) provides the primary defence;
+#: this cap is a secondary bound on response payload size.
+_MAX_SSID_SCAN_RESULTS: Final[int] = 50
+
 # ── WiFi AP discovery constants ────────────────────────────────────────────────
 
 #: Compiled pattern matching ASCII control characters (0x00-0x1F, 0x7F).
@@ -235,7 +241,7 @@ class ActivationResult:
         local_key:   Generated 16-character ASCII key for local control.
         ip_address:  Device IP address extracted from the HTTP request.
         sw_ver:      Firmware version string reported by the device.
-        timestamp:   Unix timestamp when the activation was recorded.
+        timestamp:   Monotonic timestamp (time.monotonic()) when the activation was recorded.
     """
 
     gw_id: str
@@ -300,6 +306,9 @@ class PairingServer:
         # the cache is invalidated if index.html is updated while HA is running.
         self._ha_index_html_cache: str | None = None
         self._ha_index_html_mtime: float | None = None
+        # Tokenless activations keyed by gw_id — deduplication for devices that
+        # retry the activation POST without a provisioning token (e.g. BLE path).
+        self._tokenless_results: dict[str, ActivationResult] = {}
 
     # ── Lifecycle ──────────────────────────────────────────────────────────
 
@@ -758,6 +767,9 @@ class PairingServer:
         _is_duplicate_activation = bool(
             token and token in self._results and self._results[token].gw_id == gw_id
         )
+        # R46-F5: For tokenless activations (BLE path), deduplicate by gw_id so
+        # firmware retries get the same local_key instead of a new random one.
+        _is_tokenless_duplicate = bool(not token and gw_id in self._tokenless_results)
         if _is_duplicate_activation:
             result = self._results[token]
             local_key = result.local_key
@@ -765,6 +777,13 @@ class PairingServer:
                 "Duplicate activation gw_id=%s token=%s… — reusing local_key [REDACTED]",
                 gw_id,
                 token[:8],
+            )
+        elif _is_tokenless_duplicate:
+            result = self._tokenless_results[gw_id]
+            local_key = result.local_key
+            _LOGGER.info(
+                "Duplicate tokenless activation gw_id=%s — reusing local_key [REDACTED]",
+                gw_id,
             )
         else:
             # Generate a random 16-character local_key.
@@ -791,6 +810,9 @@ class PairingServer:
                     oldest = min(self._results, key=lambda t: self._results[t].timestamp)
                     del self._results[oldest]
                 self._results[token] = result
+            else:
+                # Tokenless path: store by gw_id for deduplication (R46-F5)
+                self._tokenless_results[gw_id] = result
 
         # Notify SSE subscribers.  local_key, ip_address, and token are
         # intentionally excluded — all are sensitive and the SSE stream is
@@ -1171,6 +1193,10 @@ class PairingServer:
             ssids.insert(0, current_ssid)
 
         tuya_aps = [{"ssid": s} for s in ssids if _is_tuya_ap(s)]
+        # R46-F7: Cap total SSID list to limit data exposure; current SSID (already
+        # at index 0) is always included.  Rate-limiting (5/min) is the primary
+        # defence; this bound also caps response payload size.
+        ssids = ssids[:_MAX_SSID_SCAN_RESULTS]
 
         return web.json_response(
             {"ssids": ssids, "current_ssid": current_ssid, "tuya_aps": tuya_aps},

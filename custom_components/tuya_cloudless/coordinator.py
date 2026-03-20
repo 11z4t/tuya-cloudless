@@ -639,6 +639,8 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Create an HA repair issue directing the user to check the device IP address."""
         from homeassistant.helpers.issue_registry import IssueSeverity, async_create_issue
 
+        from .diagnostics import _partial_ip
+
         async_create_issue(
             self.hass,
             DOMAIN,
@@ -646,7 +648,10 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             is_fixable=True,
             severity=IssueSeverity.WARNING,
             translation_key="connectivity",
-            translation_placeholders={"ip_address": self._ip, "name": self._gw_id},
+            translation_placeholders={
+                "ip_address": _partial_ip(self._ip),
+                "name": self._gw_id,
+            },
         )
 
     def _clear_connectivity_repair_issue(self) -> None:

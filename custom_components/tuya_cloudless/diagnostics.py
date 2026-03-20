@@ -26,6 +26,14 @@ from homeassistant.helpers.redact import REDACTED, async_redact_data
 # e.g. "Connect call failed ('192.168.1.50', 6668)" → "…192.168.1.**…"
 _IP_LAST_OCTET_RE = re.compile(r"\b(\d{1,3}\.\d{1,3}\.\d{1,3})\.\d{1,3}\b")
 
+# Matches full IPv6 addresses embedded in error strings (including ::1, fe80::, etc.)
+# Replaces the full address with [IPv6-REDACTED] to avoid leaking network topology.
+_IPV6_RE = re.compile(
+    r"\b(?:[0-9a-fA-F]{1,4}:){2,7}[0-9a-fA-F]{0,4}\b"
+    r"|::(?:[0-9a-fA-F]{1,4}:){0,6}[0-9a-fA-F]{1,4}\b"
+    r"|\b(?:[0-9a-fA-F]{1,4}:){1,7}:\b"
+)
+
 
 def _sanitize_dps(dps: dict[str, Any]) -> dict[str, Any]:
     """Sanitize DPS dict before including in diagnostics output.
@@ -72,7 +80,9 @@ def _sanitize_last_error(last_error: str | None) -> str | None:
     """
     if last_error is None:
         return None
-    return _IP_LAST_OCTET_RE.sub(r"\1.**", last_error)
+    sanitized = _IP_LAST_OCTET_RE.sub(r"\1.**", last_error)
+    sanitized = _IPV6_RE.sub("[IPv6-REDACTED]", sanitized)
+    return sanitized
 
 
 def _partial_gw_id(value: str) -> str:
