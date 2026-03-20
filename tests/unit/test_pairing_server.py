@@ -3092,6 +3092,26 @@ class TestBroadcastSse:
         # No more items — queue is now empty
         assert stale.empty()
 
+    async def test_newline_in_event_name_drops_not_raises(self, server: PairingServer) -> None:
+        """R30-2: Newline in event name must log+drop, NOT raise ValueError.
+
+        Previously a raise would propagate to the aiohttp handler (500 error) or
+        silently kill a background asyncio Task.
+        """
+        q: asyncio.Queue[str | None] = asyncio.Queue()
+        server._sse_queues.append(q)
+        # Should not raise — must drop silently
+        await server._broadcast_sse("event\nwith-newline", "{}")
+        # Queue must be empty — event was dropped
+        assert q.empty()
+
+    async def test_newline_in_data_drops_not_raises(self, server: PairingServer) -> None:
+        """R30-2: Newline in data payload must log+drop, NOT raise ValueError."""
+        q: asyncio.Queue[str | None] = asyncio.Queue()
+        server._sse_queues.append(q)
+        await server._broadcast_sse("activated", "data\nwith-newline")
+        assert q.empty()
+
 
 # ── _auto_stop_after_idle ──────────────────────────────────────────────────────
 

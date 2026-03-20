@@ -578,12 +578,18 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                         self._writer = None
                     return
 
-            # Reset consecutive error counter only after the entire batch
-            # (messages + buffer errors) is clean.  Resetting inside the loop
-            # would silently discard CRC errors that follow a good message.
+            # Decay the consecutive error counter on a clean batch (R30-1).
+            # Resetting to zero on a single clean recv() would allow an adversarial
+            # device to suppress reconnect indefinitely by alternating one good
+            # frame with up to four bad frames across separate TCP recv() calls —
+            # the counter would oscillate between 4 and 0 and never reach the
+            # reconnect threshold of 5.  Decrementing by 1 per clean batch instead
+            # means the counter can only drop one step for each error-free recv(),
+            # so a sustained attack still accumulates to the reconnect threshold.
             if all_frames_ok and self._consecutive_decode_errors > 0:
-                self._consecutive_decode_errors = 0
-                self._clear_auth_repair_issue()
+                self._consecutive_decode_errors -= 1
+                if self._consecutive_decode_errors == 0:
+                    self._clear_auth_repair_issue()
 
     def _raise_auth_repair_issue(self) -> None:
         """Create an HA repair issue directing the user to re-authenticate."""

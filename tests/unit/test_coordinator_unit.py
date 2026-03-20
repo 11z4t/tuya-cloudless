@@ -625,6 +625,121 @@ class TestReceiveLoopBufErrors:
         writer.close.assert_called_once()
 
 
+class TestReceiveLoopCleanBatchDecay:
+    """R30-1: Clean batch must decrement error counter by 1, not reset to 0.
+
+    An adversarial device can suppress reconnect indefinitely by alternating a
+    single good frame with ≤4 bad frames across separate TCP recv() calls.  With
+    reset-to-zero semantics the counter would oscillate between 4 and 0 and never
+    reach _MAX_CONSECUTIVE_ERRORS (5).  With decrement-by-1 semantics, each clean
+    batch only reduces the counter by one step, so a sustained attack still
+    accumulates to the reconnect threshold.
+    """
+
+    @pytest.mark.asyncio
+    async def test_clean_batch_decrements_not_resets(self) -> None:
+        """Error counter decrements by 1 on a clean batch, not resets to 0."""
+        coord = _make_coord()
+        coord._consecutive_decode_errors = 4  # type: ignore[union-attr]
+        coord._writer = MagicMock()  # type: ignore[union-attr]
+        coord._writer.close = MagicMock()
+
+        call_count = 0
+
+        class FakeMsgBufClean:
+            def __init__(self, **kwargs: object) -> None:
+                pass
+
+            def feed(self, chunk: bytes) -> None:
+                pass
+
+            @property
+            def pending_bytes(self) -> int:
+                return 0
+
+            def messages(self) -> list:  # type: ignore[type-arg]
+                return []
+
+            def pop_error_count(self) -> int:
+                return 0  # no errors — clean batch
+
+        reader = asyncio.StreamReader()
+
+        async def fake_read(_n: int) -> bytes:
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                return b"\x01"  # one clean recv
+            return b""
+
+        reader.read = fake_read  # type: ignore[method-assign]
+
+        with patch("tuya_cloudless.message.MessageBuffer", FakeMsgBufClean):
+            await coord._receive_loop(reader)  # type: ignore[union-attr]
+
+        # Counter must decrement from 4 → 3 (NOT reset to 0)
+        assert coord._consecutive_decode_errors == 3  # type: ignore[union-attr]
+
+    @pytest.mark.asyncio
+    async def test_attack_pattern_good_bad_triggers_reconnect(self) -> None:
+        """Alternating good+bad batches still trigger reconnect (R30-1).
+
+        Attack: recv(1 good), recv(4 bad), recv(1 good), recv(4 bad)
+        With decrement-by-1 the counter reaches 5 after two cycles.
+        """
+        coord = _make_coord()
+        coord._consecutive_decode_errors = 0  # type: ignore[union-attr]
+        writer = MagicMock()
+        writer.close = MagicMock()
+        coord._writer = writer  # type: ignore[union-attr]
+
+        recv_count = 0
+        # Sequence: clean, 4 errors, clean, 4 errors → counter: 0,4,3,7 → reconnect
+        recv_sequence = [
+            0,  # clean batch  → 0 - 1 + 1 = 0 (no underflow; starts at 0)
+            4,  # 4 errors     → 0 + 4 = 4
+            0,  # clean batch  → 4 - 1 = 3
+            4,  # 4 errors     → 3 + 4 = 7 → triggers reconnect
+        ]
+
+        class FakeMsgBufAttack:
+            def __init__(self, **kwargs: object) -> None:
+                pass
+
+            def feed(self, chunk: bytes) -> None:
+                pass
+
+            @property
+            def pending_bytes(self) -> int:
+                return 0
+
+            def messages(self) -> list:  # type: ignore[type-arg]
+                return []
+
+            def pop_error_count(self) -> int:
+                return recv_sequence[recv_count - 1]
+
+        reader = asyncio.StreamReader()
+
+        async def fake_read(_n: int) -> bytes:
+            nonlocal recv_count
+            recv_count += 1
+            if recv_count <= len(recv_sequence):
+                return b"\x01"
+            return b""
+
+        reader.read = fake_read  # type: ignore[method-assign]
+
+        with (
+            patch("tuya_cloudless.message.MessageBuffer", FakeMsgBufAttack),
+            patch("homeassistant.helpers.issue_registry.async_create_issue"),
+        ):
+            await coord._receive_loop(reader)  # type: ignore[union-attr]
+
+        # writer.close() must have been called to trigger reconnect
+        writer.close.assert_called_once()
+
+
 class TestNegotiateSessionKeyOnce:
     """Tests for _negotiate_session_key_once (lines 686-753)."""
 

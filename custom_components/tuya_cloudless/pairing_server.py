@@ -1795,10 +1795,16 @@ class PairingServer:
             event: SSE event name (e.g. ``"activated"``).
             data:  JSON string payload.
         """
+        # R30-2: Log and return instead of raising — a ValueError here would propagate
+        # to the aiohttp handler (500 error) or silently kill a background asyncio Task.
+        # The guard is defensive; current callers cannot trigger it, but future callers
+        # might pass non-JSON strings.  Drop the event rather than crash the pairing flow.
         if "\n" in event or "\r" in event:
-            raise ValueError(f"SSE event name must not contain newlines: {event!r}")
+            _LOGGER.error("SSE event name contains illegal newline — event dropped: %r", event[:50])
+            return
         if "\n" in data or "\r" in data:
-            raise ValueError(f"SSE data must not contain raw newlines: {data[:50]!r}")
+            _LOGGER.error("SSE data contains raw newline — event dropped: %r", data[:50])
+            return
         message = f"event: {event}\ndata: {data}\n\n"
         stale: list[asyncio.Queue[str | None]] = []
         for q in list(self._sse_queues):

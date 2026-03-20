@@ -750,7 +750,8 @@ class TestReceiveLoop:
         ):
             await coord._receive_loop(AsyncMock())
 
-        assert coord._consecutive_decode_errors == 0
+        # R30-1: clean batch decrements by 1 (not reset to 0); 3 - 1 = 2
+        assert coord._consecutive_decode_errors == 2
         assert coord.state.dps["1"] is True
 
     @pytest.mark.asyncio
