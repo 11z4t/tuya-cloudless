@@ -1335,6 +1335,51 @@ class TestWifiApPair:
 
         assert any(ev == "wifi_ap_error" for ev, _ in broadcast_calls)
 
+    async def test_oserror_log_does_not_include_exc_str(self, client: TestClient) -> None:
+        """R37-5: OSError in WiFi AP task must log type name only, not exc string.
+
+        aiohttp OSError subclasses may embed the request body (containing the
+        WiFi password) in their str() representation.
+        """
+        import logging
+        from unittest.mock import patch
+
+        hass = MagicMock()
+        server = PairingServer(hass, port=9099)
+        server._broadcast_sse = AsyncMock()  # type: ignore[method-assign]
+
+        sensitive = "SECRETPASSWORD_IN_EXCEPTION"
+
+        class SensitiveOSError(OSError):
+            def __str__(self) -> str:
+                return f"Connection failed with body containing {sensitive}"
+
+        log_messages: list[str] = []
+
+        class CapturingHandler(logging.Handler):
+            def emit(self, record: logging.LogRecord) -> None:
+                log_messages.append(self.format(record))
+
+        handler = CapturingHandler()
+        logger = logging.getLogger("custom_components.tuya_cloudless.pairing_server")
+        logger.addHandler(handler)
+        try:
+            with patch(
+                "asyncio.create_subprocess_exec",
+                side_effect=SensitiveOSError("failed"),
+            ):
+                await server._wifi_ap_pair_task(
+                    "SmartLife_AB12", "HomeNet", "pass", "tok123", "http://ha:8099"
+                )
+        finally:
+            logger.removeHandler(handler)
+
+        # The sensitive string must NOT appear in any log message (R37-5)
+        combined_logs = " ".join(log_messages)
+        assert sensitive not in combined_logs, (
+            f"R37-5: sensitive exception content leaked to log: {combined_logs[:200]}"
+        )
+
     async def test_nmcli_connect_nonzero_exit_emits_wifi_ap_error(self, client: TestClient) -> None:
         """nmcli connect returning non-zero (device not found / wrong SSID) emits wifi_ap_error.
 
@@ -4531,6 +4576,30 @@ class TestHandleHaConfig:
 
         body = json.loads(resp.body)
         assert "{token}" in body["result_url_template"]
+
+    async def test_ha_config_includes_wifi_scan_available(self, server: PairingServer) -> None:
+        """R37-1: HA HTTPS config endpoint must include wifi_scan_available field."""
+        req = MagicMock()
+        with patch.object(server, "_get_default_ssid", new=AsyncMock(return_value=None)):
+            resp = await server._handle_ha_config(req)
+
+        body = json.loads(resp.body)
+        assert "wifi_scan_available" in body, (
+            "R37-1: wifi_scan_available missing from HA config — "
+            "pairing UI scan button will not be correctly disabled in containers"
+        )
+        assert isinstance(body["wifi_scan_available"], bool)
+
+    async def test_ha_config_includes_integration_version(self, server: PairingServer) -> None:
+        """R37-1: HA HTTPS config endpoint must include integration_version field."""
+        req = MagicMock()
+        with patch.object(server, "_get_default_ssid", new=AsyncMock(return_value=None)):
+            resp = await server._handle_ha_config(req)
+
+        body = json.loads(resp.body)
+        assert "integration_version" in body
+        assert isinstance(body["integration_version"], str)
+        assert body["integration_version"] != ""
 
 
 # ── _register_ha_views ────────────────────────────────────────────────────────

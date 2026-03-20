@@ -905,3 +905,30 @@ class TestNegotiateSessionKeyOnce:
             result = await coord._negotiate_session_key_once(reader, writer)  # type: ignore[union-attr]
 
         assert result == fake_session_key
+
+
+class TestDecodeErrorResetOnConnect:
+    """R37-4: _consecutive_decode_errors reset at TCP session start, not after ECDH."""
+
+    def test_decode_errors_reset_is_before_open_connection_in_source(self) -> None:
+        """R37-4: _connect() source must reset _consecutive_decode_errors BEFORE
+        asyncio.open_connection. Verified by inspecting source code ordering.
+
+        Before R37-4 the reset was placed after ECDH negotiation; a failed
+        ECDH attempt would leave the counter non-zero, causing premature
+        reconnect on the very next successful connection's first decode error.
+        """
+        import inspect
+
+        from custom_components.tuya_cloudless.coordinator import TuyaCloudlessCoordinator
+
+        src = inspect.getsource(TuyaCloudlessCoordinator._connect)  # type: ignore[attr-defined]
+
+        reset_pos = src.find("_consecutive_decode_errors = 0")
+        connect_pos = src.find("asyncio.open_connection")
+
+        assert reset_pos != -1, "_consecutive_decode_errors = 0 not found in _connect()"
+        assert connect_pos != -1, "asyncio.open_connection not found in _connect()"
+        assert reset_pos < connect_pos, (
+            "R37-4: _consecutive_decode_errors must be reset BEFORE asyncio.open_connection"
+        )

@@ -345,6 +345,9 @@ class PairingServer:
             await self._runner.cleanup()
             self._runner = None
             self._site = None
+        # R37-2: Clear HTML cache so a subsequent start() (e.g. after HACS update)
+        # re-reads index.html from disk rather than serving a potentially stale version.
+        self._ha_index_html_cache = None
         _LOGGER.info("Tuya Cloudless pairing server stopped")
 
     # ── Public helpers ─────────────────────────────────────────────────────
@@ -1403,7 +1406,10 @@ class PairingServer:
                 _LOGGER.debug("gw.json POST ended early (device switching WiFi): %s", exc)
 
         except (FileNotFoundError, OSError) as exc:
-            _LOGGER.warning("WiFi AP pair task failed: %s", exc)
+            # R37-5: Log only the exception type, not its str(). aiohttp OSError
+            # subclasses may embed the request body (which contains WiFi password)
+            # in their string representation.
+            _LOGGER.warning("WiFi AP pair task failed: %s", type(exc).__name__)
             await self._broadcast_sse(
                 "wifi_ap_error",
                 # R35-9: token excluded from SSE broadcast
@@ -1546,6 +1552,10 @@ class PairingServer:
                 "events_url": f"{provision_base}/events",
                 "result_url_template": f"{provision_base}/result/{{token}}",
                 "default_ssid": default_ssid,
+                # R37-1: Keep parity with the port-8099 config endpoint so the
+                # pairing UI behaves consistently regardless of which path serves it.
+                "wifi_scan_available": shutil.which("nmcli") is not None,
+                "integration_version": _INTEGRATION_VERSION,
             },
             # No ACAO — the pairing UI is registered on HA's own server (same origin).
         )

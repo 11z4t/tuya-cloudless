@@ -316,11 +316,14 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Establish TCP connection and run receive loop until disconnected."""
         from tuya_cloudless.const import TCP_CONNECT_TIMEOUT
 
-        # Reset sequence counter at the start of each TCP session.  Tuya device
-        # firmware expects the counter to start at 1 on a fresh connection; a
-        # counter continuing from a previous session may trigger replay detection
-        # on newer firmware and could theoretically wrap after 2^32 frames.
+        # Reset per-session counters at the start of each TCP connection attempt.
+        # _sequence: firmware expects the counter to restart at 1 on a fresh connection.
+        # _consecutive_decode_errors: R37-4 — reset here (not after ECDH) so that a
+        # failed ECDH negotiation on a previous attempt cannot leave a non-zero error
+        # count that would cause a single decode error on the next healthy connection
+        # to prematurely trigger reconnect.
         self._sequence = 0
+        self._consecutive_decode_errors = 0
 
         _LOGGER.info("[%s] Connecting to %s:%d", self._gw_id, self._ip, self._port)
         reader, writer = await asyncio.wait_for(
