@@ -7,7 +7,6 @@ import logging
 from homeassistant.components.button import ButtonEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from tuya_cloudless.profiles import EntitySpec
@@ -97,16 +96,12 @@ class TuyaCloudlessButton(TuyaCloudlessEntity, ButtonEntity):
 
         If neither DP is configured the call is a no-op (profile misconfiguration).
         """
+        # R44-F7: No optimistic state to revert — let HomeAssistantError
+        # propagate naturally to the HA service call handler.
         if self._spec.dp_power is not None:
-            try:
-                await self.coordinator.async_send_dps({self._spec.dp_power.id: True})
-            except HomeAssistantError:
-                raise
+            await self.coordinator.async_send_dps({self._spec.dp_power.id: True})
         elif self._spec.dp_value is not None:
-            try:
-                await self.coordinator.async_send_dps({self._spec.dp_value.id: True})
-            except HomeAssistantError:
-                raise
+            await self.coordinator.async_send_dps({self._spec.dp_value.id: True})
         else:
             _LOGGER.warning(
                 "[%s] Button '%s' has no trigger DP configured — press ignored",

@@ -72,10 +72,15 @@ _MAX_STORED_RESULTS: Final[int] = 256
 #: Path to the static web UI assets (relative to this file)
 _UI_DIR: Final[Path] = Path(__file__).parent / "pairing_ui"
 
-#: Integration version read from manifest.json once at import time
-_INTEGRATION_VERSION: Final[str] = json.loads(
-    (Path(__file__).parent / "manifest.json").read_text(encoding="utf-8")
-).get("version", "unknown")
+#: Integration version read from manifest.json once at import time.
+# R44-F8: Wrapped in try/except — missing/corrupt manifest.json during a
+# partial HACS update or development checkout must not crash the import.
+try:
+    _INTEGRATION_VERSION: Final[str] = json.loads(
+        (Path(__file__).parent / "manifest.json").read_text(encoding="utf-8")
+    ).get("version", "unknown")
+except (OSError, json.JSONDecodeError):
+    _INTEGRATION_VERSION = "unknown"
 
 #: Path to the brand assets directory (icon.png etc.)
 _BRAND_DIR: Final[Path] = Path(__file__).parent / "brand"
@@ -854,7 +859,14 @@ class PairingServer:
                 else list(self._pending_flows)
             )
             for flow_id in flows_to_resume:
-                self._hass.async_create_task(_resume_flow(flow_id))
+                # R44-F2: Keep a strong reference so the GC cannot silently
+                # cancel the task before the first await (RUF006 pattern).
+                _rt = self._hass.async_create_task(
+                    _resume_flow(flow_id),
+                    name="tuya-cloudless-resume-flow",
+                )
+                self._background_tasks.add(_rt)
+                _rt.add_done_callback(self._background_tasks.discard)
 
         # Respond in Tuya cloud activation format
         response_body = {

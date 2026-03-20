@@ -577,3 +577,57 @@ class TestLightIntGuards:
         """color_temp_kelvin returns None when device sends non-numeric value."""
         e = _make_light({"3": "bad"})
         assert e.color_temp_kelvin is None
+
+
+# ── R44 fixes ─────────────────────────────────────────────────────────────────
+
+
+class TestBrightnessSpanGuardR44:
+    """R44-F1: _tuya_to_ha_brightness must handle negative span and clamp output."""
+
+    def test_negative_span_returns_max(self) -> None:
+        """max_raw < min_raw (misconfigured profile) returns _HA_BRIGHTNESS_MAX."""
+        from custom_components.tuya_cloudless.light import _tuya_to_ha_brightness
+
+        assert _tuya_to_ha_brightness(100, 200, 100) == 255  # span=-100
+
+    def test_out_of_range_raw_clamped_to_max(self) -> None:
+        """raw > max_raw produces value > 255; must be clamped to 255."""
+        from custom_components.tuya_cloudless.light import _tuya_to_ha_brightness
+
+        # raw=2000, min_raw=0, max_raw=1000 → 2000/1000 * 255 = 510 → clamped to 255
+        assert _tuya_to_ha_brightness(2000, 0, 1000) == 255
+
+    def test_out_of_range_raw_clamped_to_zero(self) -> None:
+        """raw < min_raw produces negative; must be clamped to 0."""
+        from custom_components.tuya_cloudless.light import _tuya_to_ha_brightness
+
+        assert _tuya_to_ha_brightness(-50, 0, 1000) == 0
+
+    def test_normal_range_unchanged(self) -> None:
+        """Normal in-range values are unaffected by clamping."""
+        from custom_components.tuya_cloudless.light import _tuya_to_ha_brightness
+
+        assert _tuya_to_ha_brightness(500, 0, 1000) == pytest.approx(128, abs=1)
+
+
+class TestHaBriClampR44:
+    """R44-F5: ha_bri from kwargs must be clamped to [0, 255] before use."""
+
+    @pytest.mark.asyncio
+    async def test_brightness_above_255_clamped(self) -> None:
+        """Brightness value > 255 from a service call is clamped to 255."""
+        e = _make_light({"1": True, "2": 500})
+        # Pass brightness=300 (out of range) — should be clamped to 255
+        await e.async_turn_on(**{ATTR_BRIGHTNESS: 300})
+        # After clamping to 255, _ha_to_tuya_brightness(255, 10, 1000) = 1000
+        call_dps = e.coordinator.async_send_dps.call_args[0][0]
+        assert call_dps.get("2") == 1000  # max_raw for default spec
+
+    @pytest.mark.asyncio
+    async def test_brightness_negative_clamped_to_zero(self) -> None:
+        """Negative brightness from a service call is clamped to 0."""
+        e = _make_light({"1": True, "2": 500})
+        await e.async_turn_on(**{ATTR_BRIGHTNESS: -10})
+        call_dps = e.coordinator.async_send_dps.call_args[0][0]
+        assert call_dps.get("2") == 10  # min_raw for default spec

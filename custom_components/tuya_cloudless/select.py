@@ -7,7 +7,6 @@ import logging
 from homeassistant.components.select import SelectEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from tuya_cloudless.profiles import EntitySpec
@@ -40,7 +39,21 @@ async def async_setup_entry(
     if not specs:
         return
 
-    async_add_entities([TuyaCloudlessSelect(runtime.coordinator, spec) for spec in specs])
+    valid_specs = []
+    for spec in specs:
+        if not spec.dp_options:
+            # R44-F3: HA SelectEntity requires at least one option; an empty
+            # list causes a state-write validation error in HA core.
+            _LOGGER.warning(
+                "[%s] Select entity '%s' has no dp_options in profile — skipping",
+                runtime.coordinator.gw_id,
+                spec.name,
+            )
+            continue
+        valid_specs.append(spec)
+
+    if valid_specs:
+        async_add_entities([TuyaCloudlessSelect(runtime.coordinator, spec) for spec in valid_specs])
 
 
 class TuyaCloudlessSelect(TuyaCloudlessEntity, SelectEntity):
@@ -94,7 +107,5 @@ class TuyaCloudlessSelect(TuyaCloudlessEntity, SelectEntity):
                 option,
             )
             return
-        try:
-            await self.coordinator.async_send_dps({self._spec.dp_value.id: option})
-        except HomeAssistantError:
-            raise
+        # R44-F7: No optimistic state to revert — propagate HomeAssistantError naturally.
+        await self.coordinator.async_send_dps({self._spec.dp_value.id: option})

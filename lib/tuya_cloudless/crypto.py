@@ -319,7 +319,9 @@ def encrypt_gcm(key: bytes, plaintext: bytes, *, extra_nonce: bytes = b"") -> by
     if len(key) != _AES_BLOCK:
         raise CryptoError(f"AES-GCM key must be {_AES_BLOCK} bytes, got {len(key)}")
     iv = os.urandom(GCM_IV_SIZE)
-    if extra_nonce:
+    # R44-F4: Validate length whenever extra_nonce is provided (even all-zeros),
+    # not just when truthy.  bytes(12) is falsy but still a valid caller mistake.
+    if extra_nonce is not None and extra_nonce != b"":
         if len(extra_nonce) != GCM_IV_SIZE:
             raise CryptoError(f"extra_nonce must be {GCM_IV_SIZE} bytes, got {len(extra_nonce)}")
         iv = bytes(a ^ b for a, b in zip(iv, extra_nonce, strict=True))

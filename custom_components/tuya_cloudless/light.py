@@ -54,9 +54,14 @@ _TUYA_COLOUR_DATA_VAL_MAX = 1000
 def _tuya_to_ha_brightness(raw: int, min_raw: int, max_raw: int) -> int:
     """Map a Tuya raw brightness value (min_raw-max_raw) to 0-255."""
     span = max_raw - min_raw
-    if span == 0:
+    if span <= 0:
+        # R44-F1: Guard negative span (profile with max_raw < min_raw) and
+        # zero span to prevent ZeroDivisionError and inverted values.
         return _HA_BRIGHTNESS_MAX
-    return round((raw - min_raw) / span * _HA_BRIGHTNESS_MAX)
+    result = round((raw - min_raw) / span * _HA_BRIGHTNESS_MAX)
+    # Clamp to valid HA range — raw values outside [min_raw, max_raw] are possible
+    # (e.g. device firmware bug) and would otherwise produce out-of-range brightness.
+    return max(0, min(_HA_BRIGHTNESS_MAX, result))
 
 
 def _ha_to_tuya_brightness(ha_value: int, min_raw: int, max_raw: int) -> int:
@@ -402,7 +407,9 @@ class TuyaCloudlessLight(RestoreStateMixin, TuyaCloudlessEntity, LightEntity):
 
             # ── Brightness ─────────────────────────────────────────────────────
             if has_bri_kwarg:
-                ha_bri: int = kwargs[ATTR_BRIGHTNESS]
+                # R44-F5: Clamp to [0, 255] — service calls from automations
+                # may pass floats or out-of-range integers.
+                ha_bri: int = max(0, min(_HA_BRIGHTNESS_MAX, int(kwargs[ATTR_BRIGHTNESS])))
                 cd_spec = self._spec.dp_colour_data
                 if cd_spec is not None and has_hs_kwarg:
                     # Already folded into colour_data above

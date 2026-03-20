@@ -377,3 +377,34 @@ class TestCrcErrorContextR43:
         msg = str(exc_info.value)
         assert "seq=42" in msg, f"Expected seq=42 in CRC error message: {msg!r}"
         assert "len=" in msg, f"Expected len= in CRC error message: {msg!r}"
+
+
+class TestGcmEmptyPayloadR44:
+    """R44-F6: GCM versions must not bypass authentication on empty payload."""
+
+    def test_v33_empty_payload_frame_accepted(self) -> None:
+        """v3.3 (non-GCM) empty payload frames are accepted (no GCM auth needed)."""
+        # Build a v3.3 frame with empty payload — CRC is over header only
+        from tuya_cloudless.crypto import compute_crc32
+        from tuya_cloudless.protocol import _STRUCT_HEADER, FRAME_PREFIX, FRAME_SUFFIX
+
+        length = 8  # 0 payload + CRC(4) + suffix(4)
+        body = _STRUCT_HEADER.pack(FRAME_PREFIX, 1, CMD_HEARTBEAT, length)
+        crc = compute_crc32(body)
+        raw = body + struct.pack(">I", crc) + FRAME_SUFFIX
+        # v3.3 with empty payload should decode without error (empty DPS is valid)
+        frame = decode_frame(raw, version="3.3", local_key=_LOCAL_KEY)
+        assert frame.command == CMD_HEARTBEAT
+
+    def test_v34_fake_empty_payload_rejected(self) -> None:
+        """v3.4 frame with empty payload (no GCM tag) must be rejected as malformed."""
+        from tuya_cloudless.exceptions import AuthenticationError, MalformedPacketError
+        from tuya_cloudless.protocol import _STRUCT_HEADER, FRAME_PREFIX, FRAME_SUFFIX
+
+        # Craft a frame that looks v3.4 but has no GCM envelope (too short)
+        length = 8
+        body = _STRUCT_HEADER.pack(FRAME_PREFIX, 1, CMD_STATUS, length)
+        # Skip CRC for GCM frames — use placeholder suffix
+        raw = body + b"\x00" * 4 + FRAME_SUFFIX
+        with pytest.raises((AuthenticationError, MalformedPacketError, CryptoError)):
+            decode_frame(raw, version="3.4", local_key=_LOCAL_KEY, session_key=_LOCAL_KEY)

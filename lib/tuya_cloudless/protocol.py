@@ -298,8 +298,12 @@ def decode_frame(
                 " — frame corrupted or local_key wrong"
             ) from exc
 
-    # Decrypt payload
-    if not raw_payload or version == PROTOCOL_31:
+    # Decrypt payload.
+    # R44-F6: For GCM versions (v3.4/3.5), ALWAYS call decrypt_payload even
+    # when raw_payload is empty — GCM authentication covers the tag envelope,
+    # and skipping decryption on empty frames bypasses tamper detection.
+    # Only v3.1 (plaintext) and genuinely empty non-GCM payloads short-circuit.
+    if version == PROTOCOL_31 or (not raw_payload and version not in VERSIONS_GCM):
         decrypted = raw_payload
     else:
         decrypted = decrypt_payload(version, local_key, raw_payload, session_key)

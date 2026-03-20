@@ -170,3 +170,60 @@ class TestSelectSetupEntry:
         added: list[Any] = []
         await async_setup_entry(MagicMock(), entry, lambda entities: added.extend(entities))
         assert len(added) == 0
+
+
+# ── R44 fixes ─────────────────────────────────────────────────────────────────
+
+
+class TestSelectEmptyOptionsGuardR44:
+    """R44-F3: async_setup_entry must skip select entities with empty dp_options."""
+
+    @pytest.mark.asyncio
+    async def test_empty_options_entity_is_skipped(self) -> None:
+        """Select entity with no dp_options logs warning and is not added."""
+        from custom_components.tuya_cloudless import TuyaCloudlessRuntimeData
+        from custom_components.tuya_cloudless.select import async_setup_entry
+
+        coord = _make_coordinator({})
+        spec = EntitySpec(
+            platform="select",
+            name="mode",
+            dp_value=DPSpec(id="2", type="enum"),
+            dp_options=(),  # empty — should be skipped
+        )
+        runtime = TuyaCloudlessRuntimeData(
+            coordinator=coord,
+            entity_specs=[spec],
+            profile_name="Test",
+        )
+        entry = MagicMock()
+        entry.runtime_data = runtime
+
+        added: list = []
+        await async_setup_entry(MagicMock(), entry, lambda entities: added.extend(entities))
+        assert len(added) == 0, "Entity with empty dp_options must not be added"
+
+    @pytest.mark.asyncio
+    async def test_valid_options_entity_is_added(self) -> None:
+        """Select entity with dp_options is added normally."""
+        from custom_components.tuya_cloudless import TuyaCloudlessRuntimeData
+        from custom_components.tuya_cloudless.select import async_setup_entry
+
+        coord = _make_coordinator({})
+        spec = EntitySpec(
+            platform="select",
+            name="mode",
+            dp_value=DPSpec(id="2", type="enum"),
+            dp_options=("heat", "cool"),
+        )
+        runtime = TuyaCloudlessRuntimeData(
+            coordinator=coord,
+            entity_specs=[spec],
+            profile_name="Test",
+        )
+        entry = MagicMock()
+        entry.runtime_data = runtime
+
+        added: list = []
+        await async_setup_entry(MagicMock(), entry, lambda entities: added.extend(entities))
+        assert len(added) == 1
