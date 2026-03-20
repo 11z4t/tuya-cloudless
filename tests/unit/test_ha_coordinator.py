@@ -1918,3 +1918,159 @@ class TestDpsKeyCap:
         # Existing key "1" updated; new key dropped
         assert coord.state.dps["1"] is True
         assert new_key not in coord.state.dps
+
+
+class TestHeartbeatWriterClearedInsideLock:
+    """Line 503: break when _writer cleared inside _send_lock (race condition)."""
+
+    @pytest.mark.asyncio
+    async def test_writer_cleared_inside_lock_breaks_loop(self) -> None:
+        coord = _make_coordinator()
+        writer = MagicMock()
+        writer.write = MagicMock()
+        writer.drain = AsyncMock()
+        coord._writer = writer
+
+        class _WriterClearingLock:
+            async def __aenter__(self) -> _WriterClearingLock:
+                coord._writer = None  # simulate disconnect while holding lock
+                return self
+
+            async def __aexit__(self, *args: Any) -> None:
+                pass
+
+        coord._send_lock = _WriterClearingLock()  # type: ignore[assignment]
+
+        with (
+            patch("asyncio.sleep", new_callable=AsyncMock),
+            patch("tuya_cloudless.protocol.encode_heartbeat", return_value=b"hb"),
+        ):
+            await coord._heartbeat_loop()
+
+        writer.write.assert_not_called()
+
+
+class TestReceiveLoopClearsAuthRepair:
+    """Line 640: _clear_auth_repair_issue() called when errors drop to 0."""
+
+    @pytest.mark.asyncio
+    async def test_errors_drop_to_zero_clears_repair_issue(self) -> None:
+        from tuya_cloudless.message import MessageBuffer
+
+        coord = _make_coordinator()
+        coord._consecutive_decode_errors = 1  # one error → will drop to 0 on clean batch
+
+        fake_msg = MagicMock()
+        fake_msg.payload = b'{"dps": {"1": true}}'
+
+        call_count = 0
+
+        async def mock_wait_for(coro: Any, timeout: float = 0) -> bytes:
+            nonlocal call_count
+            if inspect.iscoroutine(coro):
+                coro.close()  # type: ignore[union-attr]
+            call_count += 1
+            if call_count == 1:
+                return b"data"
+            return b""  # EOF
+
+        with (
+            patch("asyncio.wait_for", side_effect=mock_wait_for),
+            patch.object(MessageBuffer, "messages", return_value=[fake_msg]),
+            patch(
+                "tuya_cloudless.crypto.decrypt_payload",
+                return_value=b'{"dps": {"1": true}}',
+            ),
+            patch.object(coord, "_clear_auth_repair_issue") as mock_clear,
+        ):
+            await coord._receive_loop(AsyncMock())
+
+        assert coord._consecutive_decode_errors == 0
+        mock_clear.assert_called_once()
+
+
+class TestOnFrameDebugLogNewDpIds:
+    """Line 755: _LOGGER.debug fires when isEnabledFor(DEBUG) and new DP IDs appear."""
+
+    def test_debug_log_emitted_for_new_dp_ids(self, caplog: Any) -> None:
+        import logging
+
+        coord = _make_coordinator()
+        frame = MagicMock()
+        frame.dps = {"dps": {"99": True}}
+
+        logger_name = "custom_components.tuya_cloudless.coordinator"
+        with caplog.at_level(logging.DEBUG, logger=logger_name):
+            coord._on_frame(frame)
+
+        assert any("Auto-detected" in r.message for r in caplog.records)
+
+
+class TestConnectionLoopSleepCancelled:
+    """Lines 330-331: CancelledError during asyncio.sleep exits _connection_loop."""
+
+    @pytest.mark.asyncio
+    async def test_cancelled_during_sleep_exits_loop(self) -> None:
+        coord = _make_coordinator()
+        connect_called = False
+
+        async def mock_connect() -> None:
+            nonlocal connect_called
+            connect_called = True
+            raise OSError("connection refused")
+
+        coord._connect = mock_connect  # type: ignore[method-assign]
+
+        sleep_call_count = 0
+
+        async def mock_sleep(secs: float) -> None:
+            nonlocal sleep_call_count
+            sleep_call_count += 1
+            raise asyncio.CancelledError
+
+        with (
+            patch("asyncio.sleep", side_effect=mock_sleep),
+            patch.object(coord, "_raise_connectivity_repair_issue"),
+            patch.object(coord, "_clear_connectivity_repair_issue"),
+            patch.object(coord, "_try_rediscover_ip", new_callable=AsyncMock),
+        ):
+            await coord._connection_loop()
+
+        assert connect_called
+        assert sleep_call_count == 1  # loop exited after the CancelledError
+
+
+class TestNegotiateSessionKeyFrameTooSmall:
+    """Line 852: raise TuyaCloudlessError when frame_payload_len < 8."""
+
+    @pytest.mark.asyncio
+    async def test_payload_len_below_8_raises(self) -> None:
+        import struct
+
+        from tuya_cloudless.exceptions import TuyaCloudlessError
+
+        coord = _make_coordinator(version="3.4")
+        reader = AsyncMock()
+        writer = MagicMock()
+        writer.write = MagicMock()
+        writer.drain = AsyncMock()
+
+        mock_keypair = MagicMock()
+        mock_keypair.public_key_bytes = b"\x42" * 32
+
+        # frame_payload_len = 4 < 8 → should raise
+        _header = b"\x00" * 12 + struct.pack(">I", 4)
+        reader.readexactly.side_effect = [_header]
+
+        with (
+            patch(
+                "tuya_cloudless.crypto.generate_ecdh_keypair",
+                return_value=mock_keypair,
+            ),
+            patch(
+                "tuya_cloudless.protocol.encode_session_key_start",
+                return_value=b"start_frame",
+            ),
+            pytest.raises(TuyaCloudlessError, match="too small"),
+        ):
+            await coord._negotiate_session_key_once(reader, writer)

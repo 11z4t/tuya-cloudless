@@ -20,6 +20,7 @@ from tuya_cloudless.protocol import (
     encode_control,
     encode_frame,
     encode_heartbeat,
+    encode_status_response,
     split_frames,
 )
 
@@ -585,3 +586,20 @@ class TestSplitFramesIncompleteAndSkipLimit:
         buf = bad_frame * (4096 + 1)
         frames, _ = split_frames(bytes(buf))
         assert frames == []
+
+
+class TestEncodeStatusResponse:
+    """Lines 499-500: encode_status_response produces a decodable frame."""
+
+    def test_roundtrip_v31(self) -> None:
+        local_key = b"0123456789abcdef"
+        raw = encode_status_response(
+            {"1": True, "2": 42},
+            sequence=1,
+            version="3.1",
+            local_key=local_key,
+        )
+        frames, _ = split_frames(raw)
+        assert len(frames) == 1
+        frame = decode_frame(frames[0], version="3.1", local_key=local_key)
+        assert frame.dps == {"dps": {"1": True, "2": 42}}

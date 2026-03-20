@@ -571,6 +571,33 @@ class TestOptionsFlow:
         assert call_data[CONF_OPT_HEARTBEAT_INTERVAL] == 30
 
 
+class TestReauthConfirmEdgeCases:
+    """Lines 1117-1118, 1131: reauth_confirm edge cases."""
+
+    @pytest.mark.asyncio
+    async def test_get_reauth_entry_raises_aborts(self) -> None:
+        """Lines 1117-1118: if _get_reauth_entry raises, flow aborts gracefully."""
+        flow = _make_flow()
+        flow.async_abort = MagicMock(return_value={"type": "abort"})
+        flow._get_reauth_entry = MagicMock(side_effect=Exception("entry removed"))
+        result = await flow.async_step_reauth_confirm(user_input=None)
+        flow.async_abort.assert_called_once_with(reason="reauth_entry_not_found")
+        assert result["type"] == "abort"
+
+    @pytest.mark.asyncio
+    async def test_invalid_ip_address_sets_error(self) -> None:
+        """Line 1131: ip_address that fails _validate_ip adds invalid_ip_address error."""
+        flow = _make_flow()
+        reauth_entry = MagicMock()
+        reauth_entry.data = {CONF_IP_ADDRESS: "not-an-ip"}
+        reauth_entry.title = "Test"
+        flow._get_reauth_entry = MagicMock(return_value=reauth_entry)
+        # user_input has no CONF_IP_ADDRESS → falls back to reauth_entry.data → "not-an-ip"
+        await flow.async_step_reauth_confirm({CONF_LOCAL_KEY: "0123456789abcdef"})
+        call_kwargs = flow.async_show_form.call_args[1]
+        assert call_kwargs["errors"][CONF_IP_ADDRESS] == "invalid_ip_address"
+
+
 # ── Options flow getter ───────────────────────────────────────────────────────
 
 

@@ -3818,3 +3818,140 @@ class TestValidateIpR39:
         from custom_components.tuya_cloudless.config_flow import _validate_ip
 
         assert _validate_ip("not-an-ip") is False
+
+
+# ── async_step_ble_pair second call invalid data (lines 331-338, 343) ─────────
+
+
+class TestBlePairSecondCallInvalidData:
+    """Lines 331-338: ble_pair second call aborts on invalid device data."""
+
+    def _make_flow(self) -> Any:
+        from custom_components.tuya_cloudless.config_flow import TuyaCloudlessConfigFlow
+
+        flow = TuyaCloudlessConfigFlow.__new__(TuyaCloudlessConfigFlow)
+        flow._discovered = []
+        flow._device = {}
+        flow.hass = MagicMock()
+        flow.flow_id = "test-flow-id"
+        flow.async_external_step_done = MagicMock(return_value={"type": "create_entry"})
+        flow.async_external_step = MagicMock(return_value={"type": "external"})
+        flow.async_abort = MagicMock(return_value={"type": "abort"})
+        return flow
+
+    @pytest.mark.asyncio
+    async def test_invalid_gw_id_aborts(self) -> None:
+        """Lines 331-338: invalid gw_id triggers warning log and abort."""
+        flow = self._make_flow()
+        user_input = {
+            "gw_id": "../../etc/passwd",  # invalid chars
+            "local_key": "abcdef0123456789",
+            "ip_address": "10.0.1.2",
+        }
+        result = await flow.async_step_ble_pair(user_input=user_input)
+        flow.async_abort.assert_called_once_with(reason="invalid_device_data")
+        assert result["type"] == "abort"
+
+    @pytest.mark.asyncio
+    async def test_unknown_version_falls_back_to_default(self) -> None:
+        """Line 343: version not in PROTOCOL_VERSIONS falls back to DEFAULT_PROTOCOL_VERSION."""
+        from custom_components.tuya_cloudless.const import CONF_PROTOCOL_VERSION
+
+        flow = self._make_flow()
+        user_input = {
+            "gw_id": "bf456abc",
+            "local_key": "abcdef0123456789",
+            "ip_address": "10.0.1.2",
+            CONF_PROTOCOL_VERSION: "9.9",  # invalid/unknown version
+        }
+        await flow.async_step_ble_pair(user_input=user_input)
+        from custom_components.tuya_cloudless.config_flow import DEFAULT_PROTOCOL_VERSION
+
+        assert flow._device[CONF_PROTOCOL_VERSION] == DEFAULT_PROTOCOL_VERSION
+
+
+# ── async_step_ble_pair first call finds HTTPS URL (lines 390-392) ────────────
+
+
+class TestBlePairHttpsViaGetUrl:
+    """Lines 390-392: ble_pair first call sets pairing_url from get_url() HTTPS result."""
+
+    @pytest.mark.asyncio
+    async def test_get_url_https_used_as_pairing_url(self) -> None:
+        from custom_components.tuya_cloudless.config_flow import TuyaCloudlessConfigFlow
+
+        flow = TuyaCloudlessConfigFlow.__new__(TuyaCloudlessConfigFlow)
+        flow._discovered = []
+        flow._device = {}
+        flow._manual_ha_url = None
+        flow._https_unavailable = False
+        flow.hass = MagicMock()
+        flow.flow_id = "test-flow-id"
+        flow.async_abort = MagicMock(return_value={"type": "abort"})
+        flow.async_external_step = MagicMock(return_value={"type": "external"})
+        flow.async_show_form = MagicMock(return_value={"type": "form"})
+
+        mock_server = MagicMock()
+        # ha_ui_url returns HTTP non-localhost → triggers get_url fallback check
+        mock_server.ha_ui_url.return_value = "http://192.168.1.100:8099"
+        mock_server.register_flow = MagicMock()
+        # _detect_https_from_request returns None (no HTTPS detected from request)
+        mock_server._detect_https_from_request = MagicMock(return_value=None)
+
+        with (
+            patch(
+                "custom_components.tuya_cloudless.pairing_server.ensure_pairing_server",
+                new_callable=AsyncMock,
+                return_value=mock_server,
+            ),
+            patch(
+                "homeassistant.helpers.network.get_url",
+                return_value="https://homeassistant.local:8123",
+            ),
+            patch.object(
+                TuyaCloudlessConfigFlow,
+                "_detect_https_from_request",
+                return_value=None,
+            ),
+        ):
+            result = await flow.async_step_ble_pair(user_input=None)
+
+        # HTTPS found → should proceed to external step (not fallback)
+        flow.async_abort.assert_not_called()
+        flow.async_show_form.assert_not_called()
+        flow.async_external_step.assert_called_once()
+        assert result["type"] == "external"
+
+
+# ── async_step_zeroconf invalid gw_id format (lines 1026-1027) ────────────────
+
+
+class TestZeroconfigInvalidGwIdFormat:
+    """Lines 1026-1027: zeroconf aborts when gw_id has invalid chars."""
+
+    @pytest.mark.asyncio
+    async def test_invalid_gw_id_format_aborts(self) -> None:
+        from custom_components.tuya_cloudless.config_flow import TuyaCloudlessConfigFlow
+
+        flow = TuyaCloudlessConfigFlow.__new__(TuyaCloudlessConfigFlow)
+        flow._discovered = []
+        flow._device = {}
+        flow.hass = MagicMock()
+        flow.context = {}
+        flow.async_abort = MagicMock(return_value={"type": "abort"})
+        flow.async_set_unique_id = AsyncMock()
+        flow._abort_if_unique_id_configured = MagicMock()
+        flow.async_step_discovery = AsyncMock(return_value={"type": "form"})
+        _restore_method(flow, "async_step_zeroconf")
+
+        discovery_info = MagicMock()
+        discovery_info.host = "10.0.0.5"
+        # gwId with invalid chars — passes "not empty" check but fails _GW_ID_RE
+        discovery_info.properties = {"gwId": "../../etc/passwd"}
+        discovery_info.name = "device._tuya._tcp.local."
+
+        result = await flow.async_step_zeroconf(discovery_info)
+
+        flow.async_abort.assert_called_once_with(reason="no_device_id")
+        assert result["type"] == "abort"
+        assert flow._device == {}
