@@ -194,9 +194,28 @@ def _parse_entity_spec(data: dict[str, Any]) -> EntitySpec:
         raise ValueError(
             f"Unknown platform {platform!r}; must be one of {sorted(_VALID_PLATFORMS)}"
         )
+    name = str(data.get("name", "")).strip()
+    if not name:
+        raise ValueError(
+            f"Entity spec in {platform!r} platform has no 'name' — "
+            "all entities must have a unique non-empty name"
+        )
+    step = float(data.get("step", 1.0))
+    if step <= 0.0:
+        raise ValueError(
+            f"Entity '{name}' has step={step}; step must be > 0 "
+            "(zero/negative step causes ZeroDivisionError in HA entity validation)"
+        )
+    target_min: float | None = float(data["target_min"]) if "target_min" in data else None
+    target_max: float | None = float(data["target_max"]) if "target_max" in data else None
+    if target_min is not None and target_max is not None and target_min >= target_max:
+        raise ValueError(
+            f"Entity '{name}' has target_min={target_min} >= target_max={target_max}; "
+            "target_min must be strictly less than target_max"
+        )
     return EntitySpec(
         platform=platform,
-        name=str(data.get("name", "")),
+        name=name,
         dp_power=_parse_dp_spec(data.get("dp_power")),
         dp_value=_parse_dp_spec(data.get("dp_value")),
         dp_brightness=_parse_dp_spec(data.get("dp_brightness")),
@@ -220,9 +239,9 @@ def _parse_entity_spec(data: dict[str, Any]) -> EntitySpec:
         dp_temp_current=_parse_dp_spec(data.get("dp_temp_current")),
         dp_oscillate=_parse_dp_spec(data.get("dp_oscillate")),
         dp_options=tuple(str(v) for v in data.get("dp_options", [])),
-        target_min=float(data["target_min"]) if "target_min" in data else None,
-        target_max=float(data["target_max"]) if "target_max" in data else None,
-        step=float(data.get("step", 1.0)),
+        target_min=target_min,
+        target_max=target_max,
+        step=step,
     )
 
 
@@ -285,6 +304,12 @@ def load_profiles_from_dir(profiles_dir: Path) -> list[DeviceProfile]:
             )
         except (KeyError, TypeError, ValueError, OSError) as exc:
             _LOGGER.warning("Skipping invalid profile %s: %s", yaml_file.name, exc)
+        except Exception as exc:  # yaml.YAMLError is not in the narrower tuple above
+            # R45-F6: yaml.YAMLError (syntax error / anchor bomb) is not a subclass
+            # of any of the above; catch it here so one bad file doesn't abort all
+            # profile loading.  Re-raise anything that looks like a programming error
+            # (SystemExit, KeyboardInterrupt) by checking for Exception specifically.
+            _LOGGER.warning("Skipping profile %s due to unexpected error: %s", yaml_file.name, exc)
 
     return profiles
 

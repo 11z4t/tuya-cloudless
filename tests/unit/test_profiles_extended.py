@@ -215,3 +215,105 @@ def test_all_profiles_load_without_exception() -> None:
         except Exception as exc:
             errors.append(f"{yaml_file.name}: {exc}")
     assert not errors, "Profiles failed to load:\n" + "\n".join(errors)
+
+
+# ── R45 fixes ─────────────────────────────────────────────────────────────────
+
+
+class TestProfileValidationR45:
+    """R45-F1/F2/F6: _parse_entity_spec must reject invalid name/step/bounds."""
+
+    def _parse(self, data: dict) -> object:
+        from tuya_cloudless.profiles import _parse_entity_spec
+
+        return _parse_entity_spec(data)
+
+    def test_empty_name_raises(self) -> None:
+        """R45-F1: Empty name must raise ValueError."""
+        import pytest
+
+        with pytest.raises(ValueError, match="name"):
+            self._parse({"platform": "switch", "name": ""})
+
+    def test_whitespace_only_name_raises(self) -> None:
+        """R45-F1: Whitespace-only name must also raise ValueError."""
+        import pytest
+
+        with pytest.raises(ValueError, match="name"):
+            self._parse({"platform": "switch", "name": "   "})
+
+    def test_valid_name_accepted(self) -> None:
+        """R45-F1: A non-empty name is accepted normally."""
+        spec = self._parse({"platform": "switch", "name": "power"})
+        assert spec.name == "power"
+
+    def test_step_zero_raises(self) -> None:
+        """R45-F2: step=0.0 must raise ValueError."""
+        import pytest
+
+        with pytest.raises(ValueError, match="step"):
+            self._parse({"platform": "number", "name": "vol", "step": 0.0})
+
+    def test_step_negative_raises(self) -> None:
+        """R45-F2: Negative step must raise ValueError."""
+        import pytest
+
+        with pytest.raises(ValueError, match="step"):
+            self._parse({"platform": "number", "name": "vol", "step": -1.0})
+
+    def test_step_positive_accepted(self) -> None:
+        """R45-F2: Positive step is accepted."""
+        spec = self._parse({"platform": "number", "name": "vol", "step": 0.5})
+        assert spec.step == 0.5
+
+    def test_target_min_ge_max_raises(self) -> None:
+        """R45-F2: target_min >= target_max must raise ValueError."""
+        import pytest
+
+        with pytest.raises(ValueError, match="target_min"):
+            self._parse(
+                {
+                    "platform": "number",
+                    "name": "temp",
+                    "target_min": 100.0,
+                    "target_max": 10.0,
+                }
+            )
+
+    def test_target_min_equal_max_raises(self) -> None:
+        """R45-F2: target_min == target_max must also raise ValueError."""
+        import pytest
+
+        with pytest.raises(ValueError, match="target_min"):
+            self._parse(
+                {"platform": "number", "name": "temp", "target_min": 10.0, "target_max": 10.0}
+            )
+
+    def test_valid_target_min_max_accepted(self) -> None:
+        """R45-F2: target_min < target_max is accepted."""
+        spec = self._parse(
+            {"platform": "number", "name": "temp", "target_min": 5.0, "target_max": 30.0}
+        )
+        assert spec.target_min == 5.0
+        assert spec.target_max == 30.0
+
+
+class TestLoadProfilesYamlErrorR45:
+    """R45-F6: yaml.YAMLError must not abort all profile loading."""
+
+    def test_yaml_syntax_error_skipped(self, tmp_path) -> None:
+        """A file with invalid YAML syntax is skipped; valid files still load."""
+
+        from tuya_cloudless.profiles import load_profiles_from_dir
+
+        bad = tmp_path / "bad.yaml"
+        bad.write_text(": invalid: yaml: {\n", encoding="utf-8")
+        good = tmp_path / "good.yaml"
+        good.write_text(
+            "name: Test\nmodel: '*'\nentities:\n  - platform: switch\n    name: power\n",
+            encoding="utf-8",
+        )
+        profiles = load_profiles_from_dir(tmp_path)
+        # The bad file is skipped; the good file loads successfully
+        assert len(profiles) == 1
+        assert profiles[0].name == "Test"

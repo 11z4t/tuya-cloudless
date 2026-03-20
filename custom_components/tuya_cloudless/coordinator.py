@@ -473,6 +473,10 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     session_key=self._session_key,
                 )
                 async with self._send_lock:
+                    # R45-F4: Re-check _writer inside the lock — _disconnect()
+                    # may have set it to None while we waited for the lock.
+                    if self._writer is None:
+                        break
                     self._writer.write(frame)
                     await self._writer.drain()
                 _LOGGER.debug("[%s] Heartbeat sent", self._gw_id)
@@ -849,7 +853,11 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         import hashlib
         import hmac
 
-        confirmation = hmac.new(session_key, device_pubkey, hashlib.sha256).digest()
+        # R45-F3: Use keyword arguments for hmac.new() to prevent silent bugs if
+        # the argument order were ever changed, and to make the intent explicit.
+        confirmation = hmac.new(
+            key=session_key, msg=device_pubkey, digestmod=hashlib.sha256
+        ).digest()
         finish_frame = encode_session_key_finish(
             confirmation,
             sequence=self._next_sequence(),

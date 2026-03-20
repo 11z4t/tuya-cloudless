@@ -923,9 +923,12 @@ class PairingServer:
         # Any subsequent GET (replay, brute-force enumeration) gets 404.
         if result.consumed:
             return web.Response(status=404, text="Not Found")
-        result.consumed = True
 
-        return web.json_response(
+        # R45-F7: Build the response object BEFORE marking consumed=True.
+        # If json_response() raises (e.g. serialisation error), the token
+        # remains usable so the client can retry, rather than being permanently
+        # locked out with no way to recover short of restarting the flow.
+        response = web.json_response(
             {
                 "status": "ok",
                 "gw_id": result.gw_id,
@@ -935,6 +938,8 @@ class PairingServer:
                 "sw_ver": result.sw_ver,
             }
         )
+        result.consumed = True
+        return response
 
     async def _handle_bind_token(self, request: web.Request) -> web.Response:
         """Bind a provisioning token to a specific config flow (R28-1).

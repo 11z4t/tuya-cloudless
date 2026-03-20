@@ -335,11 +335,17 @@ class TuyaCloudlessConfigFlow(ConfigFlow, domain=DOMAIN):
                     ip_address,
                 )
                 return self.async_abort(reason="invalid_device_data")
+            # R45-F5: Capture protocol version from pairing server response so
+            # v3.4/v3.5 devices don't get hardcoded "3.3" in ble_confirm.
+            version = str(user_input.get(CONF_PROTOCOL_VERSION, DEFAULT_PROTOCOL_VERSION))
+            if version not in PROTOCOL_VERSIONS:
+                version = DEFAULT_PROTOCOL_VERSION
             self._device = {
                 CONF_GW_ID: gw_id,
                 CONF_LOCAL_KEY: local_key,
                 CONF_IP_ADDRESS: ip_address,
                 "product_key": product_key,
+                CONF_PROTOCOL_VERSION: version,
             }
             return self.async_external_step_done(next_step_id="ble_confirm")
 
@@ -577,7 +583,9 @@ class TuyaCloudlessConfigFlow(ConfigFlow, domain=DOMAIN):
                     CONF_GW_ID: gw_id,
                     CONF_LOCAL_KEY: local_key,
                     CONF_IP_ADDRESS: ip_address,
-                    CONF_PROTOCOL_VERSION: DEFAULT_PROTOCOL_VERSION,
+                    CONF_PROTOCOL_VERSION: self._device.get(
+                        CONF_PROTOCOL_VERSION, DEFAULT_PROTOCOL_VERSION
+                    ),
                     CONF_PROFILE: user_input.get(CONF_PROFILE, "Generic Switch"),
                     CONF_DEVICE_NAME: name,
                 },
