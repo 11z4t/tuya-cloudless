@@ -366,6 +366,67 @@ class TestActivateEndpoint:
         assert d1["gw_id"] == "gw-concurrent-1"
         assert d2["gw_id"] == "gw-concurrent-2"
 
+    async def test_token_with_wrong_format_rejected(self, client: TestClient) -> None:
+        """Token matching length but failing regex (uppercase) returns 400 (lines 801-803)."""
+        # "ABCD..." is 32 chars but contains uppercase — fails _TOKEN_RE
+        resp = await client.post(
+            "/api/tuya/device/active",
+            json={"gw_id": "gw001", "token": "AB" * 16},
+        )
+        assert resp.status == 400
+
+    async def test_results_table_full_evicts_oldest(
+        self, client: TestClient, server: PairingServer
+    ) -> None:
+        """When _results is at capacity, the oldest entry is evicted (lines 873-878)."""
+        from custom_components.tuya_cloudless.pairing_server import (
+            _MAX_STORED_RESULTS,
+            ActivationResult,
+        )
+
+        # Fill the results table to the cap
+        for i in range(_MAX_STORED_RESULTS):
+            tok = f"{i:032x}"
+            server._results[tok] = ActivationResult(
+                gw_id=f"gw{i}", product_key="", local_key="lk", ip_address=""
+            )
+        oldest_token = next(iter(server._results))
+
+        # One more activation should evict the oldest entry
+        new_token = "ee" * 16
+        resp = await client.post(
+            "/api/tuya/device/active",
+            json={"gw_id": "gw_new", "token": new_token},
+        )
+        assert resp.status == 200
+        assert oldest_token not in server._results
+        assert new_token in server._results
+
+    async def test_tokenless_results_full_evicts_oldest(
+        self, client: TestClient, server: PairingServer
+    ) -> None:
+        """When _tokenless_results is at capacity, the oldest entry is evicted (lines 885-889)."""
+        from custom_components.tuya_cloudless.pairing_server import (
+            _MAX_STORED_RESULTS,
+            ActivationResult,
+        )
+
+        # Fill the tokenless results table to the cap
+        for i in range(_MAX_STORED_RESULTS):
+            server._tokenless_results[f"gw_{i}"] = ActivationResult(
+                gw_id=f"gw_{i}", product_key="", local_key="lk", ip_address=""
+            )
+        oldest_gw = next(iter(server._tokenless_results))
+
+        # Activate without token → stored by gw_id in tokenless table
+        resp = await client.post(
+            "/api/tuya/device/active",
+            json={"gw_id": "gw_new_tokenless"},
+        )
+        assert resp.status == 200
+        assert oldest_gw not in server._tokenless_results
+        assert "gw_new_tokenless" in server._tokenless_results
+
 
 # ── /api/provision/result/{token} ────────────────────────────────────────────
 
@@ -468,6 +529,25 @@ class TestResultEndpoint:
         """WiFi AP pair endpoint is POST-only — GET must return 405 Method Not Allowed."""
         resp = await client.get("/api/provision/wifi-ap-pair")
         assert resp.status == 405
+
+    async def test_result_get_rate_limited(self, server: PairingServer) -> None:
+        """GET result returns 429 when per-IP rate limit (30/min) is exceeded (line 1005)."""
+        ts = TestServer(server._app)
+        cli = TestClient(ts)
+        await cli.start_server()
+        try:
+            # Pre-fill rate limit bucket just below capacity (30)
+            now = time.monotonic()
+            server._rate_limit["127.0.0.1"] = [now] * 29
+            # 30th request succeeds
+            resp = await cli.get(f"/api/provision/result/{_TOKEN_A}")
+            assert resp.status in (200, 202)
+            # 31st request exceeds limit
+            resp = await cli.get(f"/api/provision/result/{_TOKEN_A}")
+            assert resp.status == 429
+            assert "Retry-After" in resp.headers
+        finally:
+            await cli.close()
 
 
 # ── / (index page) ────────────────────────────────────────────────────────────
@@ -3088,6 +3168,62 @@ class TestBindTokenEndpoint:
         resp = await fresh_server._handle_bind_token(req)
         assert resp.status == 409
 
+    async def test_bind_token_rate_limited(self) -> None:
+        """Rate limit (20/min) on bind-token returns 429 (lines 1068-1072)."""
+        hass = _make_hass()
+        fresh_server = PairingServer(hass, port=0)
+        now = time.monotonic()
+        # Pre-fill rate limit to the cap (20) for "unknown" client IP
+        fresh_server._rate_limit["unknown"] = [now] * 20
+        req = MagicMock()
+        req.remote = None
+        req.headers = {}
+        resp = await fresh_server._handle_bind_token(req)
+        assert resp.status == 429
+
+    async def test_bind_token_invalid_json_body(self) -> None:
+        """Invalid JSON request body returns 400 (lines 1076-1077)."""
+        hass = _make_hass()
+        fresh_server = PairingServer(hass, port=0)
+        req = MagicMock()
+        req.remote = None
+        req.headers = {}
+        req.json = AsyncMock(side_effect=json.JSONDecodeError("bad", "", 0))
+        resp = await fresh_server._handle_bind_token(req)
+        assert resp.status == 400
+
+    async def test_bind_token_non_dict_json_body(self) -> None:
+        """JSON list body (not a dict) returns 400 (line 1080)."""
+        hass = _make_hass()
+        fresh_server = PairingServer(hass, port=0)
+        req = MagicMock()
+        req.remote = None
+        req.headers = {}
+        req.json = AsyncMock(return_value=["not", "a", "dict"])
+        resp = await fresh_server._handle_bind_token(req)
+        assert resp.status == 400
+
+    async def test_bind_token_cap_evicts_oldest(self) -> None:
+        """When token_to_flow cap (256) is reached, oldest entry is evicted (lines 1103-1105)."""
+        hass = _make_hass()
+        fresh_server = PairingServer(hass, port=0)
+        # Fill token_to_flow to exactly 256 entries
+        for i in range(256):
+            fresh_server._token_to_flow[f"{i:032x}"] = f"flow-{i}"
+        oldest_tok = next(iter(fresh_server._token_to_flow))
+        # Register a pending flow and bind a new token
+        new_token = "aa" * 16
+        fresh_server._pending_flows.add("flow-new")
+        req = MagicMock()
+        req.remote = None
+        req.headers = {}
+        req.json = AsyncMock(return_value={"flow_id": "flow-new", "token": new_token})
+        resp = await fresh_server._handle_bind_token(req)
+        assert resp.status == 204
+        # Oldest entry evicted; new entry present
+        assert oldest_tok not in fresh_server._token_to_flow
+        assert fresh_server._token_to_flow[new_token] == "flow-new"
+
     def test_unregister_flow_cleans_up_token_binding(self) -> None:
         """R29-1: unregister_flow must remove any token→flow bindings for that flow.
 
@@ -3180,6 +3316,21 @@ class TestSseEndpoint:
             # Read the initial keep-alive comment
             chunk = await asyncio.wait_for(resp.content.read(64), timeout=5)
             assert b": connected" in chunk
+
+    async def test_sse_rate_limited(self, server: PairingServer) -> None:
+        """SSE endpoint returns 429 when per-IP rate limit (10/min) is exceeded (line 1126)."""
+        now = time.monotonic()
+        # Pre-fill rate limit to exactly the limit (10) for 127.0.0.1
+        server._rate_limit["127.0.0.1"] = [now] * 10
+        ts = TestServer(server._app)
+        cli = TestClient(ts)
+        await cli.start_server()
+        try:
+            resp = await cli.get("/api/provision/events")
+            assert resp.status == 429
+            assert "Retry-After" in resp.headers
+        finally:
+            await cli.close()
 
     async def test_sse_503_includes_retry_after_header(self, server: PairingServer) -> None:
         """When SSE connection cap is exceeded, response includes Retry-After header."""
