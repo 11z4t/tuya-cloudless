@@ -274,6 +274,11 @@ def _reassemble_chunks(chunks: list[bytes]) -> bytes:
         raise PairingError("BLE chunk too short — missing chunk index or total bytes")
 
     total = chunks[0][1]
+    # R41-F7: total=0 is always invalid — a peripheral sending chunk[1]=0 would
+    # never trigger notify_event (data[0]+1==0 requires data[0]==255 in Python,
+    # which never wraps), causing a 10-second hang until the wait_for timeout.
+    if total == 0:
+        raise PairingError("BLE chunk total_chunks is 0 — invalid frame from peripheral")
     if len(chunks) != total:
         raise PairingError(f"Incomplete BLE frame: expected {total} chunks, got {len(chunks)}")
     # Verify all chunks agree on the total — a peripheral sending inconsistent

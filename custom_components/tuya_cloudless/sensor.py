@@ -125,6 +125,15 @@ class TuyaCloudlessSensor(TuyaCloudlessEntity, SensorEntity):
             return None
         if isinstance(raw, str):
             return raw
+        # R41-F6: Guard against misconfigured scale=0 (produces silently wrong 0.0).
+        # number.py and climate.py have the same guard — sensor was missing it.
+        if scale == 0.0:
+            _LOGGER.warning(
+                "[%s] Sensor DP %s has scale=0 in profile — cannot compute display value",
+                self.coordinator.gw_id,
+                self._spec.dp_value.id,
+            )
+            return None
         result = float(raw) if scale == 1.0 else round(float(raw) * scale, 3)
         if math.isnan(result) or math.isinf(result):
             _LOGGER.warning(

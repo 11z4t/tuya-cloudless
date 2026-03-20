@@ -289,3 +289,29 @@ class TestSensorSetupEntry:
         await async_setup_entry(MagicMock(), entry, lambda entities: added.extend(entities))
         # Only 2 diagnostic sensors
         assert len(added) == 2
+
+
+class TestSensorScaleZeroR41:
+    """R41-F6: sensor native_value must return None when scale=0."""
+
+    def test_native_value_returns_none_for_scale_zero(self) -> None:
+        """scale=0 in profile must not silently return 0.0 for any raw value."""
+        from tuya_cloudless.profiles import DPSpec, EntitySpec
+
+        from custom_components.tuya_cloudless.sensor import TuyaCloudlessSensor
+
+        spec = EntitySpec(
+            platform="sensor",
+            name="power",
+            dp_value=DPSpec(id="5", type="int", scale=0.0),
+        )
+        coord = _make_coordinator({"5": 1000})
+        entity = TuyaCloudlessSensor.__new__(TuyaCloudlessSensor)
+        entity.coordinator = coord
+        entity._dp_id = "5"
+        entity._spec = spec
+        entity._attr_unique_id = "gw001_sensor_power"
+        entity._attr_translation_key = "power"
+        assert entity.native_value is None, (
+            "R41-F6: scale=0 should return None, not silently produce 0.0"
+        )

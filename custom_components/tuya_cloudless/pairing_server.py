@@ -795,10 +795,15 @@ class PairingServer:
         event_data = {
             "gw_id": gw_id,
         }
-        asyncio.get_event_loop().create_task(
+        # R41-F2: Use hass.async_create_task (not deprecated asyncio.get_event_loop().
+        # create_task) and hold a strong reference via _background_tasks to prevent
+        # silent GC cancellation under memory pressure.
+        _sse_task = self._hass.async_create_task(
             self._broadcast_sse("activated", json.dumps(event_data)),
             name="tuya-cloudless-sse-activated",
         )
+        self._background_tasks.add(_sse_task)
+        _sse_task.add_done_callback(self._background_tasks.discard)
 
         # Resume any waiting HA config flows.
         # Only resume when token is non-empty (R27-5): a tokenless POST from any
@@ -819,6 +824,10 @@ class PairingServer:
             }
 
             async def _resume_flow(fid: str) -> None:
+                # R41-F3: Re-check membership immediately before async_configure —
+                # the flow may have been cancelled between task creation and execution.
+                if fid not in self._pending_flows:
+                    return
                 try:
                     await self._hass.config_entries.flow.async_configure(fid, flow_data)
                 except Exception:  # flow may have been cancelled or removed by user
@@ -952,6 +961,14 @@ class PairingServer:
         if token in self._token_to_flow:
             return web.Response(status=409, text="Token already bound")
 
+        # R41-F8: Hard cap prevents unbounded growth from a browser repeatedly
+        # refreshing the pairing page and generating new tokens without activating.
+        # Evict the oldest binding when the cap is reached.
+        _MAX_TOKEN_BINDINGS = 256
+        if len(self._token_to_flow) >= _MAX_TOKEN_BINDINGS:
+            oldest = next(iter(self._token_to_flow))
+            del self._token_to_flow[oldest]
+            _LOGGER.debug("token_to_flow cap reached — evicted oldest binding")
         self._token_to_flow[token] = flow_id
         _LOGGER.debug("Bound token %s… to flow %s", token[:8], flow_id)
         return web.Response(status=204)

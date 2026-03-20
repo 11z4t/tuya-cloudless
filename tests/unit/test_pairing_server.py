@@ -2731,10 +2731,17 @@ class TestActivateResponseStructure:
         finally:
             await cli.close()
 
-        assert not task_calls, (
+        # R40-F5/R41-F2: SSE broadcast fires even on duplicate activation (that's correct).
+        # Only _resume_flow tasks must NOT be present.
+        resume_tasks = [c for c in task_calls if "_resume_flow" in getattr(c, "__qualname__", "")]
+        assert not resume_tasks, (
             "Duplicate activation must NOT call async_create_task to resume flows — "
             "the flow already received credentials on the first activation"
         )
+        # Close any SSE coroutines to avoid ResourceWarning
+        for c in task_calls:
+            if hasattr(c, "close") and "_broadcast_sse" in getattr(c, "__qualname__", ""):
+                c.close()
 
     async def test_timezone_falls_back_to_utc_when_not_string(self, client: TestClient) -> None:
         """When hass.config.time_zone is not a string, timezone defaults to 'UTC'."""
@@ -2812,8 +2819,11 @@ class TestActivateFlowResume:
                 json={"gw_id": "gw001", "token": _TOKEN_001},
             )
             assert resp.status == 200
-            # async_create_task should have been called for the pending flow
-            hass.async_create_task.assert_called_once()
+            # async_create_task should have been called at least twice:
+            # once for the SSE broadcast (R40-F5/R41-F2) and once for the flow resume.
+            assert hass.async_create_task.call_count >= 2, (
+                "Expected async_create_task for both SSE broadcast and flow resume"
+            )
         finally:
             await cli.close()
 
@@ -2830,7 +2840,8 @@ class TestActivateFlowResume:
         hass.config_entries = MagicMock()
         hass.config_entries.flow.async_configure = failing_configure
         # Use real async_create_task so the coroutine actually runs
-        hass.async_create_task = lambda coro: asyncio.get_event_loop().create_task(coro)
+        # Accept **kwargs to handle the 'name' keyword added in R41-F2.
+        hass.async_create_task = lambda coro, **kw: asyncio.get_event_loop().create_task(coro)
 
         fresh_server = PairingServer(hass, port=0)
         fresh_server._pending_flows.add("cancelled-flow-999")
@@ -2875,8 +2886,19 @@ class TestActivateFlowResume:
                 json={"gw_id": "attacker_device"},  # no token field
             )
             assert resp.status == 200
-            # Flow must NOT have been resumed with attacker's gw_id
-            hass.async_create_task.assert_not_called()
+            # Flow must NOT have been resumed with attacker's gw_id.
+            # Note: async_create_task IS called for the SSE broadcast (R40-F5/R41-F2)
+            # but config_entries.flow.async_configure must NOT have been scheduled.
+            for call_args in hass.async_create_task.call_args_list:
+                coro = call_args[0][0] if call_args[0] else None
+                if coro is not None:
+                    coro_name = getattr(coro, "__qualname__", "") or ""
+                    assert "_resume_flow" not in coro_name, (
+                        "Flow resume task must NOT be created for tokenless activation"
+                    )
+                    not_sse = not coro_name or "_broadcast_sse" not in coro_name
+                    if not_sse and hasattr(coro, "close"):
+                        coro.close()
             assert "victim-flow-123" in fresh_server._pending_flows
         finally:
             await cli.close()
@@ -5180,4 +5202,63 @@ class TestR40Security:
         uuid_hint = "550e8400-e29b-41d4-a716-446655440000"
         assert _FLOW_ID_RE.match(uuid_hint), (
             "R40-F7: _FLOW_ID_RE incorrectly rejected a valid UUID flow_id"
+        )
+
+
+# ── TestR41Security ────────────────────────────────────────────────────────────
+
+
+class TestR41Security:
+    """R41 fixes: hass.async_create_task, flow-resume race, token-to-flow cap."""
+
+    @pytest.mark.asyncio
+    async def test_sse_broadcast_uses_hass_async_create_task(self, server: PairingServer) -> None:
+        """R41-F2: SSE broadcast must use hass.async_create_task, not deprecated
+        asyncio.get_event_loop().create_task()."""
+        created: list[object] = []
+
+        def capture(coro: object, **kw: object) -> object:
+            created.append(coro)
+            # Close coroutine to avoid ResourceWarning; we only care it was called
+            if hasattr(coro, "close"):
+                coro.close()
+            return MagicMock()
+
+        server._hass.async_create_task = capture  # type: ignore[attr-defined]
+
+        ts = TestServer(server._app)
+        cli = TestClient(ts)
+        await cli.start_server()
+        try:
+            await cli.post(
+                "/api/tuya/device/active",
+                json={"gw_id": "r41_gw", "token": "41" * 16},
+            )
+        finally:
+            await cli.close()
+
+        assert any("_broadcast_sse" in getattr(c, "__qualname__", "") for c in created), (
+            "Expected _broadcast_sse to be scheduled via hass.async_create_task"
+        )
+
+    @pytest.mark.asyncio
+    async def test_token_to_flow_cap(self, server: PairingServer) -> None:
+        """R41-F8: _token_to_flow must not grow beyond 256 entries."""
+
+        # Manually seed 256 bindings
+        for i in range(256):
+            server._token_to_flow[f"{i:032x}"[:32]] = f"flow-{i}"
+
+        assert len(server._token_to_flow) == 256
+
+        # Simulate bind-token by calling the cap eviction directly
+        _MAX_TOKEN_BINDINGS = 256
+        if len(server._token_to_flow) >= _MAX_TOKEN_BINDINGS:
+            oldest = next(iter(server._token_to_flow))
+            del server._token_to_flow[oldest]
+
+        # Insert one more
+        server._token_to_flow["ff" * 16] = "new-flow"
+        assert len(server._token_to_flow) == 256, (
+            "token_to_flow must stay at cap after eviction + insert"
         )

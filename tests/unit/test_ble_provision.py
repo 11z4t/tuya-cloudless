@@ -1290,3 +1290,16 @@ class TestChunkOverflowClearsEvent:
             "not appended and fire notify_event"
         )
         assert len(recv_chunks) == 0, "recv_chunks must be empty after overflow + mid-frame drop"
+
+
+class TestReassembleChunksTotalZeroR41:
+    """R41-F7: _reassemble_chunks must reject total=0 to prevent 10-second hang."""
+
+    def test_total_zero_raises_pairing_error(self) -> None:
+        """A chunk with total_chunks=0 must raise PairingError immediately."""
+        from tuya_cloudless.exceptions import PairingError
+
+        # Single chunk with chunk_no=0, total=0 (invalid)
+        chunk = bytes([0, 0, 0xAA, 0xBB])  # chunk_no=0, total=0, data=0xAABB
+        with pytest.raises(PairingError, match="total_chunks is 0"):
+            _reassemble_chunks([chunk])

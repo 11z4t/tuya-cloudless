@@ -498,7 +498,15 @@ class TuyaCloudlessConfigFlow(ConfigFlow, domain=DOMAIN):
 
         if user_input is not None:
             raw_url = str(user_input.get("ha_url", "")).strip().rstrip("/")
-            if not raw_url.startswith("https://"):
+            # R41-F4: Full URL structural validation — prefix-only check allowed
+            # SSRF via userinfo trick (https://user@evil.host) and other bypasses.
+            _parsed = urlparse(raw_url)
+            if (
+                _parsed.scheme != "https"
+                or not _parsed.netloc
+                or _parsed.username is not None  # reject https://user@host (SSRF)
+                or _parsed.fragment  # fragment is meaningless in a base URL
+            ):
                 errors["ha_url"] = "invalid_ha_url_https"
             else:
                 self._manual_ha_url = raw_url
