@@ -3720,3 +3720,60 @@ class TestZeroconfVersionValidation:
         await flow.async_step_zeroconf(discovery_info)
 
         assert flow._device[CONF_PROTOCOL_VERSION] == "3.5"
+
+
+# ── TestValidateIpR39 ──────────────────────────────────────────────────────────
+
+
+class TestValidateIpR39:
+    """R39-F2: _validate_ip must reject non-routable addresses while keeping RFC-1918."""
+
+    def test_loopback_rejected(self) -> None:
+        from custom_components.tuya_cloudless.config_flow import _validate_ip
+
+        assert _validate_ip("127.0.0.1") is False
+
+    def test_link_local_rejected(self) -> None:
+        from custom_components.tuya_cloudless.config_flow import _validate_ip
+
+        assert _validate_ip("169.254.1.1") is False
+
+    def test_unspecified_rejected(self) -> None:
+        from custom_components.tuya_cloudless.config_flow import _validate_ip
+
+        assert _validate_ip("0.0.0.0") is False
+
+    def test_multicast_rejected(self) -> None:
+        from custom_components.tuya_cloudless.config_flow import _validate_ip
+
+        assert _validate_ip("224.0.0.1") is False
+
+    def test_ipv6_loopback_rejected(self) -> None:
+        from custom_components.tuya_cloudless.config_flow import _validate_ip
+
+        assert _validate_ip("::1") is False
+
+    def test_rfc1918_192_accepted(self) -> None:
+        from custom_components.tuya_cloudless.config_flow import _validate_ip
+
+        assert _validate_ip("192.168.1.100") is True
+
+    def test_rfc1918_10_accepted(self) -> None:
+        from custom_components.tuya_cloudless.config_flow import _validate_ip
+
+        assert _validate_ip("10.0.0.1") is True
+
+    def test_rfc1918_172_accepted(self) -> None:
+        from custom_components.tuya_cloudless.config_flow import _validate_ip
+
+        assert _validate_ip("172.16.5.1") is True
+
+    def test_public_ip_accepted(self) -> None:
+        from custom_components.tuya_cloudless.config_flow import _validate_ip
+
+        assert _validate_ip("203.0.113.5") is True
+
+    def test_invalid_string_rejected(self) -> None:
+        from custom_components.tuya_cloudless.config_flow import _validate_ip
+
+        assert _validate_ip("not-an-ip") is False

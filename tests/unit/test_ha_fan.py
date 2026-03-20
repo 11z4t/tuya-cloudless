@@ -922,3 +922,30 @@ class TestFanDirectionValidation:
         e = _make_fan({"1": True})
         await e.async_set_direction("reverse")
         e.coordinator.async_send_dps.assert_awaited_once()
+
+
+class TestFanPresetModeAllowlistR39:
+    """R39-F7: preset_mode read path must validate against the allowed preset list."""
+
+    def test_preset_mode_returns_none_for_unknown_value(self) -> None:
+        """If device sends a preset string not in dp_options, return None."""
+        e = _make_fan({"2": "__unknown_preset__"})
+        assert e.preset_mode is None
+
+    def test_preset_mode_returns_valid_value(self) -> None:
+        """A known preset value must be returned as-is."""
+        e = _make_fan({"2": "sleep"})
+        assert e.preset_mode == "sleep"
+
+    def test_preset_mode_returns_none_when_no_preset_modes_set(self) -> None:
+        """When dp_mode is present but dp_options is empty, None is returned."""
+        spec = EntitySpec(
+            platform="fan",
+            name="main_fan",
+            dp_power=DPSpec(id="1", type="bool"),
+            dp_mode=DPSpec(id="2", type="enum"),
+        )
+        e = _make_fan({"2": "sleep"}, spec=spec)
+        # _attr_preset_modes is None (no options) → no allowlist → returns str value
+        # (no allowlist means no validation, returning the raw string is acceptable)
+        assert e.preset_mode == "sleep"

@@ -207,7 +207,16 @@ class TuyaCloudlessFan(RestoreStateMixin, TuyaCloudlessEntity, FanEntity):
         value = self.get_dp(self._spec.dp_mode.id)
         if value is None:
             return None
-        return str(value)
+        mode = str(value)
+        if self._attr_preset_modes and mode not in self._attr_preset_modes:
+            _LOGGER.debug(
+                "[%s] preset_mode %r not in allowlist %r — returning None",
+                self.entity_id,
+                mode,
+                self._attr_preset_modes,
+            )
+            return None
+        return mode
 
     @property
     def oscillating(self) -> bool | None:

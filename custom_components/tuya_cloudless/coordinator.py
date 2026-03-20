@@ -874,10 +874,17 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         import ipaddress
 
         try:
-            ipaddress.ip_address(new_ip)
+            addr = ipaddress.ip_address(new_ip)
         except ValueError:
             _LOGGER.warning(
                 "[%s] UDP rediscovery returned invalid IP %r — ignoring update",
+                self._gw_id,
+                new_ip[:64],
+            )
+            return
+        if addr.is_loopback or addr.is_link_local or addr.is_unspecified or addr.is_multicast:
+            _LOGGER.warning(
+                "[%s] UDP rediscovery returned non-routable IP %r — ignoring update",
                 self._gw_id,
                 new_ip[:64],
             )

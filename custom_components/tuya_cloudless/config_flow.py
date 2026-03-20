@@ -91,10 +91,18 @@ _PROFILE_AUTO = "__auto_detect__"
 
 
 def _validate_ip(ip: str) -> bool:
-    """Return True if *ip* is a valid IPv4 or IPv6 address, False otherwise."""
+    """Return True if *ip* is a routable unicast IPv4 or IPv6 address.
+
+    Rejects loopback (127.x, ::1), link-local (169.254.x, fe80::),
+    unspecified (0.0.0.0, ::), and multicast addresses.  Private/RFC-1918
+    addresses (192.168.x, 10.x, 172.16-31.x) are accepted — Tuya devices
+    live on the local LAN.
+    """
     try:
-        ipaddress.ip_address(ip)
-        return True
+        addr = ipaddress.ip_address(ip)
+        return not (
+            addr.is_loopback or addr.is_link_local or addr.is_unspecified or addr.is_multicast
+        )
     except ValueError:
         return False
 

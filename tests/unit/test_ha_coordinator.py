@@ -1587,3 +1587,46 @@ class TestR19Fixes:
         assert decode_frame_calls[0] == "3.2", (
             f"Expected version='3.2' for ECB-without-header-strip; got '{decode_frame_calls[0]}'"
         )
+
+
+# ── TestAsyncUpdateIpR39 ───────────────────────────────────────────────────────
+
+
+class TestAsyncUpdateIpR39:
+    """R39-F1: async_update_ip must reject non-routable IP addresses."""
+
+    def test_loopback_ip_rejected(self) -> None:
+        """Loopback 127.0.0.1 must not update the coordinator IP."""
+        coord = _make_coordinator(ip="192.168.1.10")
+        coord.async_update_ip("127.0.0.1")
+        assert coord._ip == "192.168.1.10"
+
+    def test_link_local_ip_rejected(self) -> None:
+        """Link-local 169.254.x.x must not update the coordinator IP."""
+        coord = _make_coordinator(ip="192.168.1.10")
+        coord.async_update_ip("169.254.0.1")
+        assert coord._ip == "192.168.1.10"
+
+    def test_unspecified_ip_rejected(self) -> None:
+        """Unspecified 0.0.0.0 must not update the coordinator IP."""
+        coord = _make_coordinator(ip="192.168.1.10")
+        coord.async_update_ip("0.0.0.0")
+        assert coord._ip == "192.168.1.10"
+
+    def test_multicast_ip_rejected(self) -> None:
+        """Multicast 224.x.x.x must not update the coordinator IP."""
+        coord = _make_coordinator(ip="192.168.1.10")
+        coord.async_update_ip("224.0.0.1")
+        assert coord._ip == "192.168.1.10"
+
+    def test_rfc1918_private_ip_accepted(self) -> None:
+        """Private 192.168.x.x must still be accepted (Tuya devices live on LAN)."""
+        coord = _make_coordinator(ip="192.168.1.10")
+        coord.async_update_ip("192.168.5.200")
+        assert coord._ip == "192.168.5.200"
+
+    def test_rfc1918_10_block_accepted(self) -> None:
+        """Private 10.x.x.x must still be accepted."""
+        coord = _make_coordinator(ip="192.168.1.10")
+        coord.async_update_ip("10.0.0.50")
+        assert coord._ip == "10.0.0.50"
