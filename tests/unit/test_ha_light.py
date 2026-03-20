@@ -631,3 +631,14 @@ class TestHaBriClampR44:
         await e.async_turn_on(**{ATTR_BRIGHTNESS: -10})
         call_dps = e.coordinator.async_send_dps.call_args[0][0]
         assert call_dps.get("2") == 10  # min_raw for default spec
+
+
+class TestSaturationZeroMaxRaw:
+    """light.py line 77: _tuya_to_ha_saturation returns 0.0 when max_raw == 0."""
+
+    def test_zero_max_raw_returns_zero(self) -> None:
+        """_tuya_to_ha_saturation(any, 0) must return 0.0 to avoid ZeroDivisionError."""
+        from custom_components.tuya_cloudless.light import _tuya_to_ha_saturation
+
+        assert _tuya_to_ha_saturation(500, 0) == 0.0
+        assert _tuya_to_ha_saturation(0, 0) == 0.0

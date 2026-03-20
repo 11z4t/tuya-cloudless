@@ -1026,3 +1026,26 @@ class TestCurrentDirectionAllowlistR53:
         # No "5" key in state — get_dp returns None
         e = _make_fan({}, spec=spec)
         assert e.current_direction is None
+
+
+class TestPresetModeValidation:
+    """fan.py lines 340-345: invalid preset mode is rejected with a warning."""
+
+    @pytest.mark.asyncio
+    async def test_invalid_preset_mode_is_ignored(self) -> None:
+        """Preset mode not in allowed list logs warning and returns without sending DP."""
+        from tuya_cloudless.profiles import DPSpec, EntitySpec
+
+        spec = EntitySpec(
+            platform="fan",
+            name="main_fan",
+            dp_power=DPSpec(id="1", type="bool"),
+            dp_mode=DPSpec(id="3", type="str"),
+        )
+        e = _make_fan({"1": True, "3": "auto"}, spec=spec)
+        e._attr_preset_modes = ["auto", "manual"]
+        # Accessing async_set_preset_mode uses the spec via dp_mode
+        e._spec = spec
+
+        await e.async_set_preset_mode("invalid_mode")
+        e.coordinator.async_send_dps.assert_not_awaited()

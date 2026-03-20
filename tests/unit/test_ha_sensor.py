@@ -367,3 +367,42 @@ class TestSensorStringCapR48:
         result = e.native_value
         assert result is not None
         assert len(result) == 255
+
+
+class TestSensorBoolAndInfinite:
+    """sensor.py lines 125, 141-146: bool DP returns None; non-finite result returns None."""
+
+    def _make_numeric_sensor(self, raw_value, scale: float = 1.0):  # type: ignore[misc]
+        from unittest.mock import MagicMock
+
+        from tuya_cloudless.profiles import DPSpec, EntitySpec
+
+        from custom_components.tuya_cloudless.coordinator import DeviceState
+        from custom_components.tuya_cloudless.sensor import TuyaCloudlessSensor
+
+        coord = MagicMock()
+        coord.gw_id = "gw1"
+        coord.device_name = "gw1"
+        coord.profile_name = ""
+        coord._version = "3.3"
+        coord.state = DeviceState(available=True, dps={"1": raw_value})
+        spec = EntitySpec(
+            platform="sensor",
+            name="power",
+            dp_value=DPSpec(id="1", type="int", scale=scale),
+        )
+        entity = TuyaCloudlessSensor.__new__(TuyaCloudlessSensor)
+        entity.coordinator = coord
+        entity._dp_id = "1"
+        entity._spec = spec
+        return entity
+
+    def test_bool_dp_returns_none(self) -> None:
+        """Boolean raw value returns None for numeric sensor (line 125)."""
+        e = self._make_numeric_sensor(True)
+        assert e.native_value is None
+
+    def test_isinf_result_returns_none(self) -> None:
+        """Non-finite (inf) result returns None (lines 141-146)."""
+        e = self._make_numeric_sensor(float("inf"))
+        assert e.native_value is None
