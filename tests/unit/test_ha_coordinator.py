@@ -576,6 +576,45 @@ class TestAsyncSendDpsTimeout:
         with pytest.raises(HomeAssistantError):
             await coord.async_send_dps({"1": True})
 
+    @pytest.mark.asyncio
+    async def test_oserror_raises_send_failed_ha_error(self) -> None:
+        """OSError from _do_send_dps is wrapped as HomeAssistantError (line 254)."""
+        from homeassistant.exceptions import HomeAssistantError
+
+        coord = _make_coordinator()
+        coord.state.available = True
+        writer = MagicMock()
+        writer.write = MagicMock()
+        coord._writer = writer
+
+        async def failing_send(dps: Any) -> None:
+            raise OSError("connection reset")
+
+        coord._do_send_dps = failing_send  # type: ignore[method-assign]
+
+        with pytest.raises(HomeAssistantError):
+            await coord.async_send_dps({"1": True})
+
+    @pytest.mark.asyncio
+    async def test_tuya_cloudless_error_raises_send_failed_ha_error(self) -> None:
+        """TuyaCloudlessError from _do_send_dps wrapped as HomeAssistantError (line 254)."""
+        from homeassistant.exceptions import HomeAssistantError
+        from tuya_cloudless.exceptions import TuyaCloudlessError
+
+        coord = _make_coordinator()
+        coord.state.available = True
+        writer = MagicMock()
+        writer.write = MagicMock()
+        coord._writer = writer
+
+        async def failing_send(dps: Any) -> None:
+            raise TuyaCloudlessError("crypto error")
+
+        coord._do_send_dps = failing_send  # type: ignore[method-assign]
+
+        with pytest.raises(HomeAssistantError):
+            await coord.async_send_dps({"1": True})
+
 
 class TestConnect:
     @pytest.mark.asyncio
@@ -1651,6 +1690,12 @@ class TestAsyncUpdateIpR39:
         coord.async_update_ip("10.0.0.50")
         assert coord._ip == "10.0.0.50"
 
+    def test_invalid_ip_string_rejected(self) -> None:
+        """Non-IP string — ipaddress.ip_address ValueError — must not update IP (lines 931-937)."""
+        coord = _make_coordinator(ip="192.168.1.10")
+        coord.async_update_ip("not-an-ip-address")
+        assert coord._ip == "192.168.1.10"
+
 
 # ── R48 local_key length validation ───────────────────────────────────────────
 
@@ -1827,3 +1872,49 @@ class TestDpsKeyIsdigitR53:
         coord = _make_coordinator()
         coord._on_frame(self._make_frame({"1a": True}))
         assert "1a" not in coord.state.dps
+
+
+# ── DPS key cap ──────────────────────────────────────────────────────────────
+
+
+class TestDpsKeyCap:
+    """Cover _on_frame DPS key cap guard (lines 736-747)."""
+
+    def _make_frame(self, dps: dict) -> MagicMock:
+        frame = MagicMock()
+        frame.dps = {"dps": dps}
+        return frame
+
+    def test_new_keys_beyond_cap_are_dropped(self) -> None:
+        """When state already has _MAX_DPS_KEYS entries, new keys from frame are dropped."""
+        from custom_components.tuya_cloudless.coordinator import _MAX_DPS_KEYS
+
+        coord = _make_coordinator()
+        # Pre-fill state.dps with exactly _MAX_DPS_KEYS entries
+        coord.state.dps = {str(i): i for i in range(_MAX_DPS_KEYS)}
+
+        # Send a frame with 2 new keys (beyond the cap)
+        new_key_a = str(_MAX_DPS_KEYS)
+        new_key_b = str(_MAX_DPS_KEYS + 1)
+        coord._on_frame(self._make_frame({new_key_a: True, new_key_b: True}))
+
+        # Neither new key should have been stored
+        assert new_key_a not in coord.state.dps
+        assert new_key_b not in coord.state.dps
+
+    def test_existing_keys_still_updated_at_cap(self) -> None:
+        """Existing keys are always updated even when cap is reached (lines 736-747)."""
+        from custom_components.tuya_cloudless.coordinator import _MAX_DPS_KEYS
+
+        coord = _make_coordinator()
+        # Pre-fill state.dps with _MAX_DPS_KEYS entries, key "1" already present
+        coord.state.dps = {str(i): i for i in range(_MAX_DPS_KEYS)}
+        coord.state.dps["1"] = False  # initial value
+
+        # Frame updates existing key "1" AND tries to add a new one
+        new_key = str(_MAX_DPS_KEYS)
+        coord._on_frame(self._make_frame({"1": True, new_key: True}))
+
+        # Existing key "1" updated; new key dropped
+        assert coord.state.dps["1"] is True
+        assert new_key not in coord.state.dps
