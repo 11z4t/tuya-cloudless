@@ -1630,3 +1630,30 @@ class TestAsyncUpdateIpR39:
         coord = _make_coordinator(ip="192.168.1.10")
         coord.async_update_ip("10.0.0.50")
         assert coord._ip == "10.0.0.50"
+
+
+# ── R48 local_key length validation ───────────────────────────────────────────
+
+
+class TestLocalKeyLengthR48:
+    """R48-F4: Coordinator must reject local_key not exactly 16 bytes at init."""
+
+    def test_valid_16_char_key_accepted(self) -> None:
+        """16-char ASCII key is accepted."""
+        coord = _make_coordinator(local_key="0123456789abcdef")
+        assert len(coord._local_key) == 16
+
+    def test_short_key_raises_value_error(self) -> None:
+        """Key shorter than 16 bytes must raise ValueError at construction."""
+        with pytest.raises(ValueError, match="16 bytes"):
+            _make_coordinator(local_key="tooshort")
+
+    def test_long_key_raises_value_error(self) -> None:
+        """Key longer than 16 bytes must raise ValueError at construction."""
+        with pytest.raises(ValueError, match="16 bytes"):
+            _make_coordinator(local_key="0123456789abcdef00")
+
+    def test_empty_key_raises_value_error(self) -> None:
+        """Empty key must raise ValueError at construction."""
+        with pytest.raises(ValueError, match="16 bytes"):
+            _make_coordinator(local_key="")

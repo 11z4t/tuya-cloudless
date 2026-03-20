@@ -5366,3 +5366,47 @@ class TestR47SecurityFixes:
         assert hasattr(server, "_index_html_mtime")
         assert server._index_html_cache is None
         assert server._index_html_mtime is None
+
+
+class TestR48SecurityFixes:
+    """R48 — consumed flag order, bind-token rate limit, zombie subprocess reap."""
+
+    @pytest.mark.asyncio
+    async def test_result_consumed_set_before_response(self, client: TestClient) -> None:
+        """R48-F1: result.consumed must be True after first successful GET."""
+        # Activate a device to populate _results
+        token = "a" * 32
+        await client.post(
+            "/api/tuya/device/active",
+            json={"gw_id": "gw_r48", "product_key": "pk1", "token": token},
+        )
+        # First GET should succeed
+        resp1 = await client.get(f"/api/provision/result/{token}")
+        assert resp1.status == 200
+
+        # Second GET must return 404 (burn-after-read)
+        resp2 = await client.get(f"/api/provision/result/{token}")
+        assert resp2.status == 404
+
+    def test_bind_token_rate_limited(self) -> None:
+        """R48-F2: _is_rate_limited enforces 20 calls/min (bind-token limit).
+
+        bind-token is only exposed on the HA HTTPS path (not port-8099), so we
+        test the shared rate-limiting mechanism directly.
+        """
+        hass = _make_hass()
+        srv = PairingServer(hass, port=0)
+        fake_ip = "10.0.0.99"
+        # 20 calls — all within limit
+        for _ in range(20):
+            assert not srv._is_rate_limited(fake_ip, max_requests=20, window=60.0)
+        # 21st call must be rate-limited (>= 20)
+        assert srv._is_rate_limited(fake_ip, max_requests=20, window=60.0)
+
+    def test_session_key_neg_decode_version_constant_is_32(self) -> None:
+        """R48-F8: Session key negotiation decode version must be '3.2'."""
+        from custom_components.tuya_cloudless.coordinator import (
+            _SESSION_KEY_NEG_DECODE_VERSION,
+        )
+
+        assert _SESSION_KEY_NEG_DECODE_VERSION == "3.2"

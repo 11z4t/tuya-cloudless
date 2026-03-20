@@ -315,3 +315,55 @@ class TestSensorScaleZeroR41:
         assert entity.native_value is None, (
             "R41-F6: scale=0 should return None, not silently produce 0.0"
         )
+
+
+# ── R48 string DP value cap ────────────────────────────────────────────────────
+
+
+class TestSensorStringCapR48:
+    """R48-F5: native_value must cap string DP values at 255 chars."""
+
+    def _make_str_sensor(self, raw_value: str) -> object:
+        """Return a sensor backed by a string DP value."""
+        from tuya_cloudless.profiles import DPSpec, EntitySpec
+
+        from custom_components.tuya_cloudless.sensor import TuyaCloudlessSensor
+
+        coord = _make_coordinator({"7": raw_value})
+        spec = EntitySpec(
+            platform="sensor",
+            name="status",
+            dp_value=DPSpec(id="7", type="enum"),
+        )
+        entity = TuyaCloudlessSensor.__new__(TuyaCloudlessSensor)
+        entity.coordinator = coord
+        entity._dp_id = "7"
+        entity._spec = spec
+        return entity
+
+    def test_short_string_passes_through(self) -> None:
+        """Strings <= 255 chars are returned unchanged."""
+        e = self._make_str_sensor("ok")
+        assert e.native_value == "ok"
+
+    def test_exactly_255_chars_passes_through(self) -> None:
+        """Exactly 255-char string is returned unchanged."""
+        val = "x" * 255
+        e = self._make_str_sensor(val)
+        assert e.native_value == val
+
+    def test_256_char_string_is_truncated(self) -> None:
+        """256-char string must be truncated to 255 chars."""
+        val = "y" * 256
+        e = self._make_str_sensor(val)
+        result = e.native_value
+        assert result is not None
+        assert len(result) == 255
+
+    def test_4096_char_string_is_truncated(self) -> None:
+        """4096-char string (coordinator max) must be truncated to 255 chars."""
+        val = "z" * 4096
+        e = self._make_str_sensor(val)
+        result = e.native_value
+        assert result is not None
+        assert len(result) == 255

@@ -124,7 +124,9 @@ class TuyaCloudlessSensor(TuyaCloudlessEntity, SensorEntity):
         if isinstance(raw, bool):
             return None
         if isinstance(raw, str):
-            return raw
+            # R48-F5: HA state machine has a 255-char limit for state strings.
+            # Truncate oversized strings to avoid recorder validation failures.
+            return raw[:255]
         # R41-F6: Guard against misconfigured scale=0 (produces silently wrong 0.0).
         # number.py and climate.py have the same guard — sensor was missing it.
         if scale == 0.0:

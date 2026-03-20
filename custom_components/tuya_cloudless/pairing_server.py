@@ -967,11 +967,13 @@ class PairingServer:
         if result.consumed:
             return web.Response(status=404, text="Not Found")
 
-        # R45-F7: Build the response object BEFORE marking consumed=True.
-        # If json_response() raises (e.g. serialisation error), the token
-        # remains usable so the client can retry, rather than being permanently
-        # locked out with no way to recover short of restarting the flow.
-        response = web.json_response(
+        # R48-F1: Mark consumed BEFORE building the response.
+        # web.json_response() with plain str/int values cannot raise; there is no
+        # practical retry scenario that would require the token to remain valid
+        # after this point.  Setting consumed first eliminates any ambiguity about
+        # the window between the guard check above and the flag assignment.
+        result.consumed = True
+        return web.json_response(
             {
                 "status": "ok",
                 "gw_id": result.gw_id,
@@ -981,8 +983,6 @@ class PairingServer:
                 "sw_ver": result.sw_ver,
             }
         )
-        result.consumed = True
-        return response
 
     async def _handle_bind_token(self, request: web.Request) -> web.Response:
         """Bind a provisioning token to a specific config flow (R28-1).
@@ -1001,6 +1001,16 @@ class PairingServer:
         Returns:
             204 No Content on success, or 4xx on validation failure.
         """
+        # R48-F2: Rate limit to prevent token-binding flood that could evict
+        # legitimate bindings via the hard cap (20 binds/min per source IP).
+        client_ip = self._get_client_ip(request)
+        if self._is_rate_limited(client_ip, max_requests=20, window=60.0):
+            return web.Response(
+                status=429,
+                text="Too Many Requests",
+                headers={"Retry-After": "15"},
+            )
+
         try:
             body = await request.json()
         except (json.JSONDecodeError, ValueError, UnicodeDecodeError):
@@ -1173,7 +1183,11 @@ class PairingServer:
             except TimeoutError:
                 # Kill the subprocess so it doesn't linger as a zombie; then re-raise
                 # so the outer except can log and return an empty list.
+                # R48-F3: reap the child process after kill() to prevent zombies.
+                # Wrap with wait_for so tests can patch asyncio.wait_for for fast teardown.
                 proc.kill()
+                with contextlib.suppress(Exception):
+                    await asyncio.wait_for(proc.communicate(), timeout=2.0)
                 raise
             result: list[str] = []
             for line in stdout.decode(errors="replace").splitlines():
@@ -1451,9 +1465,14 @@ class PairingServer:
             try:
                 stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=timeout)
             except (TimeoutError, asyncio.CancelledError):
-                # Kill the subprocess on both timeout AND task cancellation so it
-                # doesn't linger as a zombie (e.g. during HA shutdown mid-pairing).
+                # Kill the subprocess on both timeout AND task cancellation.
+                # R48-F3: await proc.communicate() after kill() to reap the child
+                # process and prevent it from lingering as a zombie in the OS
+                # process table (zombies accumulate until the parent—HA—exits).
+                # Wrap with wait_for so tests can patch asyncio.wait_for for fast teardown.
                 proc.kill()
+                with contextlib.suppress(Exception):
+                    await asyncio.wait_for(proc.communicate(), timeout=2.0)
                 raise
             return proc.returncode or 0, stdout.decode(errors="replace").strip()
 

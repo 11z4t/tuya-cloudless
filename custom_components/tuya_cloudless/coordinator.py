@@ -75,6 +75,12 @@ _DP_QUERY_RETRY_DELAY: float = 2.0
 #: to the frame-body read within ``_negotiate_session_key_once``.
 _SESSION_KEY_NEG_TIMEOUT: float = 5.0
 
+#: Protocol version used when decoding session key negotiation frames.
+#: Negotiation frames use ECB decrypt (v3.1/3.2 scheme) without the v3.3+
+#: header padding, even for v3.4/3.5 devices.  This is the Tuya protocol
+#: specification — do not change without verifying against real hardware.
+_SESSION_KEY_NEG_DECODE_VERSION: str = "3.2"
+
 #: PLAT-767 — IP auto-recovery via UDP discovery
 #: Trigger a UDP broadcast scan after this many consecutive connection failures.
 _IP_REDISCOVER_THRESHOLD: int = 3
@@ -147,6 +153,11 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._gw_id = gw_id
         self._ip = ip_address
         self._local_key = local_key.encode() if isinstance(local_key, str) else local_key
+        # R48-F4: Validate key length eagerly so misconfigured integrations or
+        # programmatic use with a wrong-length key surfaces at construction time
+        # rather than deep inside the async connect path as a confusing KeyDerivationError.
+        if len(self._local_key) != 16:
+            raise ValueError(f"local_key must be exactly 16 bytes, got {len(self._local_key)}")
         self._version = version
         self._port = port
         self._heartbeat_interval = heartbeat_interval
@@ -843,7 +854,7 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # Decode using ECB (no session key yet for negotiation frames)
         resp_frame = decode_frame(
             frames[0],
-            version="3.2",  # ECB decrypt without v3.3 header stripping
+            version=_SESSION_KEY_NEG_DECODE_VERSION,
             local_key=self._local_key,
             session_key=None,
         )
