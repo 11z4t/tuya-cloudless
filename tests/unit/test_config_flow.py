@@ -2099,6 +2099,71 @@ class TestBlePairConfirmNew:
 # ── async_step_confirm auto-detect profile (lines 498-503) ───────────────────
 
 
+class TestBleConfirmValidation:
+    """R27-3: async_step_ble_confirm must abort if _device is empty/invalid."""
+
+    @pytest.mark.asyncio
+    async def test_empty_device_aborts(self) -> None:
+        """If _device is empty (flow skipped BLE step), ble_confirm must abort."""
+        from custom_components.tuya_cloudless.config_flow import TuyaCloudlessConfigFlow
+
+        flow = TuyaCloudlessConfigFlow.__new__(TuyaCloudlessConfigFlow)
+        flow._discovered = []
+        flow._device = {}  # not populated — simulates skipping the external BLE step
+        flow.hass = MagicMock()
+        flow.flow_id = "skip-flow"
+        flow.async_abort = MagicMock(return_value={"type": "abort"})
+        flow.async_create_entry = MagicMock()
+        flow.async_show_form = MagicMock(return_value={"type": "form"})
+        flow.async_set_unique_id = AsyncMock()
+        flow._abort_if_unique_id_configured = MagicMock()
+        _restore_method(flow, "async_step_ble_confirm")
+
+        with patch(
+            "custom_components.tuya_cloudless.pairing_server.get_pairing_server",
+            return_value=None,
+        ):
+            result = await flow.async_step_ble_confirm(
+                user_input={"device_name": "Evil", "profile": "Generic Switch"}
+            )
+
+        assert result["type"] == "abort"
+        flow.async_abort.assert_called_once_with(reason="invalid_device_data")
+        flow.async_create_entry.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_invalid_local_key_in_device_aborts(self) -> None:
+        """_device with a non-hex local_key must abort (not create entry)."""
+        from custom_components.tuya_cloudless.config_flow import TuyaCloudlessConfigFlow
+
+        flow = TuyaCloudlessConfigFlow.__new__(TuyaCloudlessConfigFlow)
+        flow._discovered = []
+        flow._device = {
+            "gw_id": "abc123",
+            "local_key": "",  # empty key — invalid
+            "ip_address": "10.0.0.1",
+        }
+        flow.hass = MagicMock()
+        flow.flow_id = "bad-key-flow"
+        flow.async_abort = MagicMock(return_value={"type": "abort"})
+        flow.async_create_entry = MagicMock()
+        flow.async_show_form = MagicMock(return_value={"type": "form"})
+        flow.async_set_unique_id = AsyncMock()
+        flow._abort_if_unique_id_configured = MagicMock()
+        _restore_method(flow, "async_step_ble_confirm")
+
+        with patch(
+            "custom_components.tuya_cloudless.pairing_server.get_pairing_server",
+            return_value=None,
+        ):
+            result = await flow.async_step_ble_confirm(
+                user_input={"device_name": "Test", "profile": "Generic Switch"}
+            )
+
+        assert result["type"] == "abort"
+        flow.async_create_entry.assert_not_called()
+
+
 class TestConfigFlowConfirmAutoDetectNew:
     @pytest.mark.asyncio
     async def test_auto_detect_profile_is_invoked(self) -> None:

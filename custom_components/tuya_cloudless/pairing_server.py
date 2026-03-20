@@ -151,7 +151,9 @@ _TUYA_AP_PREFIXES: Final[tuple[str, ...]] = (
     "sl_",
     "az_",
     "tuya_",
-    "wifi_",
+    # NOTE: "wifi_" deliberately omitted — it is too broad (matches any SSID starting
+    # with "wifi_", e.g. "wifi_evil_hotspot") and would allow an authenticated user to
+    # submit that prefix to nmcli connect, connecting HA to an arbitrary AP.
 )
 
 
@@ -761,26 +763,32 @@ class PairingServer:
         }
         await self._broadcast_sse("activated", json.dumps(event_data))
 
-        # Resume any waiting HA config flows
-        flow_data = {
-            "gw_id": gw_id,
-            "local_key": local_key,
-            "ip_address": client_ip,
-            "product_key": product_key,
-        }
+        # Resume any waiting HA config flows.
+        # Only resume when token is non-empty (R27-5): a tokenless POST from any
+        # LAN host would otherwise inject arbitrary gw_id/local_key into ALL active
+        # flows.  BLE and WiFi-AP pairing always generate a 32-hex-char token, so
+        # legitimate activations always have one.  Tokenless devices get their result
+        # stored but must have a human manually copy the key from the result endpoint.
+        if token and self._pending_flows:
+            flow_data = {
+                "gw_id": gw_id,
+                "local_key": local_key,
+                "ip_address": client_ip,
+                "product_key": product_key,
+            }
 
-        async def _resume_flow(fid: str) -> None:
-            try:
-                await self._hass.config_entries.flow.async_configure(fid, flow_data)
-            except Exception:  # flow may have been cancelled or removed by user
-                _LOGGER.debug("Flow %s no longer active — skipping resume", fid)
-            finally:
-                # Always clean up — prevents stale IDs from accumulating and
-                # keeps _pending_flows accurate for auto-stop logic.
-                self._pending_flows.discard(fid)
+            async def _resume_flow(fid: str) -> None:
+                try:
+                    await self._hass.config_entries.flow.async_configure(fid, flow_data)
+                except Exception:  # flow may have been cancelled or removed by user
+                    _LOGGER.debug("Flow %s no longer active — skipping resume", fid)
+                finally:
+                    # Always clean up — prevents stale IDs from accumulating and
+                    # keeps _pending_flows accurate for auto-stop logic.
+                    self._pending_flows.discard(fid)
 
-        for flow_id in list(self._pending_flows):
-            self._hass.async_create_task(_resume_flow(flow_id))
+            for flow_id in list(self._pending_flows):
+                self._hass.async_create_task(_resume_flow(flow_id))
 
         # Respond in Tuya cloud activation format
         response_body = {
@@ -1475,7 +1483,8 @@ class PairingServer:
                 return await server._handle_sse(request)
 
         class _PairingResultView(HomeAssistantView):
-            requires_auth = False
+            # requires_auth = True (default) — returns local_key in plaintext;
+            # the pairing UI browser has HA auth during the config flow session
             url = _HA_PAIRING_PREFIX + "/provision/result/{token}"
             name = "api:tuya_cloudless:pairing:result"
 

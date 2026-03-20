@@ -521,6 +521,25 @@ class TuyaCloudlessConfigFlow(ConfigFlow, domain=DOMAIN):
             gw_id = self._device.get(CONF_GW_ID, "")
             ip_address = self._device.get(CONF_IP_ADDRESS, "")
             local_key = self._device.get(CONF_LOCAL_KEY, "")
+
+            # Guard: _device should have been populated by async_step_ble_pair before
+            # this step is reached.  If an HA user navigates the flow API directly
+            # (e.g. POSTs to the flow endpoint without completing the external BLE step),
+            # _device may be empty, which would create a config entry with empty fields.
+            if (
+                not _GW_ID_RE.match(gw_id)
+                or not _LOCAL_KEY_RE.match(local_key)
+                or not _validate_ip(ip_address)
+            ):
+                _LOGGER.warning(
+                    "ble_confirm reached with invalid/missing device data "
+                    "(gw_id=%r key_len=%d ip=%r) — aborting flow",
+                    gw_id[:64],
+                    len(local_key),
+                    ip_address,
+                )
+                return self.async_abort(reason="invalid_device_data")
+
             name = (user_input.get(CONF_DEVICE_NAME) or "").strip() or ip_address
 
             from .pairing_server import get_pairing_server

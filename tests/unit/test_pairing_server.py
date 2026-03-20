@@ -786,8 +786,10 @@ class TestIsTuyaAp:
     def test_tuya_prefix(self) -> None:
         assert _is_tuya_ap("Tuya_Lamp") is True
 
-    def test_wifi_prefix(self) -> None:
-        assert _is_tuya_ap("WiFi_Plug") is True
+    def test_wifi_prefix_removed(self) -> None:
+        """'wifi_' was removed from _TUYA_AP_PREFIXES (R27-2: too broad, allows
+        arbitrary SSIDs like 'wifi_evil_hotspot' to reach nmcli connect)."""
+        assert _is_tuya_ap("WiFi_Plug") is False
 
     def test_all_prefixes_covered(self) -> None:
         """Every entry in _TUYA_AP_PREFIXES must be matched by _is_tuya_ap."""
@@ -1043,7 +1045,11 @@ class TestQuickScan:
         assert ssids.count("SmartLife_AB12") == 1
 
     async def test_all_tuya_prefixes_matched(self, client: TestClient) -> None:
-        """All five Tuya AP prefixes are matched (case-insensitive)."""
+        """All current Tuya AP prefixes are matched (case-insensitive).
+
+        'wifi_' was removed in R27-2 — it is too broad.  WiFi_EE must no
+        longer be included in tuya_aps.
+        """
         from unittest.mock import AsyncMock, MagicMock, patch
 
         mock_proc = MagicMock()
@@ -1063,7 +1069,7 @@ class TestQuickScan:
         assert "SL_BB" in ssids
         assert "AZ_CC" in ssids
         assert "Tuya_DD" in ssids
-        assert "WiFi_EE" in ssids
+        assert "WiFi_EE" not in ssids  # "wifi_" prefix removed (R27-2)
         assert "HomeNet" not in ssids
 
     async def test_quick_scan_filters_ssids_with_control_chars(self, client: TestClient) -> None:
@@ -2760,6 +2766,36 @@ class TestActivateFlowResume:
         finally:
             await cli.close()
 
+    async def test_empty_token_does_not_resume_flows(self) -> None:
+        """R27-5: Activation with empty token must NOT resume pending config flows.
+
+        Any LAN host can POST to /api/tuya/device/active with an empty token.
+        Previously this would resume all waiting flows with attacker-controlled
+        gw_id/local_key, creating a config entry for the wrong device.
+        Now only token-carrying activations resume flows.
+        """
+        hass = _make_hass()
+        hass.async_create_task = MagicMock()
+        hass.config_entries = MagicMock()
+
+        fresh_server = PairingServer(hass, port=0)
+        fresh_server._pending_flows.add("victim-flow-123")
+
+        ts = TestServer(fresh_server._app)
+        cli = TestClient(ts)
+        await cli.start_server()
+        try:
+            resp = await cli.post(
+                "/api/tuya/device/active",
+                json={"gw_id": "attacker_device"},  # no token field
+            )
+            assert resp.status == 200
+            # Flow must NOT have been resumed with attacker's gw_id
+            hass.async_create_task.assert_not_called()
+            assert "victim-flow-123" in fresh_server._pending_flows
+        finally:
+            await cli.close()
+
 
 # ── _handle_sse ────────────────────────────────────────────────────────────────
 
@@ -4169,8 +4205,13 @@ class TestRegisterHaViews:
                 assert requires is not False, f"View {name} must not have requires_auth=False"
 
     async def test_unauthenticated_views_allowed(self) -> None:
-        """The pairing UI pages (index, config, events, result, static) correctly
-        remain unauthenticated — the browser opens these before HA auth is set up."""
+        """The pairing UI pages (index, config, events, static) correctly remain
+        unauthenticated — the browser opens these before HA auth is set up.
+
+        NOTE: 'result' was moved to requires_auth=True in R27-1 because it
+        returns the local_key in plaintext.  The browser has HA auth during
+        the config flow session and can include the Bearer token.
+        """
         hass = MagicMock()
         server = PairingServer(hass, port=8099)
         captured_views: list[object] = []
@@ -4181,7 +4222,6 @@ class TestRegisterHaViews:
             "api:tuya_cloudless:pairing:index",
             "api:tuya_cloudless:pairing:config",
             "api:tuya_cloudless:pairing:events",
-            "api:tuya_cloudless:pairing:result",
             "api:tuya_cloudless:pairing:static",
         }
         for view in captured_views:
@@ -4191,6 +4231,23 @@ class TestRegisterHaViews:
                 assert requires is False, (
                     f"View {name} must have requires_auth=False (pairing UI access)"
                 )
+
+    async def test_result_view_requires_auth(self) -> None:
+        """R27-1: The result view must require HA auth (returns local_key in plaintext)."""
+        hass = MagicMock()
+        server = PairingServer(hass, port=8099)
+        captured_views: list[object] = []
+        hass.http.register_view.side_effect = captured_views.append
+        await server._register_ha_views()
+
+        result_name = "api:tuya_cloudless:pairing:result"
+        result_view = next(
+            (v for v in captured_views if getattr(v, "name", "") == result_name),
+            None,
+        )
+        assert result_view is not None, "Result view must be registered"
+        requires = getattr(result_view, "requires_auth", True)
+        assert requires is not False, "Result view must NOT have requires_auth=False"
 
 
 # ── Static file view (path traversal guard) ───────────────────────────────────
