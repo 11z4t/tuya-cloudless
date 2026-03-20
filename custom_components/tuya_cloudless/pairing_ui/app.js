@@ -1475,6 +1475,9 @@ async function pairViaWifiAp() {
           ap_ssid: _selectedApSsid,
           home_ssid: _ssid,
           home_password: _pwd,
+          // Include flow_id so server can bind the generated token to our flow only
+          // (R28-1: prevents credential fan-out to concurrent pairing sessions).
+          flow_id: _haFlowId,
         }),
         signal: fetchAbort.signal,
       });
@@ -1543,6 +1546,15 @@ async function startPairing() {
 
   const token = randomToken();
   const activator = ACTIVATOR_URL;
+  // Bind token → flow so server delivers credentials only to our flow (R28-1).
+  // Best-effort: BLE provisioning still works if this call fails.
+  if (_haFlowId) {
+    fetch(_PROVISION_BASE + "/bind-token", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ flow_id: _haFlowId, token }),
+    }).catch(() => {});
+  }
   const es = listenForActivation(token);
 
   let server;

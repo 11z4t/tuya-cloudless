@@ -272,6 +272,10 @@ class PairingServer:
         self._sse_queues: list[asyncio.Queue[str | None]] = []
         # Config flow IDs waiting for device activation
         self._pending_flows: set[str] = set()
+        # Provisioning token → flow_id mapping (R28-1: prevents credential fan-out
+        # to unrelated concurrent flows).  Populated by _handle_bind_token and
+        # _handle_wifi_ap_pair when the caller provides flow_id.
+        self._token_to_flow: dict[str, str] = {}
         # Auto-stop task (stops server 60s after last flow unregisters)
         self._auto_stop_task: asyncio.Task[None] | None = None
         # Per-IP rate limit: maps IP → list of request timestamps (SEC-001)
@@ -330,6 +334,7 @@ class PairingServer:
         # Discard pending flow IDs — they belong to the current session and
         # must not carry over if the server is restarted (e.g. new provisioning).
         self._pending_flows.clear()
+        self._token_to_flow.clear()
         self._results.clear()
 
         if self._auto_stop_task is not None:
@@ -477,6 +482,7 @@ class PairingServer:
         app.router.add_get("/api/provision/wifi-scan", self._handle_wifi_scan)
         app.router.add_get("/api/provision/quick-scan", self._handle_quick_scan)
         app.router.add_post("/api/provision/wifi-ap-pair", self._handle_wifi_ap_pair)
+        app.router.add_post("/api/provision/bind-token", self._handle_bind_token)
         # Serve brand icon at /static/icon.png (before the catch-all static mount)
         app.router.add_get("/static/icon.png", self._handle_icon)
         # Serve static assets from pairing_ui/
@@ -787,7 +793,19 @@ class PairingServer:
                     # keeps _pending_flows accurate for auto-stop logic.
                     self._pending_flows.discard(fid)
 
-            for flow_id in list(self._pending_flows):
+            # R28-1: If this token was pre-bound to a specific flow via
+            # bind-token / wifi-ap-pair, only resume that flow.  This prevents
+            # credentials from being fanned out to unrelated concurrent pairing
+            # sessions when two users initiate pairing simultaneously.
+            # Fall back to resuming all pending flows when no binding exists
+            # (e.g. BLE path without bind-token, or older client versions).
+            bound_flow = self._token_to_flow.pop(token, None)
+            flows_to_resume = (
+                [bound_flow]
+                if bound_flow and bound_flow in self._pending_flows
+                else list(self._pending_flows)
+            )
+            for flow_id in flows_to_resume:
                 self._hass.async_create_task(_resume_flow(flow_id))
 
         # Respond in Tuya cloud activation format
@@ -850,6 +868,51 @@ class PairingServer:
                 "sw_ver": result.sw_ver,
             }
         )
+
+    async def _handle_bind_token(self, request: web.Request) -> web.Response:
+        """Bind a provisioning token to a specific config flow (R28-1).
+
+        Called by the pairing UI before provisioning starts — associates the
+        provisioning token the device will use with the flow that initiated the
+        pairing session.  When the device later activates with that token,
+        only the bound flow receives the credentials instead of ALL pending flows.
+
+        Body JSON:
+            ``{"flow_id": "<HA flow UUID>", "token": "<32 hex chars>"}``
+
+        Args:
+            request: Incoming HTTP request from the browser.
+
+        Returns:
+            204 No Content on success, or 4xx on validation failure.
+        """
+        try:
+            body = await request.json()
+        except (json.JSONDecodeError, ValueError, UnicodeDecodeError):
+            return web.Response(status=400, text="Invalid JSON body")
+
+        if not isinstance(body, dict):
+            return web.Response(status=400, text="Request body must be a JSON object")
+
+        token = str(body.get("token") or "")
+        flow_id = str(body.get("flow_id") or "")
+
+        if not _TOKEN_RE.match(token):
+            return web.Response(status=400, text="Invalid token format")
+
+        # Only allow binding to flows that are actually registered — prevents an
+        # attacker from poisoning future flows before they register.
+        if not flow_id or flow_id not in self._pending_flows:
+            return web.Response(status=400, text="flow_id not found in pending flows")
+
+        # Reject rebinding — first caller wins; prevents a race where a second
+        # concurrent session claims the same token.
+        if token in self._token_to_flow:
+            return web.Response(status=409, text="Token already bound")
+
+        self._token_to_flow[token] = flow_id
+        _LOGGER.debug("Bound token %s… to flow %s", token[:8], flow_id)
+        return web.Response(status=204)
 
     async def _handle_sse(self, request: web.Request) -> web.StreamResponse:
         """Server-Sent Events stream for real-time activation notifications.
@@ -1123,6 +1186,9 @@ class PairingServer:
         ap_ssid = str(body.get("ap_ssid") or "").strip()
         home_ssid = str(body.get("home_ssid") or "").strip()
         home_password = str(body.get("home_password") or "")
+        # Optional: caller's config flow ID — used to bind the generated token to this
+        # specific flow so only it receives the credentials on activation (R28-1).
+        flow_id_hint = str(body.get("flow_id") or "")
 
         if not ap_ssid or not home_ssid:
             return web.Response(status=400, text="ap_ssid and home_ssid are required")
@@ -1181,6 +1247,11 @@ class PairingServer:
 
         token = secrets.token_hex(_PROVISION_TOKEN_BYTES)
         activator_url = self.ha_local_url()
+
+        # Bind token to the requesting flow (R28-1): if the caller provided a valid
+        # registered flow_id, only that flow receives credentials on activation.
+        if flow_id_hint and flow_id_hint in self._pending_flows:
+            self._token_to_flow[token] = flow_id_hint
 
         self._wifi_ap_pairing_in_progress.add(ap_ssid)
         task = self._hass.async_create_task(

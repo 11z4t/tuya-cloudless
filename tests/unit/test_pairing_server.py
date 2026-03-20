@@ -2796,6 +2796,167 @@ class TestActivateFlowResume:
         finally:
             await cli.close()
 
+    async def test_bound_token_resumes_only_its_flow(self) -> None:
+        """R28-1: When token is pre-bound to flow A, only flow A is resumed on activation."""
+        hass = _make_hass()
+        resume_calls: list[str] = []
+
+        async def fake_configure(flow_id: str, user_input: object) -> None:
+            resume_calls.append(flow_id)
+
+        hass.config_entries = MagicMock()
+        hass.config_entries.flow.async_configure = AsyncMock(side_effect=fake_configure)
+
+        tasks: list[asyncio.Task[None]] = []
+
+        def capture_task(coro: object, **_kw: object) -> asyncio.Task[None]:
+            t = asyncio.get_event_loop().create_task(coro)  # type: ignore[arg-type]
+            tasks.append(t)
+            return t
+
+        hass.async_create_task = capture_task
+
+        fresh_server = PairingServer(hass, port=0)
+        fresh_server._pending_flows.add("flow-a")
+        fresh_server._pending_flows.add("flow-b")
+        # Pre-bind token to flow-a only
+        token = "ab" * 16  # 32 hex chars
+        fresh_server._token_to_flow[token] = "flow-a"
+
+        ts = TestServer(fresh_server._app)
+        cli = TestClient(ts)
+        await cli.start_server()
+        try:
+            resp = await cli.post(
+                "/api/tuya/device/active",
+                json={"gw_id": "aabbccddee112233", "token": token},
+            )
+            assert resp.status == 200
+            # Let async tasks run
+            for t in tasks:
+                await t
+            # Only flow-a should have been resumed — flow-b must not receive credentials
+            assert resume_calls == ["flow-a"]
+        finally:
+            await cli.close()
+
+    async def test_unbound_token_resumes_all_pending_flows(self) -> None:
+        """R28-1 fallback: unbound token (BLE without bind-token call) resumes all flows."""
+        hass = _make_hass()
+        resume_calls: list[str] = []
+
+        async def fake_configure(flow_id: str, user_input: object) -> None:
+            resume_calls.append(flow_id)
+
+        hass.config_entries = MagicMock()
+        hass.config_entries.flow.async_configure = AsyncMock(side_effect=fake_configure)
+
+        tasks: list[asyncio.Task[None]] = []
+
+        def capture_task(coro: object, **_kw: object) -> asyncio.Task[None]:
+            t = asyncio.get_event_loop().create_task(coro)  # type: ignore[arg-type]
+            tasks.append(t)
+            return t
+
+        hass.async_create_task = capture_task
+
+        fresh_server = PairingServer(hass, port=0)
+        fresh_server._pending_flows.add("flow-x")
+        # No token → flow binding
+
+        ts = TestServer(fresh_server._app)
+        cli = TestClient(ts)
+        await cli.start_server()
+        try:
+            token = "cd" * 16
+            resp = await cli.post(
+                "/api/tuya/device/active",
+                json={"gw_id": "aabbccddee112233", "token": token},
+            )
+            assert resp.status == 200
+            for t in tasks:
+                await t
+            assert "flow-x" in resume_calls
+        finally:
+            await cli.close()
+
+
+class TestBindTokenEndpoint:
+    """R28-1: Tests for POST /api/provision/bind-token."""
+
+    async def test_bind_token_returns_204(self) -> None:
+        hass = _make_hass()
+        fresh_server = PairingServer(hass, port=0)
+        token = "aa" * 16
+        fresh_server._pending_flows.add("my-flow")
+
+        ts = TestServer(fresh_server._app)
+        cli = TestClient(ts)
+        await cli.start_server()
+        try:
+            resp = await cli.post(
+                "/api/provision/bind-token",
+                json={"flow_id": "my-flow", "token": token},
+            )
+            assert resp.status == 204
+            assert fresh_server._token_to_flow[token] == "my-flow"
+        finally:
+            await cli.close()
+
+    async def test_bind_unknown_flow_returns_400(self) -> None:
+        hass = _make_hass()
+        fresh_server = PairingServer(hass, port=0)
+        token = "bb" * 16
+        # "not-registered" is not in _pending_flows
+
+        ts = TestServer(fresh_server._app)
+        cli = TestClient(ts)
+        await cli.start_server()
+        try:
+            resp = await cli.post(
+                "/api/provision/bind-token",
+                json={"flow_id": "not-registered", "token": token},
+            )
+            assert resp.status == 400
+        finally:
+            await cli.close()
+
+    async def test_bind_invalid_token_returns_400(self) -> None:
+        hass = _make_hass()
+        fresh_server = PairingServer(hass, port=0)
+        fresh_server._pending_flows.add("flow-z")
+
+        ts = TestServer(fresh_server._app)
+        cli = TestClient(ts)
+        await cli.start_server()
+        try:
+            resp = await cli.post(
+                "/api/provision/bind-token",
+                json={"flow_id": "flow-z", "token": "not-hex!!"},
+            )
+            assert resp.status == 400
+        finally:
+            await cli.close()
+
+    async def test_rebind_returns_409(self) -> None:
+        hass = _make_hass()
+        fresh_server = PairingServer(hass, port=0)
+        token = "cc" * 16
+        fresh_server._pending_flows.add("flow-one")
+        fresh_server._token_to_flow[token] = "flow-one"
+
+        ts = TestServer(fresh_server._app)
+        cli = TestClient(ts)
+        await cli.start_server()
+        try:
+            resp = await cli.post(
+                "/api/provision/bind-token",
+                json={"flow_id": "flow-one", "token": token},
+            )
+            assert resp.status == 409
+        finally:
+            await cli.close()
+
 
 # ── _handle_sse ────────────────────────────────────────────────────────────────
 
