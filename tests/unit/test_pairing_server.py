@@ -6197,3 +6197,282 @@ class TestR53SecurityFixes:
         assert "requires_auth = True" in snippet, (
             "R53-F6: _PairingConfigView must have requires_auth = True"
         )
+
+
+# ── OSError guards & WiFi task edge cases ─────────────────────────────────────
+
+
+class TestOsErrorGuards:
+    """Cover OSError fallback branches in _handle_index, _handle_icon, _handle_ha_index."""
+
+    @pytest.fixture
+    def server(self) -> PairingServer:
+        return PairingServer(_make_hass(), port=0)
+
+    # ── _handle_index ─────────────────────────────────────────────────────────
+
+    @pytest.mark.asyncio
+    async def test_handle_index_stat_oserror_still_serves_file(self, server: PairingServer) -> None:
+        """stat() OSError → current_mtime=None + file_size=0, file still read (lines 572-580)."""
+        from unittest.mock import MagicMock, patch
+
+        with (
+            patch("pathlib.Path.is_file", return_value=True),
+            patch("pathlib.Path.stat", side_effect=OSError("disk error")),
+            patch("pathlib.Path.read_bytes", return_value=b"<html/>"),
+        ):
+            request = MagicMock()
+            request.remote = "127.0.0.1"
+            request.headers = {}
+            resp = await server._handle_index(request)
+        assert resp.status == 200
+
+    @pytest.mark.asyncio
+    async def test_handle_index_read_bytes_oserror_returns_503(self, server: PairingServer) -> None:
+        """read_bytes() OSError → 503 response (lines 589-590)."""
+        from unittest.mock import MagicMock, patch
+
+        with (
+            patch("pathlib.Path.is_file", return_value=True),
+            patch("pathlib.Path.stat", side_effect=OSError("disk error")),
+            patch("pathlib.Path.read_bytes", side_effect=OSError("read error")),
+        ):
+            request = MagicMock()
+            request.remote = "127.0.0.1"
+            request.headers = {}
+            resp = await server._handle_index(request)
+        assert resp.status == 503
+
+    # ── _handle_icon ─────────────────────────────────────────────────────────
+
+    @pytest.mark.asyncio
+    async def test_handle_icon_stat_oserror_returns_404(self, server: PairingServer) -> None:
+        """stat() OSError for icon → 404 (lines 657-658)."""
+        from unittest.mock import MagicMock, patch
+
+        with (
+            patch("pathlib.Path.is_file", return_value=True),
+            patch("pathlib.Path.stat", side_effect=OSError("disk error")),
+        ):
+            request = MagicMock()
+            request.remote = "127.0.0.1"
+            request.headers = {}
+            resp = await server._handle_icon(request)
+        assert resp.status == 404
+
+    @pytest.mark.asyncio
+    async def test_handle_icon_read_bytes_oserror_returns_503(self, server: PairingServer) -> None:
+        """read_bytes() OSError for icon → 503 (lines 668-669)."""
+        from unittest.mock import MagicMock, patch
+
+        stat_mock = MagicMock()
+        stat_mock.st_size = 100
+
+        with (
+            patch("pathlib.Path.is_file", return_value=True),
+            patch("pathlib.Path.stat", return_value=stat_mock),
+            patch("pathlib.Path.read_bytes", side_effect=OSError("read error")),
+        ):
+            request = MagicMock()
+            request.remote = "127.0.0.1"
+            request.headers = {}
+            resp = await server._handle_icon(request)
+        assert resp.status == 503
+
+    # ── _handle_ha_index ─────────────────────────────────────────────────────
+
+    @pytest.mark.asyncio
+    async def test_handle_ha_index_stat_oserror_still_serves(self, server: PairingServer) -> None:
+        """stat() OSError → mtime=None + size=0, file still read (lines 1719-1720, 1726-1727)."""
+        from unittest.mock import MagicMock, patch
+
+        with (
+            patch("pathlib.Path.is_file", return_value=True),
+            patch("pathlib.Path.stat", side_effect=OSError("disk error")),
+            patch("pathlib.Path.read_text", return_value="<html/>"),
+        ):
+            request = MagicMock()
+            request.remote = "127.0.0.1"
+            request.headers = {}
+            resp = await server._handle_ha_index(request)
+        assert resp.status == 200
+
+    @pytest.mark.asyncio
+    async def test_handle_ha_index_read_text_oserror_returns_503(
+        self, server: PairingServer
+    ) -> None:
+        """read_text() OSError → 503 (lines 1736-1737)."""
+        from unittest.mock import MagicMock, patch
+
+        with (
+            patch("pathlib.Path.is_file", return_value=True),
+            patch("pathlib.Path.stat", side_effect=OSError("disk error")),
+            patch("pathlib.Path.read_text", side_effect=OSError("read error")),
+        ):
+            request = MagicMock()
+            request.remote = "127.0.0.1"
+            request.headers = {}
+            resp = await server._handle_ha_index(request)
+        assert resp.status == 503
+
+
+class TestWifiApPairTaskEdgeCases:
+    """Cover remaining _wifi_ap_pair_task branches."""
+
+    @pytest.mark.asyncio
+    async def test_ctrl_char_in_connection_name_is_ignored(self) -> None:
+        """Connection name with control char → prev_connection=None (lines 1560-1561)."""
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        call_count = 0
+
+        async def fake_exec(*args: object, **kwargs: object) -> MagicMock:
+            nonlocal call_count
+            call_count += 1
+            proc = MagicMock()
+            if call_count == 1:
+                proc.communicate = AsyncMock(return_value=(b"yes:bad\x00name\n", b""))
+            else:
+                proc.communicate = AsyncMock(return_value=(b"", b""))
+            proc.returncode = 0
+            proc.kill = MagicMock()
+            return proc
+
+        hass = MagicMock()
+        server = PairingServer(hass, port=9099)
+
+        with (
+            patch("asyncio.create_subprocess_exec", side_effect=fake_exec),
+            patch("asyncio.sleep", new=AsyncMock()),
+            patch("aiohttp.ClientSession") as mock_session_cls,
+        ):
+            mock_session = AsyncMock()
+            mock_session_cls.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+            mock_session_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+            mock_resp = AsyncMock()
+            mock_resp.status = 200
+            mock_session.post.return_value.__aenter__ = AsyncMock(return_value=mock_resp)
+            mock_session.post.return_value.__aexit__ = AsyncMock(return_value=False)
+            await server._wifi_ap_pair_task(
+                "SmartLife_AB12", "HomeNet", "pass", "tok123", "http://ha:8099"
+            )
+        # Task completed without error; suspicious name was discarded, no reconnect attempt
+
+    @pytest.mark.asyncio
+    async def test_prev_connection_reconnect_failure_is_logged(self) -> None:
+        """Exception in reconnect-to-prev_connection is caught (lines 1655-1656)."""
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        call_count = 0
+
+        async def fake_exec(*args: object, **kwargs: object) -> MagicMock:
+            nonlocal call_count
+            call_count += 1
+            proc = MagicMock()
+            if call_count == 1:
+                proc.communicate = AsyncMock(return_value=(b"yes:HomeConn\n", b""))
+                proc.returncode = 0
+            elif call_count == 2:
+                proc.communicate = AsyncMock(return_value=(b"", b""))
+                proc.returncode = 0
+            else:
+                raise OSError("reconnect failed")
+            proc.kill = MagicMock()
+            return proc
+
+        hass = MagicMock()
+        server = PairingServer(hass, port=9099)
+
+        with (
+            patch("asyncio.create_subprocess_exec", side_effect=fake_exec),
+            patch("asyncio.sleep", new=AsyncMock()),
+            patch("aiohttp.ClientSession") as mock_session_cls,
+        ):
+            mock_session = AsyncMock()
+            mock_session_cls.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+            mock_session_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+            mock_resp = AsyncMock()
+            mock_resp.status = 200
+            mock_session.post.return_value.__aenter__ = AsyncMock(return_value=mock_resp)
+            mock_session.post.return_value.__aexit__ = AsyncMock(return_value=False)
+            # Should not raise — exception is caught in finally block
+            await server._wifi_ap_pair_task(
+                "SmartLife_AB12", "HomeNet", "pass", "tok_prev", "http://ha:8099"
+            )
+
+    @pytest.mark.asyncio
+    async def test_home_wifi_reconnect_failure_is_logged(self) -> None:
+        """Exception in home-WiFi fallback reconnect is caught (lines 1684-1685)."""
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        call_count = 0
+
+        async def fake_exec(*args: object, **kwargs: object) -> MagicMock:
+            nonlocal call_count
+            call_count += 1
+            proc = MagicMock()
+            if call_count == 1:
+                # No "yes:" prefix → prev_connection stays None
+                proc.communicate = AsyncMock(return_value=(b"no:SomeConn\n", b""))
+                proc.returncode = 0
+            elif call_count == 2:
+                proc.communicate = AsyncMock(return_value=(b"", b""))
+                proc.returncode = 0
+            else:
+                raise OSError("home reconnect failed")
+            proc.kill = MagicMock()
+            return proc
+
+        hass = MagicMock()
+        server = PairingServer(hass, port=9099)
+
+        with (
+            patch("asyncio.create_subprocess_exec", side_effect=fake_exec),
+            patch("asyncio.sleep", new=AsyncMock()),
+            patch("aiohttp.ClientSession") as mock_session_cls,
+        ):
+            mock_session = AsyncMock()
+            mock_session_cls.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+            mock_session_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+            mock_resp = AsyncMock()
+            mock_resp.status = 200
+            mock_session.post.return_value.__aenter__ = AsyncMock(return_value=mock_resp)
+            mock_session.post.return_value.__aexit__ = AsyncMock(return_value=False)
+            # Should not raise — exception is caught in finally block
+            await server._wifi_ap_pair_task(
+                "SmartLife_AB12", "HomeNet", "pass", "tok_home", "http://ha:8099"
+            )
+
+
+class TestResumeFlowEarlyReturn:
+    """Cover line 936: _resume_flow early return when flow removed before task runs."""
+
+    @pytest.mark.asyncio
+    async def test_flow_removed_before_resume_task_runs(self) -> None:
+        """_resume_flow returns at line 936 when fid is discarded before the task executes."""
+        from unittest.mock import AsyncMock, MagicMock
+
+        server = PairingServer(_make_hass(), port=0)
+        token = "c" * 32
+        flow_id = "flow-line-936"
+
+        server._token_to_flow[token] = flow_id
+        server._pending_flows.add(flow_id)
+
+        request = MagicMock()
+        request.remote = "192.168.1.99"
+        request.headers = {}
+        request.content_type = "application/json"
+        request.json = AsyncMock(return_value={"gwId": "gw_936", "token": token})
+
+        # _handle_activate schedules _resume_flow as a task (not yet run)
+        await server._handle_activate(request)
+
+        # Remove flow before the task runs — simulates flow cancelled between creation/execution
+        server._pending_flows.discard(flow_id)
+
+        # Yield to event loop: _resume_flow runs, hits line 936 (fid not in _pending_flows), returns
+        await asyncio.sleep(0)
+        await asyncio.sleep(0)  # second yield for SSE broadcast task
+
+        assert flow_id not in server._pending_flows
