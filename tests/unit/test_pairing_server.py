@@ -2957,6 +2957,46 @@ class TestBindTokenEndpoint:
         finally:
             await cli.close()
 
+    def test_unregister_flow_cleans_up_token_binding(self) -> None:
+        """R29-1: unregister_flow must remove any token→flow bindings for that flow.
+
+        If the device never activates (user cancels the flow), the bind-token entry
+        would otherwise accumulate until the server stops.
+        """
+        hass = _make_hass()
+        hass.async_create_task = MagicMock()  # suppress auto-stop task creation
+        fresh_server = PairingServer(hass, port=0)
+
+        fresh_server._pending_flows.add("flow-a")
+        token_a = "ff" * 16
+        fresh_server._token_to_flow[token_a] = "flow-a"
+
+        # Sanity: binding is present
+        assert token_a in fresh_server._token_to_flow
+
+        # Unregistering the flow must also remove the token binding
+        fresh_server.unregister_flow("flow-a")
+        assert token_a not in fresh_server._token_to_flow
+
+    def test_unregister_flow_does_not_remove_other_flow_bindings(self) -> None:
+        """R29-1: unregister_flow only removes bindings for the unregistered flow."""
+        hass = _make_hass()
+        hass.async_create_task = MagicMock()
+        fresh_server = PairingServer(hass, port=0)
+
+        fresh_server._pending_flows.add("flow-a")
+        fresh_server._pending_flows.add("flow-b")
+        token_a = "aa" * 16
+        token_b = "bb" * 16
+        fresh_server._token_to_flow[token_a] = "flow-a"
+        fresh_server._token_to_flow[token_b] = "flow-b"
+
+        fresh_server.unregister_flow("flow-a")
+
+        # flow-a's token is gone; flow-b's is intact
+        assert token_a not in fresh_server._token_to_flow
+        assert fresh_server._token_to_flow[token_b] == "flow-b"
+
 
 # ── _handle_sse ────────────────────────────────────────────────────────────────
 

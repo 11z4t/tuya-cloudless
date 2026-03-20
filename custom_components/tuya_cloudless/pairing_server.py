@@ -451,6 +451,12 @@ class PairingServer:
             flow_id: HA config flow ID to remove.
         """
         self._pending_flows.discard(flow_id)
+        # R29-1: Also evict any token→flow bindings for this flow.  If the
+        # user cancelled the config flow before the device activated, the
+        # bind-token entry would otherwise accumulate until server stop.
+        stale = [tok for tok, fid in self._token_to_flow.items() if fid == flow_id]
+        for tok in stale:
+            del self._token_to_flow[tok]
         if not self._pending_flows and self._auto_stop_task is None:
             self._auto_stop_task = self._hass.async_create_task(
                 self._auto_stop_after_idle(), name="tuya-cloudless-auto-stop"
