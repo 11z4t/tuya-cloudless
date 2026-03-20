@@ -1303,3 +1303,100 @@ class TestReassembleChunksTotalZeroR41:
         chunk = bytes([0, 0, 0xAA, 0xBB])  # chunk_no=0, total=0, data=0xAABB
         with pytest.raises(PairingError, match="total_chunks is 0"):
             _reassemble_chunks([chunk])
+
+
+# ── R51-F7: BLE payload_len cap ───────────────────────────────────────────────
+
+
+class TestBlePayloadLenCapR51:
+    """R51-F7: decode_frame must reject frames with payload_len > _MAX_BLE_PAYLOAD."""
+
+    def _make_frame(self, payload: bytes, cmd: int = 0x00, seq: int = 0) -> bytes:
+        """Build a syntactically valid BLE frame."""
+        import struct
+
+        from tuya_cloudless.ble_provision import (
+            _FRAME_HEADER_FMT,
+            BLE_FRAME_MAGIC,
+            BLE_PROTOCOL_VERSION,
+            crc16_modbus,
+        )
+
+        header = struct.pack(
+            _FRAME_HEADER_FMT, BLE_FRAME_MAGIC, BLE_PROTOCOL_VERSION, cmd, seq, len(payload)
+        )
+        body = header + payload
+        crc = crc16_modbus(body)
+        return body + struct.pack("<H", crc)
+
+    def test_normal_payload_accepted(self) -> None:
+        """Payload within limit must decode without error."""
+        from tuya_cloudless.ble_provision import BleFrame
+
+        data = b"A" * 16  # well within 512
+        frame = self._make_frame(data)
+        bf = BleFrame.decode(frame)
+        assert bf.payload == data
+
+    def test_payload_at_limit_accepted(self) -> None:
+        """Payload of exactly _MAX_BLE_PAYLOAD bytes must be accepted."""
+        from tuya_cloudless.ble_provision import _MAX_BLE_PAYLOAD, BleFrame
+
+        data = b"B" * _MAX_BLE_PAYLOAD
+        frame = self._make_frame(data)
+        bf = BleFrame.decode(frame)
+        assert len(bf.payload) == _MAX_BLE_PAYLOAD
+
+    def test_oversized_payload_len_raises(self) -> None:
+        """payload_len > _MAX_BLE_PAYLOAD must raise PairingError before any allocation."""
+        import struct
+
+        from tuya_cloudless.ble_provision import (
+            _FRAME_HEADER_FMT,
+            _MAX_BLE_PAYLOAD,
+            BLE_FRAME_MAGIC,
+            BLE_PROTOCOL_VERSION,
+            BleFrame,
+            crc16_modbus,
+        )
+        from tuya_cloudless.exceptions import PairingError
+
+        oversized = _MAX_BLE_PAYLOAD + 1
+        # Build frame with oversized payload_len but tiny actual payload — we want
+        # the length-check rejection before the truncation check fires.
+        actual_payload = b"\x00" * 16
+        header = struct.pack(
+            _FRAME_HEADER_FMT,
+            BLE_FRAME_MAGIC,
+            BLE_PROTOCOL_VERSION,
+            0x00,
+            0,
+            oversized,  # claimed payload_len is too large
+        )
+        # Compute CRC on header only so frame passes magic check first
+        crc = crc16_modbus(header)
+        frame = header + actual_payload + struct.pack("<H", crc)
+
+        with pytest.raises(PairingError, match="too large"):
+            BleFrame.decode(frame)
+
+    def test_max_uint16_payload_len_raises(self) -> None:
+        """payload_len=65535 (max uint16) must be rejected immediately."""
+        import struct
+
+        from tuya_cloudless.ble_provision import (
+            _FRAME_HEADER_FMT,
+            BLE_FRAME_MAGIC,
+            BLE_PROTOCOL_VERSION,
+            BleFrame,
+        )
+        from tuya_cloudless.exceptions import PairingError
+
+        header = struct.pack(
+            _FRAME_HEADER_FMT, BLE_FRAME_MAGIC, BLE_PROTOCOL_VERSION, 0x00, 0, 65535
+        )
+        crc_bytes = b"\x00\x00"
+        frame = header + crc_bytes
+
+        with pytest.raises(PairingError, match="too large"):
+            BleFrame.decode(frame)

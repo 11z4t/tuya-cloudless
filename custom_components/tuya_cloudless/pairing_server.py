@@ -1274,11 +1274,13 @@ class PairingServer:
             ssids.remove(current_ssid)
             ssids.insert(0, current_ssid)
 
-        tuya_aps = [{"ssid": s} for s in ssids if _is_tuya_ap(s)]
         # R46-F7: Cap total SSID list to limit data exposure; current SSID (already
         # at index 0) is always included.  Rate-limiting (5/min) is the primary
         # defence; this bound also caps response payload size.
+        # R51-F4: Build tuya_aps AFTER the cap so it is also bounded by
+        # _MAX_SSID_SCAN_RESULTS (previously built before the slice, doubling payload).
         ssids = ssids[:_MAX_SSID_SCAN_RESULTS]
+        tuya_aps = [{"ssid": s} for s in ssids if _is_tuya_ap(s)]
 
         return web.json_response(
             {"ssids": ssids, "current_ssid": current_ssid, "tuya_aps": tuya_aps},
@@ -1588,6 +1590,9 @@ class PairingServer:
                 _LOGGER.debug("gw.json POST ended early (device switching WiFi): %s", exc)
 
         except (FileNotFoundError, OSError) as exc:
+            # R51-F3: Zero password immediately — exc.__traceback__ exposes frame locals
+            # to crash reporters; clearing it here prevents leakage before any logging.
+            home_pwd = ""
             # R37-5: Log only the exception type, not its str(). aiohttp OSError
             # subclasses may embed the request body (which contains WiFi password)
             # in their string representation.
@@ -1598,6 +1603,8 @@ class PairingServer:
                 json.dumps({"error": "WiFi control unavailable or connect failed"}),
             )
         except Exception as exc:
+            # R51-F3: Same zero-out for the catch-all handler.
+            home_pwd = ""
             # Use warning (not exception) to avoid printing a traceback that
             # could contain the WiFi password from the call-stack locals.
             _LOGGER.warning("Unexpected error in WiFi AP pair task: %s", type(exc).__name__)
@@ -1693,6 +1700,18 @@ class PairingServer:
         except OSError:
             current_mtime = None
         if self._ha_index_html_cache is None or self._ha_index_html_mtime != current_mtime:
+            # R51-F1: Apply the same size guard as _handle_index (R50-F5) so a large
+            # index.html placed by HACS does not exhaust memory on every HTTPS request.
+            try:
+                file_size = index_path.stat().st_size
+            except OSError:
+                file_size = 0
+            if file_size > _MAX_STATIC_FILE_BYTES:
+                return web.Response(
+                    status=503,
+                    text="Pairing UI file too large — this is a bug, please report it.",
+                    headers=_SECURITY_HEADERS,
+                )
             try:
                 html_raw = index_path.read_text(encoding="utf-8")
             except OSError:
@@ -1899,7 +1918,12 @@ class PairingServer:
                     return web.Response(status=400, text="Bad request")
                 if not file_path.is_file():
                     # Fallback: serve brand assets (icon.png, logo.png, etc.)
-                    brand_path = (_BRAND_DIR / path).resolve()
+                    # R51-F2: Guard brand_path.resolve() with OSError to handle
+                    # symlink loops or deeply-nested paths that raise on resolution.
+                    try:
+                        brand_path = (_BRAND_DIR / path).resolve()
+                    except OSError:
+                        return web.Response(status=400, text="Bad request")
                     if brand_path.is_relative_to(brand_resolved) and brand_path.is_file():
                         file_path = brand_path
                     else:
@@ -1921,8 +1945,20 @@ class PairingServer:
                         _MAX_STATIC_FILE_BYTES,
                     )
                     return web.Response(status=403, text="File too large")
+                # R51-F5: Validate actual bytes after read to close the TOCTOU window
+                # between stat() and read_bytes() (file can grow between the two calls).
+                try:
+                    data = file_path.read_bytes()
+                except OSError:
+                    return web.Response(status=503, text="File temporarily unavailable")
+                if len(data) > _MAX_STATIC_FILE_BYTES:
+                    _LOGGER.warning(
+                        "Static file %s grew past size limit after stat — denied",
+                        file_path.name,
+                    )
+                    return web.Response(status=403, text="File too large")
                 return web.Response(
-                    body=file_path.read_bytes(),
+                    body=data,
                     content_type=content_type,
                     headers={"Cache-Control": "max-age=3600"},
                 )

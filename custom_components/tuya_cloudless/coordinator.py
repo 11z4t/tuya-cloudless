@@ -858,10 +858,12 @@ class TuyaCloudlessCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             local_key=self._local_key,
             session_key=None,
         )
-        if len(resp_frame.payload) < 32:
+        # R51-F8: Require exactly 32 bytes — a payload with extra trailing data
+        # would silently accept a truncated/malformed key if only checked with < 32.
+        if len(resp_frame.payload) != 32:
             raise TuyaCloudlessError(
-                f"Session key negotiation: device response payload too short "
-                f"({len(resp_frame.payload)} bytes, expected at least 32)"
+                f"Session key negotiation: device response payload has unexpected size "
+                f"({len(resp_frame.payload)} bytes, expected exactly 32)"
             )
         device_pubkey = resp_frame.payload[:32]
 

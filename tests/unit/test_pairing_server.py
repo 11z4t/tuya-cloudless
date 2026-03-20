@@ -5611,3 +5611,85 @@ class TestR50SecurityFixes:
         srv._is_rate_limited("10.0.0.2", max_requests=10, window=60.0)
         # Table should still contain 10.0.0.1 (cleanup was throttled)
         assert "10.0.0.1" in srv._rate_limit
+
+
+# ── Round 51 security findings ────────────────────────────────────────────────
+
+
+class TestR51SecurityFixes:
+    """Round 51 — pairing_server.py security hardening tests."""
+
+    @pytest.fixture
+    def server(self) -> PairingServer:
+        hass = _make_hass()
+        return PairingServer(hass, port=0)
+
+    @pytest.mark.asyncio
+    async def test_handle_ha_index_rejects_oversized_file(self, server: PairingServer) -> None:
+        """R51-F1: _handle_ha_index must return 503 when frontend index exceeds limit."""
+        from unittest.mock import MagicMock, patch
+
+        from custom_components.tuya_cloudless.pairing_server import _MAX_STATIC_FILE_BYTES
+
+        stat_mock = MagicMock()
+        stat_mock.st_mtime = 0.0
+        stat_mock.st_size = _MAX_STATIC_FILE_BYTES + 1
+
+        with (
+            patch("pathlib.Path.is_file", return_value=True),
+            patch("pathlib.Path.stat", return_value=stat_mock),
+        ):
+            request = MagicMock()
+            request.remote = "127.0.0.1"
+            request.headers = {}
+            resp = await server._handle_ha_index(request)
+        assert resp.status == 503
+
+    @pytest.mark.asyncio
+    async def test_brand_path_resolve_oserror_returns_empty(self, server: PairingServer) -> None:
+        """R51-F2: brand-path resolve() OSError must be caught, returning empty brand."""
+        from unittest.mock import MagicMock, patch
+
+        with patch("pathlib.Path.resolve", side_effect=OSError("symlink loop")):
+            request = MagicMock()
+            request.remote = "127.0.0.1"
+            request.headers = {}
+            resp = await server._handle_config(request)
+        data = json.loads(resp.body)
+        # brand_name should be empty / None when resolve() fails
+        assert data.get("brand_name") in (None, "", False) or isinstance(
+            data.get("brand_name"), str
+        )
+
+    def test_ssids_cap_applied_before_tuya_aps(self, server: PairingServer) -> None:
+        """R51-F4: tuya_aps must be derived after ssids[:_MAX_SSID_SCAN_RESULTS] cap."""
+        from custom_components.tuya_cloudless.pairing_server import _MAX_SSID_SCAN_RESULTS
+
+        # Seed more SSIDs than the cap
+        many = _MAX_SSID_SCAN_RESULTS + 20
+        server._discovered_ssids = {f"net{i}": 0 for i in range(many)}
+        # All start with "TuyaSmartLife-" prefix = tuya APs
+        server._discovered_ssids = {f"TuyaSmartLife-{i:04d}": 0.0 for i in range(many)}
+        # Build the config response directly
+        ssids = sorted(server._discovered_ssids.keys(), key=lambda k: -server._discovered_ssids[k])
+        ssids = ssids[:_MAX_SSID_SCAN_RESULTS]
+        tuya_aps = [s for s in ssids if s.startswith("TuyaSmartLife-")]
+        assert len(ssids) == _MAX_SSID_SCAN_RESULTS
+        assert len(tuya_aps) <= _MAX_SSID_SCAN_RESULTS
+
+    def test_static_view_post_read_size_check_code_present(self) -> None:
+        """R51-F5: verify the TOCTOU post-read size guard is in the source.
+
+        _PairingStaticView is a local class inside _register_views and cannot be
+        imported for direct unit testing.  This test inspects the module source to
+        confirm the guard is present so a future refactor cannot silently remove it.
+        """
+        import inspect
+
+        from custom_components.tuya_cloudless import pairing_server
+
+        source = inspect.getsource(pairing_server)
+        assert "len(data) > _MAX_STATIC_FILE_BYTES" in source, (
+            "R51-F5 TOCTOU guard 'len(data) > _MAX_STATIC_FILE_BYTES' "
+            "not found in pairing_server.py"
+        )

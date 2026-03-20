@@ -1017,7 +1017,7 @@ class TestNegotiateSessionKeyOnce:
                 "tuya_cloudless.protocol.decode_frame",
                 return_value=mock_frame,
             ),
-            pytest.raises(TuyaCloudlessError, match="too short"),
+            pytest.raises(TuyaCloudlessError, match="exactly 32"),
         ):
             await coord._negotiate_session_key_once(reader, writer)
 
@@ -1657,3 +1657,49 @@ class TestLocalKeyLengthR48:
         """Empty key must raise ValueError at construction."""
         with pytest.raises(ValueError, match="16 bytes"):
             _make_coordinator(local_key="")
+
+
+# ── R51-F8: Session key — device public key exact size ────────────────────────
+
+
+class TestSessionKeyDevicePubkeyExactSizeR51:
+    """R51-F8: Session key negotiation must reject device response != 32 bytes."""
+
+    @pytest.mark.asyncio
+    async def test_long_device_pubkey_raises(self) -> None:
+        """Payload longer than 32 bytes must raise TuyaCloudlessError.
+
+        The < 32 check was upgraded to != 32 in R51-F8.  The short-payload path
+        is already covered by TestNegotiateSessionKeyOnce::test_short_device_pubkey;
+        this test exercises the *over-length* path that was previously missed.
+        """
+        import struct
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        from tuya_cloudless.exceptions import TuyaCloudlessError
+
+        coord = _make_coordinator(version="3.4")
+        reader = AsyncMock()
+        writer = MagicMock()
+        writer.write = MagicMock()
+        writer.drain = AsyncMock()
+
+        mock_keypair = MagicMock()
+        mock_keypair.public_key_bytes = b"\x42" * 32
+
+        # Frame with 33-byte payload — one byte too many
+        mock_frame = MagicMock()
+        mock_frame.payload = b"\x00" * 33  # Too long
+
+        _header = b"\x00" * 12 + struct.pack(">I", 16)
+        _payload = b"\x00" * 16
+        reader.readexactly.side_effect = [_header, _payload]
+
+        with (
+            patch("tuya_cloudless.crypto.generate_ecdh_keypair", return_value=mock_keypair),
+            patch("tuya_cloudless.protocol.encode_session_key_start", return_value=b"start_frame"),
+            patch("tuya_cloudless.protocol.split_frames", return_value=([b"frame"], b"")),
+            patch("tuya_cloudless.protocol.decode_frame", return_value=mock_frame),
+            pytest.raises(TuyaCloudlessError, match="exactly 32"),
+        ):
+            await coord._negotiate_session_key_once(reader, writer)

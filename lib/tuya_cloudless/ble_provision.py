@@ -81,6 +81,11 @@ _FRAME_HEADER_SIZE: Final[int] = struct.calcsize(_FRAME_HEADER_FMT)  # 8 bytes
 #: Session key size in bytes
 BLE_SESSION_KEY_SIZE: Final[int] = 16
 
+#: Maximum payload length accepted in a single BLE application frame (prevents
+#: memory exhaustion from a malicious/buggy BLE peripheral advertising a large
+#: payload_len in the 2-byte header field).
+_MAX_BLE_PAYLOAD: Final[int] = 512
+
 #: Random nonce size exchanged in handshake
 BLE_NONCE_SIZE: Final[int] = 16
 
@@ -200,6 +205,13 @@ class BleFrame:
             raise PairingError(f"BLE frame bad magic: expected 0x55AA, got 0x{magic.hex().upper()}")
 
         _magic, _version, cmd, seq, payload_len = struct.unpack_from(_FRAME_HEADER_FMT, data)
+
+        # R51-F7: Reject oversized payload_len before allocating or reading
+        # anything — a malicious BLE peripheral can set this to 65535.
+        if payload_len > _MAX_BLE_PAYLOAD:
+            raise PairingError(
+                f"BLE frame payload too large: {payload_len} bytes (max {_MAX_BLE_PAYLOAD})"
+            )
 
         frame_end = _FRAME_HEADER_SIZE + payload_len
         if len(data) < frame_end + 2:

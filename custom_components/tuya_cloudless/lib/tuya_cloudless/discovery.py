@@ -353,7 +353,10 @@ class DiscoveryListener:
                 KeyError,
                 OverflowError,  # int(float("inf")) from malformed JSON numeric fields
             ):
-                _LOGGER.debug("Failed to parse discovery datagram from %s", addr[0], exc_info=True)
+                # R51-F6: Do NOT pass exc_info=True — the formatted traceback can include
+                # local_key bytes present in crypto call-frames (e.g. derive_ecb_key),
+                # leaking key material to log collectors / HA diagnostic dumps.
+                _LOGGER.debug("Failed to parse discovery datagram from %s", addr[0])
 
     def _parse_datagram(self, data: bytes, source_ip: str) -> DiscoveredDevice | None:
         """Parse a raw UDP datagram into a :class:`DiscoveredDevice`.
