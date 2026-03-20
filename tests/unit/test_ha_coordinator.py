@@ -112,7 +112,11 @@ class TestCoordinatorConstants:
         assert _MAX_CONSECUTIVE_ERRORS == 5
 
     def test_max_buffer_bytes(self) -> None:
-        assert _MAX_BUFFER_BYTES == 65536
+        # R34-6: buffer must be larger than MAX_PAYLOAD_SIZE (65536) + frame overhead
+        # to avoid rejecting valid max-size frames during TCP reassembly.
+        from tuya_cloudless.const import MAX_PAYLOAD_SIZE
+
+        assert _MAX_BUFFER_BYTES > MAX_PAYLOAD_SIZE + 64  # room for header + checksum + suffix
 
 
 class TestNextSequence:

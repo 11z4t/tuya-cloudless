@@ -51,8 +51,12 @@ _LOGGER = logging.getLogger(__name__)
 #: Number of consecutive frame decode errors before triggering reconnect
 _MAX_CONSECUTIVE_ERRORS = 5
 
-#: Maximum receive buffer — forces reconnect if exceeded (guards against corrupt streams)
-_MAX_BUFFER_BYTES = 65_536  # 64 KB
+#: Maximum receive buffer — forces reconnect if exceeded (guards against corrupt streams).
+# R34-6: Must be larger than MAX_PAYLOAD_SIZE (65536) + FRAME_HEADER_SIZE (16) +
+# max checksum (32 HMAC-SHA256) + FRAME_SUFFIX_SIZE (4) = 65588 bytes, otherwise a
+# valid max-size frame arriving in multiple TCP chunks triggers a spurious reconnect
+# before the full frame can be assembled.  128 KiB gives comfortable headroom.
+_MAX_BUFFER_BYTES = 128 * 1024  # 128 KB
 
 #: Maximum number of distinct DP keys allowed per device (prevents memory exhaustion
 #: from a malicious device flooding the coordinator with arbitrary key names).

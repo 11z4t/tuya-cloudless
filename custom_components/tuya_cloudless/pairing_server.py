@@ -736,7 +736,13 @@ class PairingServer:
         # may retry the activation POST if it doesn't receive a response in time.
         # Generating a different key on a retry would cause a key mismatch when the
         # user configures HA using the key shown on the done screen.
-        if token and token in self._results and self._results[token].gw_id == gw_id:
+        # R34-4: Mark duplicate activations so we skip flow-resume below.  Re-resuming
+        # a flow that already received credentials on the first call could inject old
+        # credentials into a concurrently registered, unrelated config flow.
+        _is_duplicate_activation = bool(
+            token and token in self._results and self._results[token].gw_id == gw_id
+        )
+        if _is_duplicate_activation:
             result = self._results[token]
             local_key = result.local_key
             _LOGGER.info(
@@ -787,7 +793,11 @@ class PairingServer:
         # flows.  BLE and WiFi-AP pairing always generate a 32-hex-char token, so
         # legitimate activations always have one.  Tokenless devices get their result
         # stored but must have a human manually copy the key from the result endpoint.
-        if token and self._pending_flows:
+        # R34-4: Skip flow-resume for duplicate (idempotent) activations — the flow
+        # already received its credentials on the first call.  Re-resuming would
+        # inject old credentials from a completed session into a concurrently
+        # registered, unrelated config flow.
+        if token and self._pending_flows and not _is_duplicate_activation:
             flow_data = {
                 "gw_id": gw_id,
                 "local_key": local_key,
@@ -1894,7 +1904,11 @@ class PairingServer:
         current = self._hass.data.get(DOMAIN, {}).get(_KEY_PAIRING_SERVER)
         if current is self:
             _LOGGER.info("Tuya Cloudless pairing server idle for 60 s — stopping automatically")
-            await stop_pairing_server(self._hass)
+            # R34-2: Re-check _pending_flows immediately before stop_pairing_server.
+            # A new config flow can register between the check above and the awaited
+            # stop call; that flow's activation would be silently discarded by stop().
+            if not self._pending_flows:
+                await stop_pairing_server(self._hass)
 
         self._auto_stop_task = None
 

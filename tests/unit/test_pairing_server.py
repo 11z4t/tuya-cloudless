@@ -2651,6 +2651,45 @@ class TestActivateResponseStructure:
             "Result must have the new local_key, not the one from the first activation"
         )
 
+    async def test_duplicate_activation_does_not_resume_flows(self, server: PairingServer) -> None:
+        """R34-4: Duplicate activation (idempotency path) must not re-resume config flows.
+
+        Re-resuming on a duplicate activation could inject stale credentials into an
+        unrelated, concurrently registered config flow if the original token is replayed.
+        """
+        token = _TOKEN_DEDUP
+        server._pending_flows.add("flow-a")
+        # Pre-seed the result so the next activation hits the idempotency path
+        from custom_components.tuya_cloudless.pairing_server import ActivationResult
+
+        server._results[token] = ActivationResult(
+            gw_id="dedup_gw", product_key="pk", local_key="1234" * 4, ip_address="1.2.3.4"
+        )
+
+        task_calls: list[object] = []
+
+        def _capture_task(coro: object, **kw: object) -> object:
+            task_calls.append(coro)
+            return asyncio.ensure_future(coro)  # type: ignore[arg-type]
+
+        server._hass.async_create_task = MagicMock(side_effect=_capture_task)  # type: ignore[attr-defined]
+
+        ts = TestServer(server._app)
+        cli = TestClient(ts)
+        await cli.start_server()
+        try:
+            await cli.post(
+                "/api/tuya/device/active",
+                json={"gw_id": "dedup_gw", "token": token},
+            )
+        finally:
+            await cli.close()
+
+        assert not task_calls, (
+            "Duplicate activation must NOT call async_create_task to resume flows — "
+            "the flow already received credentials on the first activation"
+        )
+
     async def test_timezone_falls_back_to_utc_when_not_string(self, client: TestClient) -> None:
         """When hass.config.time_zone is not a string, timezone defaults to 'UTC'."""
         # The default mock has a MagicMock as time_zone (not a string) →  UTC
@@ -3167,6 +3206,41 @@ class TestAutoStopAfterIdle:
             await srv._auto_stop_after_idle()
 
         assert stop_called
+
+    async def test_does_not_stop_when_not_current_server(self) -> None:
+        """R34-2: If a replacement server has been installed, the old server must not stop.
+
+        The identity check `current is self` prevents a stale auto-stop task from
+        stopping the replacement server that was started while the old one was idle.
+        """
+        from custom_components.tuya_cloudless.const import DOMAIN
+        from custom_components.tuya_cloudless.pairing_server import _KEY_PAIRING_SERVER
+
+        hass = _make_hass()
+        hass.data = {}
+
+        old_srv = PairingServer(hass, port=0)
+        new_srv = PairingServer(hass, port=0)
+        # A replacement server was installed — old_srv is no longer current
+        hass.data[DOMAIN] = {_KEY_PAIRING_SERVER: new_srv}
+
+        stop_called = []
+
+        async def fake_stop_pairing_server(h: object) -> None:
+            stop_called.append(True)
+
+        with (
+            patch("asyncio.sleep", new_callable=AsyncMock),
+            patch(
+                "custom_components.tuya_cloudless.pairing_server.stop_pairing_server",
+                side_effect=fake_stop_pairing_server,
+            ),
+        ):
+            await old_srv._auto_stop_after_idle()
+
+        assert not stop_called, (
+            "Stale auto-stop task on old_srv must not stop the replacement server"
+        )
 
 
 # ── get_pairing_server ────────────────────────────────────────────────────────
