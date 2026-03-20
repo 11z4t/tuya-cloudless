@@ -844,6 +844,48 @@ class TestWifiScan:
         assert "HomeNet" not in ssids_in_aps
         assert "OfficeWifi" not in ssids_in_aps
 
+    async def test_pass2_adds_new_ssids_not_in_pass1(self, client: TestClient) -> None:
+        """SSIDs that appear only in pass-2 (cache re-read) are added to results (lines 1278-1279).
+
+        Pass 1 (rescan=yes) returns HomeNet only.
+        Pass 2 (rescan=no, cache) returns HomeNet + OfficeWifi.
+        OfficeWifi is new in pass 2 — it must appear in the final ssids list.
+        """
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        scan_call_count = 0
+
+        async def fake_exec(*args: object, **kwargs: object) -> MagicMock:
+            nonlocal scan_call_count
+            proc = MagicMock()
+            proc.kill = MagicMock()
+            # The _get_default_ssid call uses --fields ACTIVE,SSID
+            if "--fields" in args and "ACTIVE,SSID" in args:
+                proc.communicate = AsyncMock(return_value=(b"", b""))
+                return proc
+            # Scan calls: first call returns HomeNet only, second adds OfficeWifi
+            scan_call_count += 1
+            if scan_call_count == 1:
+                proc.communicate = AsyncMock(return_value=(b"HomeNet\n", b""))
+            else:
+                proc.communicate = AsyncMock(return_value=(b"HomeNet\nOfficeWifi\n", b""))
+            return proc
+
+        with (
+            patch("asyncio.create_subprocess_exec", side_effect=fake_exec),
+            patch("asyncio.sleep"),
+        ):
+            resp = await client.get("/api/provision/wifi-scan")
+
+        assert resp.status == 200
+        data = await resp.json()
+        assert "HomeNet" in data["ssids"]
+        # OfficeWifi is new in pass 2 — must be present
+        assert "OfficeWifi" in data["ssids"]
+        # Each SSID appears exactly once (deduplication works correctly)
+        assert data["ssids"].count("HomeNet") == 1
+        assert data["ssids"].count("OfficeWifi") == 1
+
     async def test_wifi_scan_rate_limited(self, server: PairingServer) -> None:
         """wifi-scan returns 429 when per-IP rate limit (5/min) is exceeded."""
         ts = TestServer(server._app)
@@ -1952,6 +1994,45 @@ class TestWifiApPair:
 
         error_events = [ev for ev, _ in broadcast_calls if ev == "wifi_ap_error"]
         assert len(error_events) >= 1, "Expected at least one wifi_ap_error SSE event"
+
+    async def test_non_dict_json_body_returns_400(self, client: TestClient) -> None:
+        """JSON array body (not a dict) returns 400 (line 1405)."""
+        resp = await client.post(
+            "/api/provision/wifi-ap-pair",
+            headers={"Content-Type": "application/json"},
+            data='["not", "a", "dict"]',
+        )
+        assert resp.status == 400
+
+    async def test_valid_flow_id_creates_token_binding(self, server: PairingServer) -> None:
+        """Valid registered flow_id causes token→flow binding creation (line 1480)."""
+        from unittest.mock import patch
+
+        flow_id = "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+        server._pending_flows.add(flow_id)
+        ts = TestServer(server._app)
+        cli = TestClient(ts)
+        await cli.start_server()
+        try:
+            with patch(
+                "custom_components.tuya_cloudless.pairing_server.PairingServer._wifi_ap_pair_task"
+            ):
+                resp = await cli.post(
+                    "/api/provision/wifi-ap-pair",
+                    json={
+                        "ap_ssid": "SmartLife_AB12",
+                        "home_ssid": "HomeNet",
+                        "home_password": "pass",
+                        "flow_id": flow_id,
+                    },
+                )
+            assert resp.status == 200
+            data = await resp.json()
+            token = data["token"]
+            # The token should be bound to the provided flow_id
+            assert server._token_to_flow.get(token) == flow_id
+        finally:
+            await cli.close()
 
     async def test_wifi_ap_pairing_set_cleared_after_task_completes(
         self, server: PairingServer
