@@ -22,7 +22,8 @@ rules:
     status: done
     comment: All dependencies in manifest.json requirements. No implicit installs.
   docs-actions:
-    status: todo
+    status: done
+    comment: docs/wiki/Actions.md — send_raw_dps service documented with parameters and example.
   docs-high-level-description:
     status: done
     comment: README and ARCHITECTURE.md present.
@@ -30,7 +31,8 @@ rules:
     status: done
     comment: README covers HACS and manual install.
   docs-removal-instructions:
-    status: todo
+    status: done
+    comment: docs/wiki/Removal.md — covers removing a single device and the full integration via HACS or manually.
   entity-event-setup:
     status: done
     comment: Coordinator uses DataUpdateCoordinator — entities subscribe via async_write_ha_state.
@@ -61,9 +63,11 @@ rules:
     status: done
     comment: async_unload_entry implemented; stops coordinator and unloads platforms.
   docs-configuration-parameters:
-    status: todo
+    status: done
+    comment: docs/wiki/Configuration.md — all config flow fields and advanced options documented.
   docs-installation-parameters:
-    status: todo
+    status: done
+    comment: docs/wiki/Installation.md and docs/wiki/Configuration.md — HACS install steps and setup parameters documented.
   entity-unavailable:
     status: done
     comment: available property returns False when TCP is disconnected.
@@ -84,7 +88,7 @@ rules:
     comment: async_step_reconfigure implemented for IP/key update without re-add.
   test-coverage:
     status: done
-    comment: 97% coverage across 733 tests (PLAT-641). All branches covered.
+    comment: 99% coverage across ~800 tests (PLAT-641). All critical branches covered.
 
   # ── Gold ────────────────────────────────────────────────────────────────────
   devices:
@@ -97,7 +101,8 @@ rules:
     status: done
     comment: UDP discovery on port 6666/6667 via TuyaDiscoveryListener.
   docs-device-trigger:
-    status: todo
+    status: done
+    comment: docs/wiki/Device-Triggers.md — connected, disconnected, dp_changed triggers documented with YAML examples.
   entity-category:
     status: done
     comment: last_seen and reconnects sensors use EntityCategory.DIAGNOSTIC.
