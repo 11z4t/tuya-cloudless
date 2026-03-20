@@ -1319,6 +1319,11 @@ class PairingServer:
             activator_url: HTTP URL of the fake-cloud endpoint on the HA host.
         """
         prev_connection: str | None = None
+        # R36-2: Track whether step 2 (Tuya AP connect) succeeded.  The finally
+        # block must only attempt home-WiFi reconnect when the host's WiFi was
+        # actually changed; otherwise an unauthenticated caller can force the
+        # host to join an arbitrary network via a crafted home_ssid.
+        _connected_to_tuya_ap = False
 
         async def _run(cmd: list[str], timeout: float = 20.0) -> tuple[int, str]:
             """Run a shell command and return (returncode, stdout)."""
@@ -1361,6 +1366,7 @@ class PairingServer:
             )
             if rc != 0:
                 raise OSError(f"nmcli connect to {ap_ssid!r} failed (rc={rc})")
+            _connected_to_tuya_ap = True  # R36-2: host WiFi has been changed
 
             # Short wait for IP assignment on the Tuya AP (192.168.4.x)
             await asyncio.sleep(2)
@@ -1431,9 +1437,13 @@ class PairingServer:
                     )
                 except (Exception, asyncio.CancelledError) as exc:
                     _LOGGER.warning("WiFi AP pair: reconnect failed: %s", exc)
-            else:
+            elif _connected_to_tuya_ap:
                 # No saved connection — reconnect to home WiFi directly so we
                 # don't remain stuck on the Tuya AP after provisioning.
+                # R36-2: Only run this when we actually connected to the Tuya AP
+                # (i.e., the host's WiFi was changed).  Skipping when step 2 never
+                # succeeded prevents an unauthenticated caller from forcing the host
+                # to join an arbitrary network by supplying a crafted home_ssid.
                 _LOGGER.info(
                     "WiFi AP pair: no saved connection; reconnecting to home WiFi (%s)",
                     home_ssid,
@@ -1890,6 +1900,16 @@ class PairingServer:
         ]
         for token in expired:
             del self._results[token]
+
+        # R36-4: Purge _token_to_flow entries whose flow is no longer active.
+        # Without this, abandoned pairing flows (no browser cancel) accumulate
+        # indefinitely because the activation event (which pops the token) never
+        # fires.  Unlike _results, _token_to_flow has no size cap or TTL.
+        stale_tokens = [
+            tok for tok, fid in self._token_to_flow.items() if fid not in self._pending_flows
+        ]
+        for tok in stale_tokens:
+            del self._token_to_flow[tok]
 
     async def _auto_stop_after_idle(self) -> None:
         """Stop the server 60 s after the last flow unregisters, if still idle."""

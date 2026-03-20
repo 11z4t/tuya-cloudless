@@ -488,6 +488,21 @@ class TestConfigFlowStepConfirm:
         await flow.async_step_confirm(user_input={})
         flow.async_show_form.assert_called_once()
 
+    @pytest.mark.asyncio
+    async def test_empty_device_aborts_instead_of_keyerror(self) -> None:
+        """R36-3: async_step_confirm with empty _device aborts cleanly (no KeyError)."""
+        from custom_components.tuya_cloudless.config_flow import TuyaCloudlessConfigFlow
+
+        flow = _make_config_flow()
+        flow.async_step_confirm = TuyaCloudlessConfigFlow.async_step_confirm.__get__(flow)
+        flow.async_abort = MagicMock(return_value={"type": "abort"})
+        flow._device = {}  # simulate incomplete/partial flow state
+
+        result = await flow.async_step_confirm(user_input={})
+
+        flow.async_abort.assert_called_once_with(reason="invalid_device_data")
+        assert result["type"] == "abort"
+
 
 class TestConfigFlowCheckConnection:
     @pytest.mark.asyncio
@@ -2286,6 +2301,37 @@ class TestConfigFlowZeroconfigNew:
         discovery_info.host = "10.0.0.7"
         discovery_info.properties = {}
         discovery_info.name = "._tuya._tcp.local."
+
+        await flow.async_step_zeroconf(discovery_info)
+
+        flow.async_abort.assert_called_once_with(reason="no_device_id")
+
+    @pytest.mark.asyncio
+    async def test_zeroconf_aborts_on_invalid_host(self) -> None:
+        """R36-1: mDNS-advertised invalid host is rejected before storing in _device."""
+        flow = self._make_zeroconf_flow()
+        _restore_method(flow, "async_step_zeroconf")
+
+        discovery_info = MagicMock()
+        discovery_info.host = "not-an-ip"  # invalid host from rogue mDNS responder
+        discovery_info.properties = {"gwId": "bf123"}
+        discovery_info.name = "bf123._tuya._tcp.local."
+
+        await flow.async_step_zeroconf(discovery_info)
+
+        flow.async_abort.assert_called_once_with(reason="no_device_id")
+        assert flow._device == {}  # must not have been populated
+
+    @pytest.mark.asyncio
+    async def test_zeroconf_aborts_on_non_public_host(self) -> None:
+        """R36-1: loopback/localhost from rogue mDNS responder is rejected."""
+        flow = self._make_zeroconf_flow()
+        _restore_method(flow, "async_step_zeroconf")
+
+        discovery_info = MagicMock()
+        discovery_info.host = "localhost"  # would bypass private-IP check
+        discovery_info.properties = {"gwId": "bf456"}
+        discovery_info.name = "bf456._tuya._tcp.local."
 
         await flow.async_step_zeroconf(discovery_info)
 

@@ -748,8 +748,19 @@ class TuyaCloudlessConfigFlow(ConfigFlow, domain=DOMAIN):
         errors: dict[str, str] = {}
 
         if user_input is not None:
-            gw_id = self._device[CONF_GW_ID]
-            ip_address = self._device[CONF_IP_ADDRESS]
+            # R36-3: Use .get() to avoid KeyError if _device was never fully populated
+            # (e.g. HA restores a partial flow after restart or a user POSTs directly
+            # to the flow endpoint without completing prior steps).
+            gw_id = self._device.get(CONF_GW_ID, "")
+            ip_address = self._device.get(CONF_IP_ADDRESS, "")
+            if not _GW_ID_RE.match(gw_id) or not _validate_ip(ip_address):
+                _LOGGER.warning(
+                    "confirm reached with missing/invalid device data "
+                    "(gw_id=%r ip=%r) — aborting flow",
+                    gw_id[:64],
+                    ip_address,
+                )
+                return self.async_abort(reason="invalid_device_data")
             dev_local_key = self._device.get(CONF_LOCAL_KEY, "")
             dev_version = self._device.get(CONF_PROTOCOL_VERSION, DEFAULT_PROTOCOL_VERSION)
 
@@ -963,6 +974,12 @@ class TuyaCloudlessConfigFlow(ConfigFlow, domain=DOMAIN):
             Config flow result.
         """
         host = discovery_info.host
+        # R36-1: Validate host before use — mDNS responders are attacker-controlled
+        # on the LAN.  An invalid or private-range IP would reach _check_connection()
+        # and be persisted to the config entry, enabling SSRF.
+        if not _validate_ip(host):
+            _LOGGER.warning("Zeroconf: invalid host %r — aborting", host[:64])
+            return self.async_abort(reason="no_device_id")
         props = discovery_info.properties
 
         gw_id: str | None = props.get("gwId") or props.get("deviceId")

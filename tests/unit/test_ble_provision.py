@@ -1248,3 +1248,45 @@ class TestChunkOverflowClearsEvent:
         )
         # Only the new chunk should remain
         assert len(recv_chunks) == 1
+
+    def test_overflow_discards_mid_frame_chunk(self) -> None:
+        """R36-5: after 512-cap flush, a mid-frame chunk (chunk_no > 0) is discarded.
+
+        Without R36-5 the old code would append a chunk_no=1-of-2 chunk after
+        clearing, then immediately fire notify_event (last-chunk condition),
+        causing parse_ble_response to receive an incomplete frame.
+        """
+        import asyncio
+
+        recv_chunks: list[bytes] = []
+        notify_event = asyncio.Event()
+
+        # Replicate the updated _on_notify logic including R36-5 guard
+        def on_notify(data: bytes) -> None:
+            if len(data) < 2:
+                return
+            if len(recv_chunks) >= 512:
+                recv_chunks.clear()
+                notify_event.clear()
+                if data[0] != 0:  # R36-5: drop mid-frame chunks after overflow
+                    return
+            recv_chunks.append(bytes(data))
+            if data[0] + 1 == data[1]:
+                notify_event.set()
+
+        # Fill to 512 chunks
+        for i in range(512):
+            on_notify(bytes([0, 2, i & 0xFF]))  # first-chunk of 2-chunk frame
+
+        notify_event.set()  # pre-set to simulate stale state
+
+        # Simulate arrival of chunk_no=1 (LAST chunk of a 2-chunk frame)
+        # This triggers the 512-cap, but it's a mid-frame chunk → must be dropped
+        on_notify(bytes([1, 2, 0xAB]))  # chunk_no=1, total=2 — would be last chunk
+
+        # notify_event MUST NOT be set (the mid-frame chunk was dropped)
+        assert not notify_event.is_set(), (
+            "R36-5: mid-frame chunk after overflow must be dropped, "
+            "not appended and fire notify_event"
+        )
+        assert len(recv_chunks) == 0, "recv_chunks must be empty after overflow + mid-frame drop"

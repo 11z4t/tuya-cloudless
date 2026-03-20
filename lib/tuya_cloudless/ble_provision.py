@@ -591,12 +591,15 @@ class BleProvisioner:
                 return
             # Cap to prevent unbounded memory growth from a malicious peripheral
             # sending chunks without ever setting the last-chunk flag.
-            # After clearing, fall through to append: the current chunk may be the
-            # first/only chunk of a new legitimate frame, so discarding it would
-            # prevent notify_event from ever being set and cause a timeout.
             if len(recv_chunks) >= 512:
                 recv_chunks.clear()
                 notify_event.clear()  # Reset so the next frame's last chunk sets it
+                # R36-5: Only restart accumulation on chunk_no == 0 (first chunk of
+                # a new frame).  If the incoming chunk is mid-frame (chunk_no > 0),
+                # the preceding chunks were discarded by the cap so this chunk belongs
+                # to an already-broken frame — drop it and wait for a fresh start.
+                if data[0] != 0:
+                    return
             recv_chunks.append(bytes(data))
             if data[0] + 1 == data[1]:  # last chunk (chunk_no + 1 == total)
                 notify_event.set()

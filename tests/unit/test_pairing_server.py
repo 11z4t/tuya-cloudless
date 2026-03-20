@@ -3037,6 +3037,42 @@ class TestBindTokenEndpoint:
         assert fresh_server._token_to_flow[token_b] == "flow-b"
 
 
+# ── _expire_old_results / R36-4 ────────────────────────────────────────────────
+
+
+class TestExpireStaleTokenToFlow:
+    def test_expire_purges_token_to_flow_for_removed_flows(self) -> None:
+        """R36-4: _expire_old_results removes _token_to_flow entries for non-pending flows."""
+        hass = _make_hass()
+        hass.async_create_task = MagicMock()
+        server = PairingServer(hass, port=0)
+
+        server._pending_flows.add("active-flow")
+        server._token_to_flow["tok-active"] = "active-flow"
+        server._token_to_flow["tok-orphan"] = "abandoned-flow"  # no matching pending flow
+
+        server._expire_old_results()
+
+        assert "tok-orphan" not in server._token_to_flow
+        assert server._token_to_flow.get("tok-active") == "active-flow"
+
+    def test_expire_keeps_active_tokens(self) -> None:
+        """R36-4: _expire_old_results does not remove tokens for active flows."""
+        hass = _make_hass()
+        hass.async_create_task = MagicMock()
+        server = PairingServer(hass, port=0)
+
+        server._pending_flows.add("flow-1")
+        server._pending_flows.add("flow-2")
+        server._token_to_flow["tok1"] = "flow-1"
+        server._token_to_flow["tok2"] = "flow-2"
+
+        server._expire_old_results()
+
+        assert server._token_to_flow["tok1"] == "flow-1"
+        assert server._token_to_flow["tok2"] == "flow-2"
+
+
 # ── _handle_sse ────────────────────────────────────────────────────────────────
 
 
