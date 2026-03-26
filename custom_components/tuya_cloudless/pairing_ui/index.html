@@ -612,10 +612,18 @@
     <span id="err-browser-unsupported-body">Web Bluetooth requires Chrome or Edge (desktop or Android). Please open this page in Chrome or Edge.</span>
   </div>
 
-  <!-- Step 0 — Device discovery -->
+  <!-- Step 1 — Device discovery -->
   <div id="panel-devices" class="step-panel hidden">
-    <h2 class="step-title" id="devices-title">Find device</h2>
-    <p class="step-desc" id="devices-desc">Devices found nearby appear automatically. Or use Bluetooth to scan.</p>
+    <h2 class="step-title" id="devices-title">Step 1 — Put device in pairing mode</h2>
+
+    <!-- How-to box -->
+    <div style="background:rgba(249,115,22,0.08);border:1px solid rgba(249,115,22,0.25);border-radius:8px;padding:12px 14px">
+      <ol class="pairing-steps" id="devices-how-to" style="margin:0">
+        <li id="devices-how-1">Hold the setup button <strong>5–10 seconds</strong> until the LED flashes rapidly</li>
+        <li id="devices-how-2">The device broadcasts a WiFi network called <strong>SmartLife-XXXX</strong> or <strong>Tuya-XXXX</strong></li>
+        <li id="devices-how-3">It appears below — click it to start pairing</li>
+      </ol>
+    </div>
 
     <!-- Screen reader live region — announces device discovery results -->
     <div id="devices-status" role="status" aria-live="polite" aria-atomic="true" class="sr-only"></div>
@@ -667,10 +675,10 @@
     </button>
   </div>
 
-  <!-- Step 1 — WiFi credentials -->
+  <!-- Step 2 — WiFi credentials -->
   <div id="panel-wifi" class="step-panel hidden">
-    <h2 class="step-title" id="step1-title">WiFi credentials</h2>
-    <p class="step-desc" id="step1-desc">Your device will connect to this network after pairing.</p>
+    <h2 class="step-title" id="step1-title">Step 2 — Your home WiFi</h2>
+    <p class="step-desc" id="step1-desc">Enter the network your Tuya device should connect to after pairing. <strong style="color:var(--text)">Note: 2.4 GHz only</strong> — most Tuya devices do not support 5 GHz.</p>
 
     <form id="wifi-form" novalidate>
       <div>
@@ -732,7 +740,36 @@
     </div>
   </div>
 
-  <!-- Step 2 — BLE pairing -->
+  <!-- Step 3 — Connect to device AP (WiFi AP path only) -->
+  <div id="panel-connect-ap" class="step-panel hidden">
+    <h2 class="step-title" id="connect-ap-title">Step 3 — Connect to the device</h2>
+    <p class="step-desc" id="connect-ap-desc">The pairing token is ready. Now connect this phone or computer to the device's WiFi network.</p>
+
+    <!-- Big instruction box -->
+    <div style="background:rgba(249,115,22,0.08);border:1px solid rgba(249,115,22,0.3);border-radius:10px;padding:16px 16px">
+      <ol class="pairing-steps" id="connect-ap-steps" style="font-size:0.92rem;gap:10px;margin:0">
+        <li id="connect-ap-step-1">Open <strong>WiFi settings</strong> on this device</li>
+        <li id="connect-ap-step-2">Connect to <strong id="connect-ap-ssid" style="color:var(--accent)">SmartLife-XXXX</strong></li>
+        <li id="connect-ap-step-3">Return to this tab — pairing completes automatically</li>
+      </ol>
+    </div>
+
+    <!-- Waiting indicator -->
+    <div id="connect-ap-waiting" style="display:flex;align-items:center;gap:10px;color:var(--muted);font-size:0.88rem">
+      <span class="spinner" aria-hidden="true"></span>
+      <span id="connect-ap-waiting-label">Waiting for connection…</span>
+    </div>
+
+    <!-- Inline status (error / success messages) -->
+    <div id="connect-ap-status" class="status-box hidden" role="alert" aria-live="assertive"></div>
+
+    <button class="btn btn-sm" id="btn-cancel-connect-ap" type="button"
+            style="background:var(--surface-2);color:var(--text)">
+      <span id="btn-cancel-connect-ap-label">✕ Cancel</span>
+    </button>
+  </div>
+
+  <!-- Step 2 (BLE) / Step 3 (BLE after WiFi AP) — BLE pairing -->
   <div id="panel-ble" class="step-panel hidden">
     <h2 class="step-title">
       <span id="step2-title">Pair device via Bluetooth</span>

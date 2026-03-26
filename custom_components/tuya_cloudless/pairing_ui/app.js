@@ -100,8 +100,10 @@ function t(key, vars) {
       footer_github:      "GitHub",
       footer_no_cloud:    "No cloud account required",
       // Device discovery panel
-      device_panel_title:    "Find device",
-      device_panel_desc:     "Devices found nearby appear automatically. Or use Bluetooth to scan.",
+      device_panel_title:    "Step 1 \u2014 Put device in pairing mode",
+      devices_how_1:         "Hold the setup button \u003cstrong\u003e5\u201310 seconds\u003c/strong\u003e until the LED flashes rapidly",
+      devices_how_2:         "The device broadcasts a WiFi network called \u003cstrong\u003eSmartLife-XXXX\u003c/strong\u003e or \u003cstrong\u003eTuya-XXXX\u003c/strong\u003e",
+      devices_how_3:         "It appears below \u2014 click it to start pairing",
       looking_for_devices:   "Looking for devices\u2026",
       no_devices_auto_found: "No Tuya devices found nearby. Use Bluetooth below, or put the device in pairing mode and try again.",
       scan_refresh:          "Refresh",
@@ -137,6 +139,14 @@ function t(key, vars) {
       spin_sending:   "Sending WiFi credentials\u2026",
       spin_waiting:   "Credentials sent \u2713 \u2014 waiting for device to activate\u2026",
       success_activated: "\u2713 Device activated! Local key generated.",
+      // Connect-to-AP panel (step 3 of WiFi AP flow)
+      connect_ap_title:         "Step 3 \u2014 Connect to the device",
+      connect_ap_desc:          "The pairing token is ready. Now connect this phone or computer to the device\u2019s WiFi network.",
+      connect_ap_step_1:        "Open \u003cstrong\u003eWiFi settings\u003c/strong\u003e on this device",
+      connect_ap_step_2_pre:    "Connect to",
+      connect_ap_step_3:        "Return to this tab \u2014 pairing completes automatically",
+      connect_ap_waiting:       "Waiting for connection\u2026",
+      connect_ap_cancel:        "\u2715 Cancel",
       // WiFi AP status
       wifi_ap_connecting: "Connecting to device AP\u2026",
       wifi_ap_waiting:    "Credentials sent \u2014 waiting for device to join your network\u2026",
@@ -784,6 +794,39 @@ document.addEventListener("click", (e) => {
 let _ssid = "";
 let _pwd  = "";
 
+function showConnectApPanel(apSsid) {
+  // Hide the credentials form, show the dedicated connect-to-AP instruction panel
+  document.getElementById("panel-wifi").classList.add("hidden");
+  document.getElementById("panel-ble").classList.add("hidden");
+  const panel = document.getElementById("panel-connect-ap");
+  if (!panel) return;
+  // Fill in the SSID name in the instruction
+  const ssidEl = document.getElementById("connect-ap-ssid");
+  if (ssidEl) ssidEl.textContent = apSsid || "SmartLife-XXXX";
+  // Reset status
+  const statusEl = document.getElementById("connect-ap-status");
+  if (statusEl) { statusEl.className = "status-box hidden"; statusEl.textContent = ""; }
+  const waitEl = document.getElementById("connect-ap-waiting");
+  if (waitEl) waitEl.style.display = "flex";
+  panel.classList.remove("hidden");
+  updateStepCounter(3);
+  dbg("Step 3: Connect to device AP \u201c" + (apSsid || "SmartLife-XXXX") + "\u201d");
+}
+
+function hideConnectApPanel() {
+  const panel = document.getElementById("panel-connect-ap");
+  if (panel) panel.classList.add("hidden");
+}
+
+function setConnectApStatus(cls, text) {
+  const waitEl = document.getElementById("connect-ap-waiting");
+  if (waitEl) waitEl.style.display = "none";
+  const statusEl = document.getElementById("connect-ap-status");
+  if (!statusEl) return;
+  statusEl.className = "status-box " + cls;
+  statusEl.textContent = text;
+}
+
 function goToDevices() {
   // Disable "Pair Another" to prevent double-click triggering duplicate navigation
   const pairAnotherBtn = document.getElementById("btn-pair-another");
@@ -820,6 +863,7 @@ function goToDevices() {
   document.getElementById("panel-wifi").classList.add("hidden");
   document.getElementById("panel-ble").classList.add("hidden");
   document.getElementById("panel-done").classList.add("hidden");
+  hideConnectApPanel();
   document.getElementById("panel-devices").classList.remove("hidden");
   // Clear pairing status from any previous BLE or WiFi AP attempt;
   // also reset role so stale role=alert from an error doesn't linger while hidden.
@@ -1450,10 +1494,7 @@ async function pairViaWifiAp() {
 
   // ── Step 2: Prompt user to connect phone to Tuya AP ───────────────────────
   const apSsid = _selectedApSsid || "";
-  const instructMsg = (t("connect_to_ap_instruction") ||
-    "Connect your device to \u201c{ap}\u201d in WiFi settings, then return here.")
-    .replace("{ap}", apSsid);
-  showWifiApSpinner(instructMsg);
+  showConnectApPanel(apSsid);
   dbg("Waiting for device AP: " + apSsid);
 
   // ── Step 3: Poll http://192.168.4.1/ until device AP is reachable (max 120s) ─
@@ -1481,14 +1522,14 @@ async function pairViaWifiAp() {
   if (!onTuyaAp) {
     dbg("WiFi AP: device not reachable at 192.168.4.1 after 120s");
     wifiApCleanup(true);
-    setWifiApStatus("status-error", "\u274C " + esc(t("wifi_ap_timeout") || "Device not found. Check pairing mode and try again."));
+    setConnectApStatus("status-error", "\u274C " + esc(t("wifi_ap_timeout") || "Device not found. Check pairing mode and try again."));
     return;
   }
 
   dbg("Device AP reachable — sending credentials\u2026");
 
   // ── Step 4: POST credentials directly to the device ───────────────────────
-  showWifiApSpinner(t("sending_credentials") || "Sending credentials to device\u2026");
+  setConnectApStatus("status-info", t("sending_credentials") || "Sending credentials to device\u2026");
   // Capture and zero out password immediately after use
   const pwdSnapshot = _pwd;
   _pwd = "";
@@ -1517,7 +1558,7 @@ async function pairViaWifiAp() {
   if (_wifiApDone) return;
 
   // ── Step 5: Poll result endpoint until device activates ───────────────────
-  showWifiApSpinner(t("waiting_for_device") || "Waiting for device to connect to home network\u2026");
+  setConnectApStatus("status-info", t("waiting_for_device") || "Waiting for device to connect to home network\u2026");
   dbg("Polling result endpoint for token " + apToken.slice(0, 8) + "\u2026");
 
   // Use HTTPS result URL when available (works via cellular when phone is on Tuya AP).
@@ -1534,7 +1575,7 @@ async function pairViaWifiAp() {
   _activeSseTimer = setTimeout(() => {
     if (!_wifiApDone) {
       wifiApCleanup(true);
-      setWifiApStatus("status-error", "\u274C " + esc(t("wifi_ap_timeout") || "Device did not activate. Check pairing mode and try again."));
+      setConnectApStatus("status-error", "\u274C " + esc(t("wifi_ap_timeout") || "Device did not activate. Check pairing mode and try again."));
       dbg("WiFi AP pair: activation timeout after " + (pollTimeoutMs / 1000) + "s");
     }
   }, pollTimeoutMs);
@@ -1550,7 +1591,7 @@ async function pairViaWifiAp() {
           clearTimeout(_activeSseTimer); _activeSseTimer = null;
           _wifiApDone = true;
           if (_ssid) saveLastSsid(_ssid);
-          setWifiApStatus("status-success", esc(t("success_activated")));
+          hideConnectApPanel();
           dbg("Device activated: " + pd.gw_id + " \u2713");
           if (cancelBtn) cancelBtn.classList.add("hidden");
           if (backBtn) backBtn.classList.remove("hidden");
@@ -1845,6 +1886,27 @@ function copyShareUrl() {
       });
     }
   }
+
+  // Cancel button on the connect-to-AP panel — aborts the pairing and goes back
+  const cancelConnectApBtn = document.getElementById("btn-cancel-connect-ap");
+  if (cancelConnectApBtn) {
+    cancelConnectApBtn.addEventListener("click", () => {
+      _wifiApDone = true;
+      if (_currentEventSource) { _currentEventSource.close(); _currentEventSource = null; }
+      if (_activeSseTimer !== null) { clearTimeout(_activeSseTimer); _activeSseTimer = null; }
+      hideConnectApPanel();
+      goToDevices();
+    });
+  }
+
+  // Escape key also cancels the connect-to-AP panel
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape") return;
+    const panel = document.getElementById("panel-connect-ap");
+    if (panel && !panel.classList.contains("hidden")) {
+      cancelConnectApBtn && cancelConnectApBtn.click();
+    }
+  });
 
   // Close any open SSE connection when the user navigates away or closes the tab.
   // Without this, the server-side SSE queue persists until the HTTP connection drops

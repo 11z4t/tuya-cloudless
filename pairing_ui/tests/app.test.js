@@ -571,7 +571,7 @@ describe("t() built-in fallback map", () => {
   });
 
   it("returns expected English text for device discovery keys", () => {
-    expect(_t("device_panel_title")).toBe("Find device");
+    expect(_t("device_panel_title")).toMatch(/pairing mode/i);
     expect(_t("looking_for_devices")).toBe("Looking for devices\u2026");
     expect(_t("pair_via_ble")).toBe("Scan via Bluetooth");
     expect(_t("pair_via_wifi_ap")).toBe("WiFi AP");
