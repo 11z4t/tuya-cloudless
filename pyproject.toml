@@ -27,6 +27,8 @@ test = [
     "bandit>=1.7",
     "detect-secrets>=1.4",
     "pyyaml>=6.0",
+    "types-PyYAML>=6.0",
+    "homeassistant>=2025.1",
 ]
 
 [tool.setuptools.packages.find]
