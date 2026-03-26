@@ -177,6 +177,12 @@ _SW_VER_RE: Final[re.Pattern[str]] = re.compile(r"^[a-zA-Z0-9._\-]{1,32}$")
 #: SSID prefixes used by Tuya devices in AP/provisioning mode.
 #: Matching is case-insensitive.
 _TUYA_AP_PREFIXES: Final[tuple[str, ...]] = (
+    # Dash-separated variants (most common in real Tuya devices):
+    "smartlife-",  # SmartLife-XXXX  (Tuya app branded, most common)
+    "tuya-",  # Tuya-XXXX
+    "sl-",  # SL-XXXX  (some OEM variants)
+    "az-",  # AZ-XXXX  (some OEM variants)
+    # Underscore variants (older / alternate firmware):
     "smartlife_",
     "sl_",
     "az_",
@@ -1383,7 +1389,7 @@ class PairingServer:
         the fake-cloud endpoint, triggering the standard SSE activation flow.
 
         Body JSON:
-            ``{"ap_ssid": "SmartLife_AB12", "home_ssid": "HomeNet", "home_password": "…"}``
+            ``{"ap_ssid": "SmartLife-AB12", "home_ssid": "HomeNet", "home_password": "…"}``
 
         Args:
             request: Incoming HTTP request from the browser.

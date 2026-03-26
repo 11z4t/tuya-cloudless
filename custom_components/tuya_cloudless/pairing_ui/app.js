@@ -1840,8 +1840,8 @@ function copyShareUrl() {
     });
   }
 
-  // iOS autocomplete fix: fields start readonly, become writable on focus.
-  // Only applied on iOS — desktop and Android users need to type freely.
+  // iOS autocomplete fix: readonly trick prevents iOS autofill from pre-filling wrong values.
+  // Only apply on iOS — other browsers should not have readonly on these fields.
   if (isIOS()) {
     ["ssid", "password"].forEach(id => {
       const el = document.getElementById(id);
