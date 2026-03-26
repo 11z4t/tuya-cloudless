@@ -82,6 +82,13 @@ try:
 except (OSError, json.JSONDecodeError):
     _INTEGRATION_VERSION = "unknown"
 
+#: Default Tuya region code sent to devices during provisioning.
+#: ``"az"`` = Americas/default, ``"eu"`` = Europe, ``"cn"`` = China.
+#: Exposed via the /api/provision/config endpoint so the UI can read it
+#: without hardcoding — override by setting TUYA_REGION env var or by
+#: extending the config entry schema in a future release.
+_TUYA_DEFAULT_REGION: Final[str] = "az"
+
 #: Path to the brand assets directory (icon.png etc.)
 _BRAND_DIR: Final[Path] = Path(__file__).parent / "brand"
 
@@ -640,6 +647,7 @@ class PairingServer:
                 "default_ssid": default_ssid,
                 "wifi_scan_available": shutil.which("nmcli") is not None,
                 "integration_version": _INTEGRATION_VERSION,
+                "region": _TUYA_DEFAULT_REGION,
             },
             # No ACAO header — the pairing UI is served from the same origin
             # (port 8099).  A wildcard header would let any web page on the LAN
@@ -1638,7 +1646,7 @@ class PairingServer:
                 "s": home_ssid,
                 "p": home_pwd,
                 "t": token,
-                "r": "az",
+                "r": _TUYA_DEFAULT_REGION,
                 "activator": activator_url,
             }
             _LOGGER.info("WiFi AP pair: sending credentials to device gateway")

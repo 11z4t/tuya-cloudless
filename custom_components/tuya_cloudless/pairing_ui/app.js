@@ -430,6 +430,8 @@ const _STATIC_BASE = _safePath(
 let ACTIVATOR_URL = (typeof window._TUYA_ACTIVATOR_BASE !== "undefined")
   ? window._TUYA_ACTIVATOR_BASE : window.location.origin;
 let EVENTS_URL    = _PROVISION_BASE + "/events";
+// Tuya region code — overridden by server config. "az"=Americas, "eu"=Europe, "cn"=China.
+let _region = "az";
 
 const _urlParams = new URLSearchParams(window.location.search);
 const _haFlowId  = _urlParams.get("flow_id") || null;
@@ -444,6 +446,7 @@ async function loadServerConfig() {
     const cfg = await r.json();
     if (cfg.activator_url) ACTIVATOR_URL = _safeUrl(cfg.activator_url, ACTIVATOR_URL);
     if (cfg.events_url)    EVENTS_URL    = _safeUrl(cfg.events_url,    EVENTS_URL);
+    if (cfg.region)        _region       = cfg.region;
     dbg("Server: " + ACTIVATOR_URL + " \u2713");
     if (cfg.default_ssid) {
       // Server-provided SSID takes highest priority (HA knows the active network)
@@ -1498,7 +1501,7 @@ async function pairViaWifiAp() {
         s: _ssid,
         p: pwdSnapshot,
         t: apToken,
-        r: "az",
+        r: _region,
         activator: apActivatorUrl,
       }),
     });
@@ -1674,7 +1677,7 @@ async function startPairing() {
     dbg(t("spin_sending"));
     showPairStep(3, t("spin_sending"));
     const wifiPayload = JSON.stringify({
-      s: _ssid, p: _pwd, t: token, r: "az", activator: activator,
+      s: _ssid, p: _pwd, t: token, r: _region, activator: activator,
     });
     const wifiBytes = new TextEncoder().encode(wifiPayload);
     const wifiFrame = encodeFrame(CMD_WIFI_CONFIG, 1, wifiBytes);
