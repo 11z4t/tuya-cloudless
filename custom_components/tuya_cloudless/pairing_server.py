@@ -108,6 +108,18 @@ _TUYA_AP_GW_TIMEOUT: Final[float] = 8.0
 #: Timeout (seconds) for waiting for WiFi reconnect after AP pair
 _TUYA_AP_RECONNECT_TIMEOUT: Final[float] = 20.0
 
+#: Seconds to pause after triggering an nmcli WiFi scan so the driver can
+#: post-process results before we read the cache (two-pass scan)
+_NMCLI_SCAN_SETTLE_SECS: Final[float] = 2.0
+
+#: Seconds to wait after nmcli connects to the Tuya AP for IP assignment
+#: on the 192.168.4.x subnet before attempting to POST to the gateway
+_TUYA_AP_IP_ASSIGN_SECS: Final[float] = 2.0
+
+#: Seconds of idle time (no registered config flows) before the pairing
+#: server auto-stops to free resources
+_AUTO_STOP_IDLE_SECS: Final[float] = 60.0
+
 # ── Rate limiting constants ─────────────────────────────────────────────────
 
 #: Maximum activation requests per IP per window (SEC-001 / PLAT-824)
@@ -253,7 +265,7 @@ _SECURITY_HEADERS: Final[dict[str, str]] = {
         # Allow fetch() to http://192.168.4.1 (Tuya AP gateway) for browser-side
         # WiFi AP provisioning — browser POSTs credentials directly to the device.
         # no-cors mode is used so browser enforces this but cannot read the response.
-        "connect-src 'self' http://192.168.4.1; "
+        f"connect-src 'self' http://{_TUYA_AP_GATEWAY_IP}; "
         "img-src 'self' data:; "
         "frame-ancestors 'self';"
     ),
@@ -1288,7 +1300,7 @@ class PairingServer:
                     ssids.append(ssid)
 
             # Brief pause so the driver can post-process the scan results
-            await asyncio.sleep(2)
+            await asyncio.sleep(_NMCLI_SCAN_SETTLE_SECS)
 
             # Pass 2: re-read cache — picks up networks missed in pass 1
             for ssid in await _run_nmcli("no"):
@@ -1635,7 +1647,7 @@ class PairingServer:
             _connected_to_tuya_ap = True  # R36-2: host WiFi has been changed
 
             # Short wait for IP assignment on the Tuya AP (192.168.4.x)
-            await asyncio.sleep(2)
+            await asyncio.sleep(_TUYA_AP_IP_ASSIGN_SECS)
 
             # Step 3: POST credentials to the Tuya device
             # Import here to avoid requiring aiohttp at module level (it's always available
@@ -2325,8 +2337,8 @@ class PairingServer:
             del self._token_to_flow[tok]
 
     async def _auto_stop_after_idle(self) -> None:
-        """Stop the server 60 s after the last flow unregisters, if still idle."""
-        await asyncio.sleep(60)
+        """Stop the server after the last flow unregisters, if still idle."""
+        await asyncio.sleep(_AUTO_STOP_IDLE_SECS)
         # R49-F5: Drive TTL sweep for tokenless results even when no HTTP polls
         # arrive.  get_result() triggers _expire_old_results() only for the
         # token-based table (poll clients); tokenless results can accumulate until
