@@ -775,15 +775,8 @@ class PairingServer:
         Returns:
             JSON response in Tuya cloud activation format.
         """
-        # Reject requests that don't claim to be JSON — blocks simple-form CSRF.
-        # Real Tuya firmware always sends Content-Type: application/json.
-        content_type = request.content_type or ""
-        if not content_type.startswith("application/json"):
-            _LOGGER.warning(
-                "Activate endpoint rejected request with Content-Type: %s (CSRF guard)",
-                content_type or "<none>",
-            )
-            return web.Response(status=415, text="Content-Type must be application/json")
+        if (_err := self._require_json(request, "activate")) is not None:
+            return _err
 
         client_ip = self._get_client_ip(request)
 
@@ -1422,9 +1415,8 @@ class PairingServer:
             JSON: ``{"token": "...", "events_url": "/api/provision/events"}``
             Returns immediately; pairing happens in the background.
         """
-        content_type = request.content_type or ""
-        if not content_type.startswith("application/json"):
-            return web.Response(status=415, text="Content-Type must be application/json")
+        if (_err := self._require_json(request, "wifi-ap-pair")) is not None:
+            return _err
 
         try:
             body = await request.json()
@@ -1539,6 +1531,9 @@ class PairingServer:
         Returns:
             JSON: ``{"token": "...", "activator_url": "...", "result_url": "..."}``
         """
+        if (_err := self._require_json(request, "ap-token")) is not None:
+            return _err
+
         client_ip = self._get_client_ip(request)
         if self._is_rate_limited(client_ip, max_requests=5, window=60.0):
             return web.Response(
@@ -2153,6 +2148,33 @@ class PairingServer:
                     return ssid
             except (FileNotFoundError, TimeoutError, OSError) as exc:
                 _LOGGER.debug("iwgetid fallback unavailable: %s", exc)
+        return None
+
+    def _require_json(self, request: web.Request, endpoint: str) -> web.Response | None:
+        """Verify Content-Type is application/json; return 415 response if not.
+
+        This is the primary CSRF guard for all POST endpoints (PLAT-725 / SEC-003).
+        A browser-initiated CSRF attack via ``<form>`` can only submit
+        ``application/x-www-form-urlencoded`` or ``multipart/form-data``.
+        Requiring JSON prevents simple-form attacks; ``fetch()`` with
+        ``application/json`` is blocked cross-origin unless the server sends
+        CORS headers (which this server deliberately omits).
+
+        Args:
+            request:  Incoming aiohttp request.
+            endpoint: Short name used in the warning log for tracing.
+
+        Returns:
+            ``None`` if the Content-Type is acceptable, otherwise a 415 Response.
+        """
+        content_type = request.content_type or ""
+        if not content_type.startswith("application/json"):
+            _LOGGER.warning(
+                "%s rejected request with Content-Type: %s (CSRF guard)",
+                endpoint,
+                content_type or "<none>",
+            )
+            return web.Response(status=415, text="Content-Type must be application/json")
         return None
 
     def _get_client_ip(self, request: web.Request) -> str:
