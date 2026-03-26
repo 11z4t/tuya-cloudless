@@ -304,12 +304,13 @@ def load_profiles_from_dir(profiles_dir: Path) -> list[DeviceProfile]:
             )
         except (KeyError, TypeError, ValueError, OSError) as exc:
             _LOGGER.warning("Skipping invalid profile %s: %s", yaml_file.name, exc)
-        except Exception as exc:  # yaml.YAMLError is not in the narrower tuple above
-            # R45-F6: yaml.YAMLError (syntax error / anchor bomb) is not a subclass
-            # of any of the above; catch it here so one bad file doesn't abort all
-            # profile loading.  Re-raise anything that looks like a programming error
-            # (SystemExit, KeyboardInterrupt) by checking for Exception specifically.
-            _LOGGER.warning("Skipping profile %s due to unexpected error: %s", yaml_file.name, exc)
+        except Exception as exc:  # yaml.YAMLError — see comment below
+            # yaml.YAMLError (syntax errors, anchor bombs) is not a subclass of
+            # any of the exceptions above and is only importable after the late
+            # `import yaml` inside load_profile().  Catching Exception is the
+            # narrowest practical option here; SystemExit/KeyboardInterrupt
+            # inherit from BaseException and are NOT caught by this clause.
+            _LOGGER.warning("Skipping profile %s due to YAML parse error: %s", yaml_file.name, exc)
 
     return profiles
 
