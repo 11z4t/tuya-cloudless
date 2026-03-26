@@ -5017,16 +5017,17 @@ class TestRegisterHaViews:
         await server._register_ha_views()
         assert server._ha_views_registered is True
 
-    async def test_registers_nine_views(self) -> None:
-        """Exactly 9 views are registered.
+    async def test_registers_ten_views(self) -> None:
+        """Exactly 10 views are registered.
 
         Views: index, config, events, result, wifi-scan, quick-scan,
-        wifi-ap-pair, bind-token (R31-4: authenticated HA HTTPS variant), static.
+        wifi-ap-pair, ap-token, bind-token (R31-4: authenticated HA HTTPS
+        variant), static.
         """
         hass = MagicMock()
         server = PairingServer(hass, port=8099)
         await server._register_ha_views()
-        assert hass.http.register_view.call_count == 9
+        assert hass.http.register_view.call_count == 10
 
     async def test_sensitive_views_require_auth(self) -> None:
         """wifi-scan, quick-scan, and wifi-ap-pair HA views must require auth.
@@ -6502,8 +6503,9 @@ class TestHaStaticViewSecurity:
             await server._register_ha_views()
 
         calls = server._hass.http.register_view.call_args_list
-        # _PairingStaticView is the 9th (index 8) registered view
-        static_view = calls[8][0][0]
+        # _PairingStaticView is the 10th (index 9) registered view
+        # (ap-token was added as the 9th, static moved to last position)
+        static_view = calls[9][0][0]
         yield static_view, ui_dir, brand_dir, server
 
     @pytest.mark.asyncio

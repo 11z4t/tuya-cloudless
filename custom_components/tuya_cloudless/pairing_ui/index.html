@@ -634,6 +634,23 @@
 
     <div id="no-devices-msg" class="status-box status-info hidden"></div>
 
+    <!-- Manual AP SSID entry — fallback when quick-scan finds nothing -->
+    <div id="manual-ap-entry" style="margin-top:8px">
+      <label for="manual-ap-ssid" id="manual-ap-label"
+             style="font-size:0.85rem;color:var(--muted);display:block;margin-bottom:4px">
+        Or enter AP name manually:
+      </label>
+      <div style="display:flex;gap:8px;margin-top:4px">
+        <input type="text" id="manual-ap-ssid" placeholder="SmartLife-XXXX"
+               spellcheck="false" autocomplete="off" autocapitalize="none"
+               style="flex:1;padding:8px;border:1px solid var(--border);border-radius:6px;
+                      font-size:0.9rem;background:var(--surface-2);color:var(--text);
+                      outline:none">
+        <button class="btn btn-sm" id="btn-manual-ap" type="button"
+                style="white-space:nowrap">Pair</button>
+      </div>
+    </div>
+
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px">
       <button class="btn btn-sm" id="btn-refresh-scan" type="button">
         <span aria-hidden="true">🔄</span> <span id="btn-refresh-scan-label">Refresh</span>

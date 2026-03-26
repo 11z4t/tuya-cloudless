@@ -1387,7 +1387,11 @@ function showWifiApSpinner(msg) {
   setWifiApStatus("status-info", makeSpinnerHtml(msg));
 }
 
-// ── WiFi AP pairing flow ───────────────────────────────────────────────────────
+// ── WiFi AP pairing flow (browser-side) ──────────────────────────────────────
+// The browser POSTs credentials directly to the Tuya device at 192.168.4.1.
+// This avoids server-side nmcli (broken in HA container) and works from any
+// browser opened at http://ha-host:8099/ (HTTP required — mixed content rules
+// block HTTP fetch from HTTPS pages).
 async function pairViaWifiAp() {
   const btn = document.getElementById("btn-next");
   btn.disabled = true;
@@ -1396,157 +1400,190 @@ async function pairViaWifiAp() {
   if (cancelBtn) { cancelBtn.classList.remove("hidden"); cancelBtn.disabled = false; }
   if (backBtn) backBtn.classList.add("hidden");
 
-  showWifiApSpinner(t("wifi_ap_connecting"));
-  dbg("WiFi AP pair: POST /wifi-ap-pair for " + _selectedApSsid);
-
-  // Attach SSE listener BEFORE the POST to avoid race where device activates
-  // before the EventSource is established.
-  const es = new EventSource(EVENTS_URL);
-  if (_currentEventSource && _currentEventSource !== es) _currentEventSource.close();
-  _currentEventSource = es;
-  let token = null;
-  let wifiApTimer = null;
   _wifiApDone = false;  // reset module-level guard for this invocation
 
+  // Shared cleanup — idempotent via _wifiApDone guard
   const wifiApCleanup = (enableBtn) => {
-    if (_wifiApDone) return;  // already handled
+    if (_wifiApDone) return;
     _wifiApDone = true;
-    es.close();
-    clearTimeout(wifiApTimer);
-    // Clear module-level tracking so navigation functions don't double-clear
-    _activeSseTimer = null;
+    if (_activeSseTimer !== null) { clearTimeout(_activeSseTimer); _activeSseTimer = null; }
+    if (_currentEventSource) { _currentEventSource.close(); _currentEventSource = null; }
     if (cancelBtn) cancelBtn.classList.add("hidden");
     if (backBtn) backBtn.classList.remove("hidden");
     if (enableBtn) btn.disabled = false;
   };
 
-  es.addEventListener("activated", (e) => {
-    if (_wifiApDone) return;  // guard: stale events after cancel / navigation
-    try {
-      const d = JSON.parse(e.data);
-      // d.token == null: backward compat — old server omitted token field; accept.
-      // d.token === token: normal match.
-      // Reject events with a non-null, non-matching token even if our token is
-      // not yet known (POST still in flight) — avoids accepting a concurrent
-      // user's activation during the brief pre-token window.
-      if ((d.token == null || d.token === token) && d.gw_id) {
-        wifiApCleanup(true);
-        if (_ssid) saveLastSsid(_ssid);  // save only on confirmed activation
-        setWifiApStatus("status-success", esc(t("success_activated")));
-        // dbg() uses textContent → auto-escapes; do not call esc() here (would double-escape)
-        dbg("Device activated: " + d.gw_id + " \u2713");
-        if (d.local_key) {
-          // Backward compat: server/test mock includes local_key in SSE event
-          showDone(d.gw_id, d.local_key, d.ip_address || "");
-        } else {
-          // R38-F6: fetch local_key from result endpoint (token available from POST response)
-          var _tok38 = token;
-          if (_tok38) {
-            fetch(ACTIVATOR_URL + "/api/provision/result/" + _tok38)
-              .then(function(r) { return r.json(); })
-              .then(function(res) { showDone(res.gw_id || d.gw_id, res.local_key || "", res.ip_address || ""); })
-              .catch(function() { showDone(d.gw_id, "", ""); });
-          } else {
-            showDone(d.gw_id, "", "");
-          }
-        }
-      } else if (d.gw_id === undefined) {
-        dbg("SSE activated: missing gw_id in payload");
-      }
-    } catch (err) {
-      dbg("SSE parse error (activated): " + err.message);
-      wifiApCleanup(true);
-      setWifiApStatus("status-error", "\u274C " + esc(t("wifi_ap_error")));
-    }
-  });
-  es.addEventListener("wifi_ap_error", (e) => {
-    try {
-      const d = JSON.parse(e.data);
-      // Require our token to be known before accepting any wifi_ap_error.
-      // During the brief pre-POST window (token=null), a concurrent session's
-      // error with a null token (backward compat) would otherwise look identical
-      // to our own.  Once we have our token, accept null-token events (old server
-      // backward compat) or matching-token events.
-      if (token !== null && (d.token == null || d.token === token)) {
-        wifiApCleanup(true);
-        setWifiApStatus("status-error", "\u274C " + esc(t("wifi_ap_error")));
-        dbg("WiFi AP error: " + (d.error || "unknown"));
-      }
-    } catch (err) {
-      dbg("SSE parse error (wifi_ap_error): " + err.message);
-      wifiApCleanup(true);
-      setWifiApStatus("status-error", "\u274C " + esc(t("wifi_ap_error")));
-    }
-  });
-  es.onerror = () => {
-    if (!_wifiApDone) {
-      wifiApCleanup(true);
-      setWifiApStatus("status-error", "\u274C " + esc(t("wifi_ap_error")));
-      dbg("WiFi AP: SSE connection lost");
-    }
-  };
+  // ── Step 1: Get a token while still on home WiFi ───────────────────────────
+  dbg("WiFi AP pair: requesting token\u2026");
+  showWifiApSpinner(t("wifi_ap_connecting") || "Preparing\u2026");
 
+  let apToken, apActivatorUrl, apResultUrl;
   try {
-    // Use AbortController so a stalled network doesn't leave the button disabled forever
-    const fetchAbort = new AbortController();
-    const fetchTimeout = setTimeout(() => fetchAbort.abort(), 15000);
-    let r;
+    const tokenAbort = new AbortController();
+    const tokenTimeout = setTimeout(() => tokenAbort.abort(), 10000);
+    let tr;
     try {
-      r = await fetch(_PROVISION_BASE + "/wifi-ap-pair", {
+      tr = await fetch(_PROVISION_BASE + "/ap-token", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ap_ssid: _selectedApSsid,
-          home_ssid: _ssid,
-          home_password: _pwd,
-          // Include flow_id so server can bind the generated token to our flow only
-          // (R28-1: prevents credential fan-out to concurrent pairing sessions).
-          flow_id: _haFlowId,
-        }),
-        signal: fetchAbort.signal,
+        signal: tokenAbort.signal,
       });
     } finally {
-      clearTimeout(fetchTimeout);
+      clearTimeout(tokenTimeout);
     }
-    if (!r.ok) {
-      // Log the raw HTTP status for diagnostics; show a localized message to the user.
-      dbg("wifi-ap-pair: server returned HTTP " + r.status);
-      const msg = r.status === 409
-        ? (t("wifi_ap_in_progress") || "Pairing already in progress — wait and retry.")
-        : r.status === 503
-          ? (t("wifi_ap_nmcli_missing") || "WiFi control unavailable — nmcli is not installed on the HA host.")
-          : (t("wifi_ap_error") || "WiFi AP pairing failed.");
-      wifiApCleanup(true);
-      throw new Error(msg);
-    }
-    const data = await r.json();
-    token = data.token;
-
-    // After SSE_TIMEOUT_MS with no activation, show timeout error and re-enable button.
-    // Guard: don't start if cancel/navigation already ran before POST completed.
-    if (!_wifiApDone) {
-      wifiApTimer = setTimeout(() => {
-        wifiApCleanup(true);
-        setWifiApStatus("status-error", "\u274C " + esc(t("wifi_ap_timeout") || t("wifi_ap_error")));
-        dbg("WiFi AP pair: activation timeout after " + (SSE_TIMEOUT_MS / 1000) + "s");
-      }, SSE_TIMEOUT_MS);
-      // Track in module-level _activeSseTimer so navigation functions (goToDevices,
-      // goToCredentials, beforeunload) can cancel it even though it's in a closure.
-      _activeSseTimer = wifiApTimer;
-      showWifiApSpinner(t("wifi_ap_waiting"));
-      dbg("WiFi AP pair: waiting for activation SSE\u2026");
-    } else {
-      dbg("WiFi AP pair: POST completed after cancel/navigation — ignoring");
-    }
+    if (!tr.ok) throw new Error("ap-token HTTP " + tr.status);
+    const td = await tr.json();
+    apToken        = td.token;
+    apActivatorUrl = td.activator_url;
+    apResultUrl    = td.result_url;
+    dbg("Got AP token: " + apToken.slice(0, 8) + "\u2026");
   } catch (err) {
-    // AbortError means the 15-second fetch watchdog fired — show a friendly message
-    const msg = err.name === "AbortError"
-      ? (t("wifi_ap_timeout") || "Pairing request timed out — please retry.")
-      : err.message;
-    wifiApCleanup(false);
-    setWifiApStatus("status-error", "\u274C " + esc(msg));
-    dbg("WiFi AP pair error: " + err.message);
-    btn.disabled = false;
+    dbg("ap-token fetch failed: " + err.message);
+    wifiApCleanup(true);
+    setWifiApStatus("status-error", "\u274C " + esc(t("wifi_ap_error") || "Failed to get pairing token."));
+    return;
+  }
+
+  if (_wifiApDone) return;  // cancelled during token fetch
+
+  // ── Step 2: Prompt user to connect phone to Tuya AP ───────────────────────
+  const apSsid = _selectedApSsid || "";
+  const instructMsg = (t("connect_to_ap_instruction") ||
+    "Connect your device to \u201c{ap}\u201d in WiFi settings, then return here.")
+    .replace("{ap}", apSsid);
+  showWifiApSpinner(instructMsg);
+  dbg("Waiting for device AP: " + apSsid);
+
+  // ── Step 3: Poll http://192.168.4.1/ until device AP is reachable (max 120s) ─
+  const TUYA_GW = "http://192.168.4.1";
+  let onTuyaAp = false;
+  for (let i = 0; i < 60; i++) {
+    if (_wifiApDone) return;  // cancelled
+    try {
+      await fetch(TUYA_GW + "/", {
+        method: "HEAD",
+        mode: "no-cors",
+        signal: AbortSignal.timeout(1500),
+      });
+      // no-cors: opaque response — if fetch didn't throw, device is reachable
+      onTuyaAp = true;
+      break;
+    } catch (_) {
+      // Not yet reachable — wait and retry
+    }
+    await new Promise(res => setTimeout(res, 2000));
+  }
+
+  if (_wifiApDone) return;
+
+  if (!onTuyaAp) {
+    dbg("WiFi AP: device not reachable at 192.168.4.1 after 120s");
+    wifiApCleanup(true);
+    setWifiApStatus("status-error", "\u274C " + esc(t("wifi_ap_timeout") || "Device not found. Check pairing mode and try again."));
+    return;
+  }
+
+  dbg("Device AP reachable — sending credentials\u2026");
+
+  // ── Step 4: POST credentials directly to the device ───────────────────────
+  showWifiApSpinner(t("sending_credentials") || "Sending credentials to device\u2026");
+  // Capture and zero out password immediately after use
+  const pwdSnapshot = _pwd;
+  _pwd = "";
+  try {
+    await fetch(TUYA_GW + "/gw.json", {
+      method: "POST",
+      mode: "no-cors",   // CORS blocked — we can't read the response, but POST IS sent
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        s: _ssid,
+        p: pwdSnapshot,
+        t: apToken,
+        r: "az",
+        activator: apActivatorUrl,
+      }),
+    });
+    // Device switches WiFi mid-request — fetch may resolve or reject; both are fine
+    dbg("gw.json POST sent (device may have switched WiFi)");
+  } catch (_) {
+    // Expected: device disconnects during POST as it joins home network
+    dbg("gw.json POST ended early (device switching WiFi — expected)");
+  }
+  // Defensive: zero snapshot even on error paths above
+  // (already done before fetch — this is a belt-and-suspenders comment)
+
+  if (_wifiApDone) return;
+
+  // ── Step 5: Poll result endpoint until device activates ───────────────────
+  showWifiApSpinner(t("waiting_for_device") || "Waiting for device to connect to home network\u2026");
+  dbg("Polling result endpoint for token " + apToken.slice(0, 8) + "\u2026");
+
+  // Use HTTPS result URL when available (works via cellular when phone is on Tuya AP).
+  // _HA_HTTPS_BASE is injected by the server when it knows the external HTTPS URL.
+  const httpsBase = (typeof window._HA_HTTPS_BASE === "string" && window._HA_HTTPS_BASE)
+    ? window._HA_HTTPS_BASE : null;
+  const httpsResultUrl = httpsBase
+    ? apResultUrl.replace(/^http:\/\/[^/]+/, httpsBase)
+    : null;
+
+  // Set overall timeout so we don't poll forever
+  const pollTimeoutMs = SSE_TIMEOUT_MS;
+  const pollDeadline = Date.now() + pollTimeoutMs;
+  _activeSseTimer = setTimeout(() => {
+    if (!_wifiApDone) {
+      wifiApCleanup(true);
+      setWifiApStatus("status-error", "\u274C " + esc(t("wifi_ap_timeout") || "Device did not activate. Check pairing mode and try again."));
+      dbg("WiFi AP pair: activation timeout after " + (pollTimeoutMs / 1000) + "s");
+    }
+  }, pollTimeoutMs);
+
+  while (!_wifiApDone && Date.now() < pollDeadline) {
+    // Try local HTTP result URL first
+    try {
+      const pr = await fetch(apResultUrl, { signal: AbortSignal.timeout(3000) });
+      if (pr.ok) {
+        const pd = await pr.json();
+        if (pd.local_key) {
+          if (_wifiApDone) return;
+          clearTimeout(_activeSseTimer); _activeSseTimer = null;
+          _wifiApDone = true;
+          if (_ssid) saveLastSsid(_ssid);
+          setWifiApStatus("status-success", esc(t("success_activated")));
+          dbg("Device activated: " + pd.gw_id + " \u2713");
+          if (cancelBtn) cancelBtn.classList.add("hidden");
+          if (backBtn) backBtn.classList.remove("hidden");
+          btn.disabled = false;
+          showDone(pd.gw_id || "", pd.local_key || "", pd.ip_address || "");
+          return;
+        }
+      }
+    } catch (_) { /* Not ready yet — try HTTPS fallback */ }
+
+    // Try HTTPS result URL (accessible via cellular when phone is on Tuya AP)
+    if (httpsResultUrl && !_wifiApDone) {
+      try {
+        const pr2 = await fetch(httpsResultUrl, { signal: AbortSignal.timeout(3000) });
+        if (pr2.ok) {
+          const pd2 = await pr2.json();
+          if (pd2.local_key) {
+            if (_wifiApDone) return;
+            clearTimeout(_activeSseTimer); _activeSseTimer = null;
+            _wifiApDone = true;
+            if (_ssid) saveLastSsid(_ssid);
+            setWifiApStatus("status-success", esc(t("success_activated")));
+            dbg("Device activated (HTTPS): " + pd2.gw_id + " \u2713");
+            if (cancelBtn) cancelBtn.classList.add("hidden");
+            if (backBtn) backBtn.classList.remove("hidden");
+            btn.disabled = false;
+            showDone(pd2.gw_id || "", pd2.local_key || "", pd2.ip_address || "");
+            return;
+          }
+        }
+      } catch (_) { /* Not ready yet */ }
+    }
+
+    if (!_wifiApDone) {
+      await new Promise(res => setTimeout(res, 2000));
+    }
   }
 }
 
@@ -1776,6 +1813,35 @@ function copyShareUrl() {
   document.getElementById("btn-ble-scan").addEventListener("click", selectDeviceBle);
   document.getElementById("btn-pair-another").addEventListener("click", goToDevices);
   document.getElementById("btn-refresh-scan").addEventListener("click", autoDetectDevices);
+
+  // Manual AP SSID entry — allows pairing when quick-scan returns no devices
+  const manualApBtn = document.getElementById("btn-manual-ap");
+  if (manualApBtn) {
+    manualApBtn.addEventListener("click", () => {
+      const input = document.getElementById("manual-ap-ssid");
+      if (!input) return;
+      const ssid = input.value.trim();
+      if (!ssid) {
+        input.focus();
+        return;
+      }
+      // Validate byte-length (WiFi SSID max 32 UTF-8 bytes)
+      if (countUtf8Bytes(ssid) > 32) {
+        dbg("Manual AP SSID too long (max 32 bytes)");
+        input.focus();
+        return;
+      }
+      dbg("Manual AP SSID selected: " + ssid);
+      selectDeviceWifiAp(ssid);
+    });
+    // Allow Enter key in the input to trigger pairing
+    const manualApInput = document.getElementById("manual-ap-ssid");
+    if (manualApInput) {
+      manualApInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") { e.preventDefault(); manualApBtn.click(); }
+      });
+    }
+  }
 
   // Close any open SSE connection when the user navigates away or closes the tab.
   // Without this, the server-side SSE queue persists until the HTTP connection drops

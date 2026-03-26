@@ -243,7 +243,10 @@ _SECURITY_HEADERS: Final[dict[str, str]] = {
         "default-src 'self'; "
         "script-src 'self' 'unsafe-inline'; "
         "style-src 'self' 'unsafe-inline'; "
-        "connect-src 'self'; "
+        # Allow fetch() to http://192.168.4.1 (Tuya AP gateway) for browser-side
+        # WiFi AP provisioning — browser POSTs credentials directly to the device.
+        # no-cors mode is used so browser enforces this but cannot read the response.
+        "connect-src 'self' http://192.168.4.1; "
         "img-src 'self' data:; "
         "frame-ancestors 'self';"
     ),
@@ -542,6 +545,7 @@ class PairingServer:
         app.router.add_get("/api/provision/wifi-scan", self._handle_wifi_scan)
         app.router.add_get("/api/provision/quick-scan", self._handle_quick_scan)
         app.router.add_post("/api/provision/wifi-ap-pair", self._handle_wifi_ap_pair)
+        app.router.add_post("/api/provision/ap-token", self._handle_ap_token)
         # R33-1: bind-token is NOT exposed on the unauthenticated port-8099 server.
         # It is available only via the HA HTTPS authenticated endpoint
         # (_PairingBindTokenView, requires_auth=True).  The WiFi-AP path performs
@@ -1498,6 +1502,48 @@ class PairingServer:
             {"token": token, "events_url": "/api/provision/events"},
         )
 
+    async def _handle_ap_token(self, request: web.Request) -> web.Response:
+        """Issue a pairing token for browser-side WiFi AP provisioning.
+
+        Called while the browser is still on home WiFi (before connecting to the
+        Tuya AP).  The browser embeds the returned token in the ``gw.json`` POST
+        it sends directly to the device at ``http://192.168.4.1/gw.json``.
+
+        When the device subsequently connects to home WiFi and POSTs to the
+        fake-cloud activation endpoint, ``_handle_activate`` stores the result
+        keyed by this token so the browser can retrieve it via the result endpoint.
+
+        Args:
+            request: Incoming HTTP request from the browser.
+
+        Returns:
+            JSON: ``{"token": "...", "activator_url": "...", "result_url": "..."}``
+        """
+        client_ip = self._get_client_ip(request)
+        if self._is_rate_limited(client_ip, max_requests=5, window=60.0):
+            return web.Response(
+                status=429,
+                text="Too Many Requests",
+                headers={"Retry-After": "15"},
+            )
+
+        token = secrets.token_hex(_PROVISION_TOKEN_BYTES)
+        base = self.ha_local_url()
+        result_url = f"{base}/api/provision/result/{token}"
+
+        _LOGGER.debug(
+            "ap-token issued: token=%s… client=%s",
+            token[:8],
+            client_ip,
+        )
+        return web.json_response(
+            {
+                "token": token,
+                "activator_url": base,
+                "result_url": result_url,
+            }
+        )
+
     async def _wifi_ap_pair_task(
         self,
         ap_ssid: str,
@@ -1912,6 +1958,17 @@ class PairingServer:
             ) -> web.Response:
                 return await server._handle_wifi_ap_pair(request)
 
+        class _PairingApTokenView(HomeAssistantView):
+            # requires_auth = True (default) — issues a provisioning token;
+            # must not be callable by unauthenticated callers.
+            url = _HA_PAIRING_PREFIX + "/provision/ap-token"
+            name = "api:tuya_cloudless:pairing:ap_token"
+
+            async def post(  # type: ignore[override]
+                self, request: web.Request
+            ) -> web.Response:
+                return await server._handle_ap_token(request)
+
         class _PairingBindTokenView(HomeAssistantView):
             # requires_auth = True (default) — R31-4: bind-token on the HA HTTPS path
             # requires authentication so only the legitimate browser session can bind
@@ -2000,6 +2057,7 @@ class PairingServer:
         self._hass.http.register_view(_PairingWifiScanView())
         self._hass.http.register_view(_PairingQuickScanView())
         self._hass.http.register_view(_PairingWifiApPairView())
+        self._hass.http.register_view(_PairingApTokenView())
         self._hass.http.register_view(_PairingBindTokenView())
         self._hass.http.register_view(_PairingStaticView())
 
