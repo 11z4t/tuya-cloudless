@@ -689,6 +689,46 @@ class TestCsrfProtection:
         )
         assert resp.status == 415
 
+    @pytest.mark.asyncio
+    async def test_ap_token_rejects_form_urlencoded(self, client: TestClient) -> None:
+        """ap-token must reject form-urlencoded (CSRF guard)."""
+        resp = await client.post(
+            "/api/provision/ap-token",
+            data="foo=bar",
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+        assert resp.status == 415
+
+    @pytest.mark.asyncio
+    async def test_ap_token_rejects_missing_content_type(self, client: TestClient) -> None:
+        """ap-token must reject a POST with no Content-Type (CSRF guard)."""
+        resp = await client.post(
+            "/api/provision/ap-token",
+            data=b"{}",
+        )
+        assert resp.status == 415
+
+    @pytest.mark.asyncio
+    async def test_ap_token_accepts_json_content_type(self, client: TestClient) -> None:
+        """ap-token must accept a legitimate application/json POST."""
+        resp = await client.post(
+            "/api/provision/ap-token",
+            json={},
+        )
+        assert resp.status == 200
+        body = await resp.json()
+        assert "token" in body
+
+    @pytest.mark.asyncio
+    async def test_wifi_ap_pair_rejects_form_urlencoded(self, client: TestClient) -> None:
+        """wifi-ap-pair must reject form-urlencoded (CSRF guard)."""
+        resp = await client.post(
+            "/api/provision/wifi-ap-pair",
+            data="foo=bar",
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+        assert resp.status == 415
+
 
 # ── /api/provision/wifi-scan ──────────────────────────────────────────────────
 
