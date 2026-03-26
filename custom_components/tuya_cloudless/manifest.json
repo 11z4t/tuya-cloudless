@@ -18,7 +18,7 @@
     "aiohttp>=3.9"
   ],
   "homeassistant": "2025.1.0",
-  "version": "0.6.3",
+  "version": "0.6.3.1",
   "zeroconf": [
     {
       "type": "_tuya._tcp.local."
