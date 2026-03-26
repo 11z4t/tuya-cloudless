@@ -1840,12 +1840,15 @@ function copyShareUrl() {
     });
   }
 
-  // iOS autocomplete fix: fields start readonly, become writable on focus
-  ["ssid", "password"].forEach(id => {
-    const el = document.getElementById(id);
-    el.setAttribute("readonly", "");
-    el.addEventListener("focus", () => el.removeAttribute("readonly"));
-  });
+  // iOS autocomplete fix: fields start readonly, become writable on focus.
+  // Only applied on iOS — desktop and Android users need to type freely.
+  if (isIOS()) {
+    ["ssid", "password"].forEach(id => {
+      const el = document.getElementById(id);
+      el.setAttribute("readonly", "");
+      el.addEventListener("focus", () => el.removeAttribute("readonly"));
+    });
+  }
 
   // Byte counters — live feedback below SSID (max 32) and password (max 63) inputs
   const _attachCounter = (inputId, counterId, maxBytes) => {
