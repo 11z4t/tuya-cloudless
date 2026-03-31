@@ -24,7 +24,7 @@ python3 -m bandit -r lib/ -q || true
 echo ""
 echo "--- Detect-secrets scan ---"
 python3 -m detect_secrets scan --all-files \
-  --exclude-files "(\.git/.*|\.claude/.*|\.mypy_cache/.*|\.pytest_cache/.*|\.ruff_cache/.*|htmlcov/.*|node_modules/.*|strings\.json|translations/.*\.json|pairing_ui/i18n/.*\.json|tests/|docs/)" \
+  --exclude-files "(\.git/.*|\.venv/.*|\.claude/.*|\.mypy_cache/.*|\.pytest_cache/.*|\.ruff_cache/.*|htmlcov/.*|node_modules/.*|strings\.json|translations/.*\.json|pairing_ui/i18n/.*\.json|tests/|docs/)" \
   > /tmp/secrets-report.json
 python3 -c "
 import json
