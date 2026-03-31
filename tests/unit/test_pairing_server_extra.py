@@ -323,9 +323,10 @@ class TestHandleConfig:
         assert "result_url_template" in body
         assert "{token}" in body["result_url_template"]
 
-    async def test_cors_header(self, client: TestClient) -> None:
+    async def test_no_cors_header_for_security(self, client: TestClient) -> None:
+        """Config endpoint does NOT expose CORS wildcard (PLAT-725 security)."""
         resp = await client.get("/api/provision/config")
-        assert resp.headers.get("Access-Control-Allow-Origin") == "*"
+        assert resp.headers.get("Access-Control-Allow-Origin") is None
 
 
 # ── _handle_qr ────────────────────────────────────────────────────────────────
@@ -361,17 +362,27 @@ class TestHandleQr:
         assert resp.status == 200
         assert resp.content_type == "image/svg+xml"
 
-    async def test_qr_cors_header(self, client: TestClient) -> None:
-        """QR endpoint always sets CORS header."""
+    async def test_qr_no_cors_header_for_security(self, client: TestClient) -> None:
+        """QR endpoint does NOT expose CORS wildcard (PLAT-725 security)."""
         try:
             import qrcode  # noqa: F401
         except ImportError:
             pytest.skip("qrcode library not installed")
         resp = await client.get("/api/provision/qr.svg")
-        assert resp.headers.get("Access-Control-Allow-Origin") == "*"
+        assert resp.headers.get("Access-Control-Allow-Origin") is None
 
 
 # ── _handle_activate — extra field coverage ───────────────────────────────────
+
+
+# Valid 32-char lowercase hex tokens (required by _TOKEN_RE since PLAT-725/825)
+_TOK_CAMEL = "ca" * 16
+_TOK_VER = "be" * 16
+_TOK_SW = "de" * 16
+_TOK_ALIAS = "fa" * 16
+_TOK_PK = "ab" * 16
+_TOK_NOTIFY = "dc" * 16
+_TOK_NONEXISTENT = "ff" * 16
 
 
 class TestActivateExtraFields:
@@ -379,7 +390,7 @@ class TestActivateExtraFields:
         """gwId (camelCase) is accepted as device identifier."""
         resp = await client.post(
             "/api/tuya/device/active",
-            json={"gwId": "camel_gw", "token": "tok_camel"},
+            json={"gwId": "camel_gw", "token": _TOK_CAMEL},
         )
         body = await resp.json()
         assert body["result"]["gwId"] == "camel_gw"
@@ -388,9 +399,9 @@ class TestActivateExtraFields:
         """sw_ver is stored in the ActivationResult."""
         await client.post(
             "/api/tuya/device/active",
-            json={"gw_id": "ver_gw", "token": "tok_ver", "sw_ver": "2.5.1"},
+            json={"gw_id": "ver_gw", "token": _TOK_VER, "sw_ver": "2.5.1"},
         )
-        resp = await client.get("/api/provision/result/tok_ver")
+        resp = await client.get(f"/api/provision/result/{_TOK_VER}")
         body = await resp.json()
         assert body["sw_ver"] == "2.5.1"
 
@@ -398,22 +409,21 @@ class TestActivateExtraFields:
         """swVer (camelCase) is accepted as firmware version."""
         await client.post(
             "/api/tuya/device/active",
-            json={"gw_id": "sw_gw", "token": "tok_sw", "swVer": "3.0"},
+            json={"gw_id": "sw_gw", "token": _TOK_SW, "swVer": "3.0"},
         )
-        resp = await client.get("/api/provision/result/tok_sw")
+        resp = await client.get(f"/api/provision/result/{_TOK_SW}")
         body = await resp.json()
         assert body["sw_ver"] == "3.0"
 
-    async def test_malformed_json_body_accepted(self, client: TestClient) -> None:
-        """Non-JSON body with application/json content type falls back to empty dict."""
+    async def test_malformed_json_body_rejected_as_bad_request(self, client: TestClient) -> None:
+        """Non-JSON body with application/json content type → 400 (empty gw_id rejected)."""
         resp = await client.post(
             "/api/tuya/device/active",
             data=b"not json at all!!!",
             headers={"Content-Type": "application/json"},
         )
-        assert resp.status == 200
-        body = await resp.json()
-        assert body["success"] is True
+        # Body parses to {} → gw_id empty → rejected with 400 (PLAT-825 validation)
+        assert resp.status == 400
 
     async def test_no_token_result_not_stored(self, client: TestClient) -> None:
         """Activation with no token should not store a result."""
@@ -421,15 +431,15 @@ class TestActivateExtraFields:
             "/api/tuya/device/active",
             json={"gw_id": "no_tok_gw"},
         )
-        # There is no token to look up, but previous results should be empty
-        resp = await client.get("/api/provision/result/some_nonexistent_token")
+        # Token not activated → result endpoint returns 202 pending (valid hex format)
+        resp = await client.get(f"/api/provision/result/{_TOK_NONEXISTENT}")
         assert resp.status == 202
 
     async def test_api_json_alias_works(self, client: TestClient) -> None:
         """The /api.json alias endpoint processes activation the same way."""
         resp = await client.post(
             "/api.json",
-            json={"gw_id": "alias_gw", "token": "tok_alias"},
+            json={"gw_id": "alias_gw", "token": _TOK_ALIAS},
         )
         assert resp.status == 200
         body = await resp.json()
@@ -439,7 +449,7 @@ class TestActivateExtraFields:
         """productKey (camelCase) is accepted."""
         resp = await client.post(
             "/api/tuya/device/active",
-            json={"gw_id": "pk_gw", "productKey": "MY_PRODUCT", "token": "tok_pk"},
+            json={"gw_id": "pk_gw", "productKey": "MY_PRODUCT", "token": _TOK_PK},
         )
         body = await resp.json()
         assert body["result"]["gwId"] == "pk_gw"
@@ -456,7 +466,7 @@ class TestActivateExtraFields:
         try:
             await cli.post(
                 "/api/tuya/device/active",
-                json={"gw_id": "notified_gw", "token": "tok_notify"},
+                json={"gw_id": "notified_gw", "token": _TOK_NOTIFY},
             )
             # async_create_task must have been called for the registered flow
             hass.async_create_task.assert_called()
@@ -509,9 +519,10 @@ class TestSseEndpoint:
             # Give SSE handler time to register the queue
             await asyncio.sleep(0.1)
 
+            _tok_sse = "ee" * 16
             await cli.post(
                 "/api/tuya/device/active",
-                json={"gw_id": "sse_gw", "token": "sse_tok"},
+                json={"gw_id": "sse_gw", "token": _tok_sse},
             )
             await asyncio.wait_for(task, timeout=5.0)
 
@@ -584,9 +595,10 @@ class TestWifiScanExtended:
         data = await resp.json()
         assert data["ssids"] == []
 
-    async def test_wifi_scan_cors_header(self, client: TestClient) -> None:
+    async def test_wifi_scan_no_cors_header_for_security(self, client: TestClient) -> None:
+        """WiFi scan endpoint does NOT expose CORS wildcard (PLAT-725 security)."""
         resp = await client.get("/api/provision/wifi-scan")
-        assert resp.headers.get("Access-Control-Allow-Origin") == "*"
+        assert resp.headers.get("Access-Control-Allow-Origin") is None
 
 
 # ── _auto_stop_after_idle ─────────────────────────────────────────────────────
