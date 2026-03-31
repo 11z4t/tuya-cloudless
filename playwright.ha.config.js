@@ -13,11 +13,20 @@
 const config = {
   testDir: "./tests/e2e",
   timeout: 60_000,
+
+  // Auth setup: injects HA_TOKEN into browser localStorage before any test runs
+  globalSetup: "./tests/e2e/auth.setup.js",
+
+  // Single worker to avoid HA connection conflicts
+  workers: 1,
+
   use: {
     headless: true,
     browserName: "chromium",
     screenshot: "only-on-failure",
     video: "retain-on-failure",
+    // Reuse authenticated browser state created by globalSetup
+    storageState: "./tests/e2e/storageState.json",
   },
   reporter: [["line"]],
 };

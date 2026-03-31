@@ -48,3 +48,4 @@ tuya_cloudless.zip
 node_modules/
 playwright-report/
 test-results/
+tests/e2e/storageState.json

@@ -49,6 +49,12 @@ let _haToken = null;
 async function getHaToken() {
   if (_haToken) return _haToken;
 
+  // Use long-lived token if provided via env var (skips OAuth flow)
+  if (process.env.HA_TOKEN) {
+    _haToken = process.env.HA_TOKEN;
+    return _haToken;
+  }
+
   // Step 1: start login flow
   const r1 = await fetch(`${HA_URL}/auth/login_flow`, {
     method: "POST",
