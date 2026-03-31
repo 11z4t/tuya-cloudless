@@ -25,6 +25,7 @@ Targets previously uncovered paths:
 from __future__ import annotations
 
 import asyncio
+import inspect
 import sys
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -38,10 +39,9 @@ for _p in [str(_REPO / "lib"), str(_REPO)]:
         sys.path.insert(0, _p)
 
 from custom_components.tuya_cloudless.pairing_server import (  # noqa: E402
-    ActivationResult,
+    _KEY_PAIRING_SERVER,
     PairingRedirectView,
     PairingServer,
-    _KEY_PAIRING_SERVER,
     ensure_pairing_server,
     get_pairing_server,
     stop_pairing_server,
@@ -56,9 +56,7 @@ def _make_hass(*, internal_url: str | None = "http://homeassistant.local:8123") 
     hass.config.internal_url = internal_url
     hass.http = MagicMock()
     hass.http.register_view = MagicMock()
-    hass.async_create_task = MagicMock(
-        side_effect=lambda coro, **kw: asyncio.ensure_future(coro)
-    )
+    hass.async_create_task = MagicMock(side_effect=lambda coro, **kw: asyncio.ensure_future(coro))
     hass.data = {}
     return hass
 
@@ -89,7 +87,9 @@ class TestStartStop:
         server = PairingServer(hass, port=0)
 
         with (
-            patch("custom_components.tuya_cloudless.pairing_server.web.AppRunner") as mock_runner_cls,
+            patch(
+                "custom_components.tuya_cloudless.pairing_server.web.AppRunner"
+            ) as mock_runner_cls,
             patch("custom_components.tuya_cloudless.pairing_server.web.TCPSite") as mock_site_cls,
             patch(
                 "custom_components.tuya_cloudless.pairing_server.register_redirect_view",
@@ -235,7 +235,12 @@ class TestFlowRegistration:
         server = PairingServer(_make_hass(), port=0)
         server._pending_flows.add("flow-1")
 
-        with patch("asyncio.ensure_future", return_value=MagicMock()) as mock_future:
+        def _close_and_mock(coro: object, **kw: object) -> MagicMock:
+            if inspect.iscoroutine(coro):
+                coro.close()  # Prevent "coroutine was never awaited" RuntimeWarning
+            return MagicMock()
+
+        with patch("asyncio.ensure_future", side_effect=_close_and_mock) as mock_future:
             server.unregister_flow("flow-1")
 
         assert "flow-1" not in server._pending_flows
@@ -353,7 +358,7 @@ class TestHandleQr:
     async def test_returns_svg_when_qrcode_available(self, client: TestClient) -> None:
         """Returns 200 SVG when qrcode library is present."""
         try:
-            import qrcode  # noqa: F401
+            import qrcode
             import qrcode.image.svg  # noqa: F401
         except ImportError:
             pytest.skip("qrcode library not installed")
@@ -486,9 +491,7 @@ class TestSseEndpoint:
         await cli.start_server()
         try:
             # Open SSE stream and read the first chunk only
-            async with cli.session.get(
-                cli.make_url("/api/provision/events")
-            ) as resp:
+            async with cli.session.get(cli.make_url("/api/provision/events")) as resp:
                 assert resp.status == 200
                 assert resp.content_type == "text/event-stream"
                 chunk = await resp.content.readany()
@@ -506,9 +509,7 @@ class TestSseEndpoint:
             received: list[bytes] = []
 
             async def _consume() -> None:
-                async with cli.session.get(
-                    cli.make_url("/api/provision/events")
-                ) as resp:
+                async with cli.session.get(cli.make_url("/api/provision/events")) as resp:
                     # Read initial comment
                     await resp.content.readany()
                     # Read the activated event
@@ -669,7 +670,6 @@ class TestAutoStopAfterIdle:
 
 class TestGetPairingServer:
     def test_returns_none_when_no_domain_data(self) -> None:
-        from custom_components.tuya_cloudless.const import DOMAIN
 
         hass = _make_hass()
         hass.data = {}
@@ -729,7 +729,6 @@ class TestEnsurePairingServer:
 
     async def test_idempotent_multiple_calls(self) -> None:
         """Multiple calls to ensure_pairing_server return the same instance."""
-        from custom_components.tuya_cloudless.const import DOMAIN
 
         hass = _make_hass()
         hass.data = {}
@@ -771,13 +770,15 @@ class TestPairingRedirectView:
         # Override the url.host property
         request.match_info["flow_id"] = "my-flow-123"
 
-        with patch.object(
-            type(request.url),
-            "host",
-            new_callable=lambda: property(lambda self: "192.168.1.55"),
+        with (
+            patch.object(
+                type(request.url),
+                "host",
+                new_callable=lambda: property(lambda self: "192.168.1.55"),
+            ),
+            pytest.raises(web.HTTPFound) as exc_info,
         ):
-            with pytest.raises(web.HTTPFound) as exc_info:
-                await view.get(request, "my-flow-123")
+            await view.get(request, "my-flow-123")
 
         assert "192.168.1.55" in exc_info.value.location
         assert "8099" in exc_info.value.location

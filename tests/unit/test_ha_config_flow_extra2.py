@@ -12,12 +12,14 @@ Targets all lines that remained uncovered after the first two test files:
   Lines 965-967  _pairing_tool_url         get_url success path
   Lines 1013-98  _auto_detect_profile      every exit path
   Lines 1109-11  _run_discovery            ImportError path
-  Lines 1221-23  _validate_local_key       encode_heartbeat raises CryptoError / UnsupportedVersionError
+  Lines 1221-23  _validate_local_key       encode_heartbeat raises CryptoError /
+                              UnsupportedVersionError
   Lines 1240-42  _validate_local_key       OSError on reader.read
 """
 
 from __future__ import annotations
 
+import inspect
 import sys
 from pathlib import Path
 from typing import Any
@@ -30,13 +32,14 @@ _LIB = str(Path(__file__).resolve().parent.parent.parent / "lib")
 if _LIB not in sys.path:
     sys.path.insert(0, _LIB)
 
-from custom_components.tuya_cloudless.config_flow import (
+from homeassistant.helpers.network import NoURLAvailableError  # noqa: E402
+
+from custom_components.tuya_cloudless.config_flow import (  # noqa: E402
     TuyaCloudlessConfigFlow,
     _get_profile_options,
     _suggest_profile,
 )
-from homeassistant.helpers.network import NoURLAvailableError
-from custom_components.tuya_cloudless.const import (
+from custom_components.tuya_cloudless.const import (  # noqa: E402
     CONF_DEVICE_NAME,
     CONF_GW_ID,
     CONF_IP_ADDRESS,
@@ -45,6 +48,22 @@ from custom_components.tuya_cloudless.const import (
     CONF_PROTOCOL_VERSION,
     DEFAULT_PROTOCOL_VERSION,
 )
+
+
+def _wait_for_raises(exc: BaseException) -> Any:
+    """Return an async side_effect that closes the coroutine arg before raising.
+
+    When asyncio.wait_for is patched with side_effect=SomeError(), the coroutine
+    passed as its first argument is already created but never consumed, triggering
+    RuntimeWarning. This helper ensures the coroutine is closed before raising.
+    """
+
+    async def _raiser(coro: Any, timeout: Any = None) -> Any:
+        if inspect.iscoroutine(coro):
+            coro.close()
+        raise exc
+
+    return _raiser
 
 
 # ── Shared factory ─────────────────────────────────────────────────────────────
@@ -143,7 +162,7 @@ class TestAsyncStepBlePair:
         async_external_step_done pointing at 'ble_confirm'."""
         flow = _make_flow()
 
-        result = await flow.async_step_ble_pair(
+        await flow.async_step_ble_pair(
             user_input={
                 CONF_GW_ID: "abcd1234",
                 CONF_LOCAL_KEY: "0123456789abcdef",
@@ -198,7 +217,7 @@ class TestAsyncStepBlePair:
                 return_value="https://homeassistant.local:8123",
             ),
         ):
-            result = await flow.async_step_ble_pair(user_input=None)
+            await flow.async_step_ble_pair(user_input=None)
 
         mock_server.register_flow.assert_called_once_with("test-flow-id-001")
         flow.async_external_step.assert_called_once()
@@ -242,7 +261,7 @@ class TestAsyncStepBlePair:
             flow.async_step_ble_fallback = AsyncMock(
                 return_value={"type": "form", "step_id": "ble_fallback"}
             )
-            result = await flow.async_step_ble_pair(user_input=None)
+            await flow.async_step_ble_pair(user_input=None)
 
         flow.async_step_ble_fallback.assert_awaited_once()
 
@@ -259,7 +278,7 @@ class TestAsyncStepBlePair:
             "custom_components.tuya_cloudless.pairing_server.ensure_pairing_server",
             new=AsyncMock(return_value=mock_server),
         ):
-            result = await flow.async_step_ble_pair(user_input=None)
+            await flow.async_step_ble_pair(user_input=None)
 
         flow.async_external_step.assert_called_once()
         call_kwargs = flow.async_external_step.call_args[1]
@@ -337,7 +356,7 @@ class TestAsyncStepBleConfirm:
             "custom_components.tuya_cloudless.pairing_server.get_pairing_server",
             return_value=mock_server,
         ):
-            result = await flow.async_step_ble_confirm(
+            await flow.async_step_ble_confirm(
                 user_input={
                     CONF_DEVICE_NAME: "BLE Lamp",
                     CONF_PROFILE: "Generic Light",
@@ -694,7 +713,7 @@ class TestAutoDetectProfile:
 
         with patch(
             "custom_components.tuya_cloudless.config_flow.asyncio.wait_for",
-            side_effect=TimeoutError(),
+            side_effect=_wait_for_raises(TimeoutError()),
         ):
             result = await flow._auto_detect_profile(
                 "10.0.0.99", local_key="0123456789abcdef", version="3.3"
@@ -709,7 +728,7 @@ class TestAutoDetectProfile:
 
         with patch(
             "custom_components.tuya_cloudless.config_flow.asyncio.wait_for",
-            side_effect=OSError("connection refused"),
+            side_effect=_wait_for_raises(OSError("connection refused")),
         ):
             result = await flow._auto_detect_profile(
                 "10.0.0.99", local_key="0123456789abcdef", version="3.3"
@@ -720,8 +739,6 @@ class TestAutoDetectProfile:
     @pytest.mark.asyncio
     async def test_write_oserror_returns_generic_switch(self) -> None:
         """OSError while writing the DP_QUERY frame must return 'Generic Switch'."""
-        from tuya_cloudless.crypto import CryptoError
-        from tuya_cloudless.exceptions import MalformedPacketError
 
         flow = _make_flow()
 
@@ -731,10 +748,15 @@ class TestAutoDetectProfile:
         writer.close = MagicMock()
         writer.wait_closed = AsyncMock()
 
+        async def _open_succeeds(coro: Any, timeout: Any) -> Any:
+            if inspect.iscoroutine(coro):
+                coro.close()
+            return (AsyncMock(), writer)
+
         with (
             patch(
                 "custom_components.tuya_cloudless.config_flow.asyncio.wait_for",
-                return_value=(AsyncMock(), writer),
+                side_effect=_open_succeeds,
             ),
             patch(
                 "tuya_cloudless.protocol.encode_status_query",
@@ -762,11 +784,17 @@ class TestAutoDetectProfile:
 
         async def fake_wait_for(coro: Any, timeout: Any) -> Any:
             nonlocal call_count
+            if inspect.iscoroutine(coro):
+                coro.close()
             call_count += 1
             if call_count == 1:
                 # First call: open_connection succeeds
+                if inspect.iscoroutine(coro):
+                    coro.close()
                 return (AsyncMock(), writer)
-            # Second call: read times out
+            # Second call: read times out — close the coroutine before raising
+            if inspect.iscoroutine(coro):
+                coro.close()
             raise TimeoutError()
 
         with (
@@ -800,8 +828,12 @@ class TestAutoDetectProfile:
 
         async def fake_wait_for(coro: Any, timeout: Any) -> Any:
             nonlocal call_count
+            if inspect.iscoroutine(coro):
+                coro.close()
             call_count += 1
             if call_count == 1:
+                if inspect.iscoroutine(coro):
+                    coro.close()
                 return (AsyncMock(), writer)
             return b""  # empty response
 
@@ -836,8 +868,12 @@ class TestAutoDetectProfile:
 
         async def fake_wait_for(coro: Any, timeout: Any) -> Any:
             nonlocal call_count
+            if inspect.iscoroutine(coro):
+                coro.close()
             call_count += 1
             if call_count == 1:
+                if inspect.iscoroutine(coro):
+                    coro.close()
                 return (AsyncMock(), writer)
             return b"\xde\xad\xbe\xef"
 
@@ -880,8 +916,12 @@ class TestAutoDetectProfile:
 
         async def fake_wait_for(coro: Any, timeout: Any) -> Any:
             nonlocal call_count
+            if inspect.iscoroutine(coro):
+                coro.close()
             call_count += 1
             if call_count == 1:
+                if inspect.iscoroutine(coro):
+                    coro.close()
                 return (AsyncMock(), writer)
             return dummy_frame
 
@@ -931,8 +971,12 @@ class TestAutoDetectProfile:
 
         async def fake_wait_for(coro: Any, timeout: Any) -> Any:
             nonlocal call_count
+            if inspect.iscoroutine(coro):
+                coro.close()
             call_count += 1
             if call_count == 1:
+                if inspect.iscoroutine(coro):
+                    coro.close()
                 return (AsyncMock(), writer)
             return dummy_frame
 
@@ -981,8 +1025,12 @@ class TestAutoDetectProfile:
 
         async def fake_wait_for(coro: Any, timeout: Any) -> Any:
             nonlocal call_count
+            if inspect.iscoroutine(coro):
+                coro.close()
             call_count += 1
             if call_count == 1:
+                if inspect.iscoroutine(coro):
+                    coro.close()
                 return (AsyncMock(), writer)
             return dummy_frame
 
@@ -1042,8 +1090,12 @@ class TestAutoDetectProfile:
 
         async def fake_wait_for(coro: Any, timeout: Any) -> Any:
             nonlocal call_count
+            if inspect.iscoroutine(coro):
+                coro.close()
             call_count += 1
             if call_count == 1:
+                if inspect.iscoroutine(coro):
+                    coro.close()
                 return (AsyncMock(), writer)
             return dummy_frame
 
@@ -1114,8 +1166,12 @@ class TestAutoDetectProfile:
 
         async def fake_wait_for(coro: Any, timeout: Any) -> Any:
             nonlocal call_count
+            if inspect.iscoroutine(coro):
+                coro.close()
             call_count += 1
             if call_count == 1:
+                if inspect.iscoroutine(coro):
+                    coro.close()
                 return (AsyncMock(), writer)
             return dummy_frame
 
@@ -1181,8 +1237,12 @@ class TestAutoDetectProfile:
 
         async def fake_wait_for(coro: Any, timeout: Any) -> Any:
             nonlocal call_count
+            if inspect.iscoroutine(coro):
+                coro.close()
             call_count += 1
             if call_count == 1:
+                if inspect.iscoroutine(coro):
+                    coro.close()
                 return (AsyncMock(), writer)
             return dummy_frame
 
@@ -1239,8 +1299,12 @@ class TestAutoDetectProfile:
 
         async def fake_wait_for(coro: Any, timeout: Any) -> Any:
             nonlocal call_count
+            if inspect.iscoroutine(coro):
+                coro.close()
             call_count += 1
             if call_count == 1:
+                if inspect.iscoroutine(coro):
+                    coro.close()
                 return (AsyncMock(), writer)
             return dummy_frame
 
@@ -1292,8 +1356,12 @@ class TestAutoDetectProfile:
 
         async def fake_wait_for(coro: Any, timeout: Any) -> Any:
             nonlocal call_count
+            if inspect.iscoroutine(coro):
+                coro.close()
             call_count += 1
             if call_count == 1:
+                if inspect.iscoroutine(coro):
+                    coro.close()
                 return (AsyncMock(), writer)
             return dummy_frame
 
@@ -1442,6 +1510,8 @@ class TestValidateLocalKeyReadOsError:
         heartbeat_bytes = b"\x00\x00U\xaa" + b"\x00" * 20
 
         async def fake_wait_for(coro: Any, timeout: Any) -> Any:
+            if inspect.iscoroutine(coro):
+                coro.close()
             raise OSError("connection reset by peer")
 
         with (
@@ -1568,9 +1638,7 @@ class TestAsyncStepZeroconf:
         flow = _make_flow()
         flow.async_step_discovery = AsyncMock(return_value={"type": "form"})
 
-        info = self._make_zeroconf_info(
-            name="mygwid123._tuya._tcp.local.", properties={}
-        )
+        info = self._make_zeroconf_info(name="mygwid123._tuya._tcp.local.", properties={})
         await flow.async_step_zeroconf(info)
 
         assert flow._device[CONF_GW_ID] == "mygwid123"
@@ -1593,9 +1661,7 @@ class TestAsyncStepZeroconf:
         flow = _make_flow()
         flow.async_step_discovery = AsyncMock(return_value={"type": "form"})
 
-        info = self._make_zeroconf_info(
-            host="192.168.1.99", properties={"gwId": "gw_zc_host"}
-        )
+        info = self._make_zeroconf_info(host="192.168.1.99", properties={"gwId": "gw_zc_host"})
         await flow.async_step_zeroconf(info)
 
         assert flow._device[CONF_IP_ADDRESS] == "192.168.1.99"
@@ -1689,13 +1755,12 @@ class TestAsyncStepDhcp:
     @pytest.mark.asyncio
     async def test_discovery_timeout_aborts(self) -> None:
         """TimeoutError from _run_discovery must result in abort with 'no_device_id'."""
-        import asyncio as _asyncio
 
         flow = _make_flow()
 
         with patch(
             "custom_components.tuya_cloudless.config_flow.asyncio.wait_for",
-            side_effect=TimeoutError(),
+            side_effect=_wait_for_raises(TimeoutError()),
         ):
             await flow.async_step_dhcp(self._make_dhcp_info())
 
@@ -1708,7 +1773,7 @@ class TestAsyncStepDhcp:
 
         with patch(
             "custom_components.tuya_cloudless.config_flow.asyncio.wait_for",
-            side_effect=OSError("bind failed"),
+            side_effect=_wait_for_raises(OSError("bind failed")),
         ):
             await flow.async_step_dhcp(self._make_dhcp_info())
 

@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 from tuya_cloudless.profiles import (
-    DPSpec,
     DeviceProfile,
+    DPSpec,
     EntitySpec,
     ProfileRegistry,
     _detect_profile_from_dps_core,
@@ -405,7 +405,7 @@ def test_detect_core_exact_match() -> None:
 
 def test_detect_core_partial_match_wins() -> None:
     profile_a = _make_profile("light", "light*", ["1", "3"])  # 1/2 overlap
-    profile_b = _make_profile("plug", "sp*", ["1"])            # 1/1 overlap → score=1.0
+    profile_b = _make_profile("plug", "sp*", ["1"])  # 1/1 overlap → score=1.0
     # profile_b has higher score (100%) than profile_a (50%)
     result = _detect_profile_from_dps_core({"1"}, [profile_a, profile_b])
     assert result is profile_b
