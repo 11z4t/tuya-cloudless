@@ -28,8 +28,18 @@ async function globalSetup(_config) {
   const page = await context.newPage();
 
   try {
-    // Navigate to HA and wait for it to fully settle (including auth redirect)
-    await page.goto(haUrl, { waitUntil: "networkidle", timeout: 20000 });
+    // Navigate to HA — retry on ERR_CONNECTION_REFUSED (HA briefly unavailable after restarts)
+    for (let attempt = 0; attempt < 4; attempt++) {
+      try {
+        await page.goto(haUrl, { waitUntil: "load", timeout: 20000 });
+        break;
+      } catch (err) {
+        if (attempt === 3) throw err;
+        console.log(`[auth.setup] HA unavailable (attempt ${attempt + 1}/4), retrying in 5s...`);
+        await page.waitForTimeout(5000);
+      }
+    }
+    await page.waitForTimeout(2000);
 
     // Inject the long-lived token as hassTokens in localStorage
     await page.evaluate(
@@ -49,8 +59,17 @@ async function globalSetup(_config) {
       [haUrl, haToken],
     );
 
-    // Reload so HA picks up the injected auth
-    await page.goto(haUrl, { waitUntil: "networkidle", timeout: 20000 });
+    // Reload so HA picks up the injected auth (retry on transient errors)
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        await page.goto(haUrl, { waitUntil: "load", timeout: 20000 });
+        break;
+      } catch (err) {
+        if (attempt === 2) throw err;
+        await page.waitForTimeout(3000);
+      }
+    }
+    await page.waitForTimeout(2000);
 
     try {
       await page.waitForSelector("home-assistant", { timeout: 20000 });

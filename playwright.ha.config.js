@@ -17,6 +17,9 @@ const config = {
   // Auth setup: injects HA_TOKEN into browser localStorage before any test runs
   globalSetup: "./tests/e2e/auth.setup.js",
 
+  // Retry — HA can briefly refuse connections during periodic internal tasks
+  retries: 2,
+
   // Single worker to avoid HA connection conflicts
   workers: 1,
 

@@ -97,8 +97,8 @@ async function getHaToken() {
  * @param {import('@playwright/test').Page} page
  */
 async function login(page) {
-  await page.goto(HA_URL);
-  await page.waitForLoadState("networkidle");
+  // HA has persistent WebSockets — networkidle never fires. Use domcontentloaded.
+  await page.goto(HA_URL, { waitUntil: "domcontentloaded" });
   await page.waitForTimeout(2000);
 
   const url = page.url();
@@ -123,7 +123,7 @@ async function login(page) {
   }
 
   await page.waitForTimeout(5000);
-  await page.waitForLoadState("networkidle");
+  await page.waitForLoadState("domcontentloaded");
 
   // Check for login failure
   const afterUrl = page.url();
@@ -212,7 +212,7 @@ test.describe("HA connectivity", () => {
 
   test("HA shows login or onboarding", async ({ page }) => {
     await page.goto(HA_URL);
-    await page.waitForLoadState("networkidle");
+    await page.waitForLoadState("domcontentloaded");
     const content = await page.content();
     const lower = content.toLowerCase();
     const hasHA = lower.includes("home-assistant") || lower.includes("onboarding") || lower.includes("auth");
@@ -232,7 +232,7 @@ test.describe("Tuya Cloudless integration", () => {
   test("tuya_cloudless appears when adding integration", async ({ page }) => {
     await loginOrSkip(page);
     await page.goto(`${HA_URL}/config/integrations/dashboard`);
-    await page.waitForLoadState("networkidle");
+    await page.waitForLoadState("domcontentloaded");
     await page.waitForTimeout(2000);
 
     // If on onboarding, skip
@@ -243,7 +243,7 @@ test.describe("Tuya Cloudless integration", () => {
 
     // Navigate to add integration — search for tuya cloudless
     await page.goto(`${HA_URL}/config/integrations/add`);
-    await page.waitForLoadState("networkidle");
+    await page.waitForLoadState("domcontentloaded");
     await page.waitForTimeout(2000);
 
     const content = await page.content();
@@ -324,7 +324,7 @@ test.describe("Tuya Cloudless integration", () => {
 
     // Navigate to the pairing UI
     await page.goto(pairingUrl);
-    await page.waitForLoadState("networkidle");
+    await page.waitForLoadState("domcontentloaded");
     await page.waitForTimeout(2000);
 
     // Pairing UI should show the device discovery panel
@@ -376,7 +376,7 @@ test.describe("Config flow — pair step (pre-paired device)", () => {
       ip_address: FAKE_DEVICE.ip_address,
     });
     await page.goto(`${HA_URL}/config/integrations/add?${params}`);
-    await page.waitForLoadState("networkidle");
+    await page.waitForLoadState("domcontentloaded");
     await page.waitForTimeout(3000);
 
     // Should be on config flow — not on auth page
@@ -451,7 +451,7 @@ test.describe("Integrations dashboard", () => {
     }
 
     await page.goto(`${HA_URL}/config/integrations/dashboard`);
-    await page.waitForLoadState("networkidle");
+    await page.waitForLoadState("domcontentloaded");
     await page.waitForTimeout(2000);
 
     // Should not have console errors that prevent rendering
@@ -467,7 +467,7 @@ test.describe("Integrations dashboard", () => {
     }
 
     await page.goto(`${HA_URL}/config/integrations/dashboard`);
-    await page.waitForLoadState("networkidle");
+    await page.waitForLoadState("domcontentloaded");
     await page.waitForTimeout(3000);
 
     // Check if there are any tuya_cloudless cards (from previously added devices)

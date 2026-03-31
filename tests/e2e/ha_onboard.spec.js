@@ -20,14 +20,14 @@ const TC_DIR = path.join(__dirname, "../../custom_components/tuya_cloudless");
 // Helper: check if HA is in onboarding mode
 async function isOnboarding(page) {
   const resp = await page.goto(HA_URL);
-  await page.waitForLoadState("networkidle");
+  await page.waitForLoadState("domcontentloaded");
   await page.waitForTimeout(1000);
   return page.url().includes("onboarding") || resp?.url().includes("onboarding");
 }
 
 test("HA login works", async ({ page }) => {
   await page.goto(HA_URL);
-  await page.waitForLoadState("networkidle");
+  await page.waitForLoadState("domcontentloaded");
   await page.waitForTimeout(2000);
 
   console.log("Current URL:", page.url());
@@ -42,7 +42,7 @@ test("HA login works", async ({ page }) => {
   await page.keyboard.press("Enter");
 
   await page.waitForTimeout(5000);
-  await page.waitForLoadState("networkidle");
+  await page.waitForLoadState("domcontentloaded");
   const finalUrl = page.url();
   console.log("After login:", finalUrl);
 
@@ -73,7 +73,7 @@ test("HA login works", async ({ page }) => {
 test("deploy TC files via HA File Editor API", async ({ page }) => {
   // Navigate to HA and login
   await page.goto(HA_URL);
-  await page.waitForLoadState("networkidle");
+  await page.waitForLoadState("domcontentloaded");
   await page.waitForTimeout(2000);
 
   if (page.url().includes("onboarding")) {
@@ -88,7 +88,7 @@ test("deploy TC files via HA File Editor API", async ({ page }) => {
   await page.keyboard.type(HA_PASS);
   await page.keyboard.press("Enter");
   await page.waitForTimeout(5000);
-  await page.waitForLoadState("networkidle");
+  await page.waitForLoadState("domcontentloaded");
 
   if (page.url().includes("/auth/")) {
     test.skip(true, "Login failed — check credentials");
@@ -153,8 +153,15 @@ test("deploy TC files via HA File Editor API", async ({ page }) => {
 });
 
 test("verify TC is installed (or skip for manual deploy)", async ({ page }) => {
-  await page.goto(HA_URL);
-  await page.waitForLoadState("networkidle");
+  for (let attempt = 0; attempt < 4; attempt++) {
+    try {
+      await page.goto(HA_URL, { waitUntil: "domcontentloaded", timeout: 20000 });
+      break;
+    } catch (err) {
+      if (attempt === 3) throw err;
+      await page.waitForTimeout(5000);
+    }
+  }
 
   if (page.url().includes("onboarding")) {
     test.skip(true, "HA not yet onboarded");
