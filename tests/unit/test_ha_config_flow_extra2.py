@@ -35,6 +35,7 @@ from custom_components.tuya_cloudless.config_flow import (
     _get_profile_options,
     _suggest_profile,
 )
+from homeassistant.helpers.network import NoURLAvailableError
 from custom_components.tuya_cloudless.const import (
     CONF_DEVICE_NAME,
     CONF_GW_ID,
@@ -165,7 +166,7 @@ class TestAsyncStepBlePair:
         await flow.async_step_ble_pair(
             user_input={
                 CONF_GW_ID: "  gw_ws  ",
-                CONF_LOCAL_KEY: "  key_ws_padding_",  # 16 chars after strip
+                CONF_LOCAL_KEY: "  abcd1234abcd1234  ",  # 16 alphanumeric chars after strip
                 "ip_address": "  10.0.0.1  ",
                 "product_key": "  pk  ",
             }
@@ -182,6 +183,7 @@ class TestAsyncStepBlePair:
 
         mock_server = MagicMock()
         mock_server.register_flow = MagicMock()
+        mock_server.ha_ui_url = MagicMock(return_value="http://192.168.1.1:8099")
 
         # ensure_pairing_server is imported inside the method body as:
         #   from .pairing_server import ensure_pairing_server
@@ -193,7 +195,7 @@ class TestAsyncStepBlePair:
             ),
             patch(
                 "homeassistant.helpers.network.get_url",
-                return_value="http://homeassistant.local:8123",
+                return_value="https://homeassistant.local:8123",
             ),
         ):
             result = await flow.async_step_ble_pair(user_input=None)
@@ -220,13 +222,12 @@ class TestAsyncStepBlePair:
 
     @pytest.mark.asyncio
     async def test_first_call_falls_back_to_ha_url_when_get_url_fails(self) -> None:
-        """When get_url raises and _ha_base_url is empty, the flow must ask the user
-        for the HA address via async_step_ha_url."""
+        """When no HTTPS URL is available the flow falls back to async_step_ble_fallback."""
         flow = _make_flow()
-        flow._ha_base_url = ""  # not pre-set
 
         mock_server = MagicMock()
         mock_server.register_flow = MagicMock()
+        mock_server.ha_ui_url = MagicMock(return_value="http://192.168.1.1:8099")
 
         with (
             patch(
@@ -235,19 +236,21 @@ class TestAsyncStepBlePair:
             ),
             patch(
                 "homeassistant.helpers.network.get_url",
-                side_effect=Exception("no URL configured"),
+                side_effect=NoURLAvailableError("no HTTPS URL configured"),
             ),
         ):
-            flow.async_step_ha_url = AsyncMock(return_value={"type": "form", "step_id": "ha_url"})
+            flow.async_step_ble_fallback = AsyncMock(
+                return_value={"type": "form", "step_id": "ble_fallback"}
+            )
             result = await flow.async_step_ble_pair(user_input=None)
 
-        flow.async_step_ha_url.assert_awaited_once()
+        flow.async_step_ble_fallback.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_first_call_uses_pre_set_ha_base_url(self) -> None:
         """When _ha_base_url is already set, get_url is skipped and the stored URL is used."""
         flow = _make_flow()
-        flow._ha_base_url = "http://192.168.5.22:8123"
+        flow._manual_ha_url = "https://192.168.5.22:8123"
 
         mock_server = MagicMock()
         mock_server.register_flow = MagicMock()
@@ -427,37 +430,37 @@ class TestAsyncStepBleConfirm:
 
 
 class TestAsyncStepHaUrl:
-    """Tests for the fallback HA-address collection step."""
+    """Tests for the fallback HA-address collection step (async_step_ble_ha_url)."""
 
     @pytest.mark.asyncio
     async def test_no_input_shows_form(self) -> None:
-        """First render shows the ha_url form without errors."""
+        """First render shows the ble_ha_url form without errors."""
         flow = _make_flow()
-        await flow.async_step_ha_url(user_input=None)
+        await flow.async_step_ble_ha_url(user_input=None)
         flow.async_show_form.assert_called_once()
         call_kwargs = flow.async_show_form.call_args[1]
-        assert call_kwargs["step_id"] == "ha_url"
+        assert call_kwargs["step_id"] == "ble_ha_url"
 
     @pytest.mark.asyncio
     async def test_empty_url_shows_error(self) -> None:
         """Submitting an empty ha_url must re-render the form with an error."""
         flow = _make_flow()
-        await flow.async_step_ha_url(user_input={"ha_url": "   "})
+        await flow.async_step_ble_ha_url(user_input={"ha_url": "   "})
         flow.async_show_form.assert_called_once()
         call_kwargs = flow.async_show_form.call_args[1]
-        assert call_kwargs["errors"].get("ha_url") == "invalid_ha_url"
+        assert call_kwargs["errors"].get("ha_url") == "invalid_ha_url_https"
 
     @pytest.mark.asyncio
     async def test_valid_url_stores_and_continues_to_ble_pair(self) -> None:
-        """A valid URL must be stored in _ha_base_url and the flow must advance
+        """A valid HTTPS URL must be stored in _manual_ha_url and flow advances
         to async_step_ble_pair."""
         flow = _make_flow()
         flow.async_step_ble_pair = AsyncMock(return_value={"type": "external"})
 
-        await flow.async_step_ha_url(user_input={"ha_url": "http://192.168.1.100:8123"})
+        await flow.async_step_ble_ha_url(user_input={"ha_url": "https://192.168.1.100:8123"})
 
         # Trailing slash must be stripped as per the code (rstrip("/"))
-        assert flow._ha_base_url == "http://192.168.1.100:8123"
+        assert flow._manual_ha_url == "https://192.168.1.100:8123"
         flow.async_step_ble_pair.assert_awaited_once()
 
     @pytest.mark.asyncio
@@ -466,9 +469,9 @@ class TestAsyncStepHaUrl:
         flow = _make_flow()
         flow.async_step_ble_pair = AsyncMock(return_value={"type": "external"})
 
-        await flow.async_step_ha_url(user_input={"ha_url": "http://ha.local:8123/"})
+        await flow.async_step_ble_ha_url(user_input={"ha_url": "https://ha.local:8123/"})
 
-        assert not flow._ha_base_url.endswith("/")
+        assert not flow._manual_ha_url.endswith("/")
 
 
 # ── async_step_confirm — __auto_detect__ profile path (lines 522-527) ─────────

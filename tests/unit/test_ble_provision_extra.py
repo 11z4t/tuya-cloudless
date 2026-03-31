@@ -70,17 +70,17 @@ def _make_handshake_resp_chunks(device_nonce: bytes) -> list[bytes]:
 class TestReassembleChunkGap:
     def test_out_of_sequence_index_raises(self) -> None:
         """A chunk whose header index doesn't match its sorted position raises PairingError."""
-        # Build a 4-chunk sequence, then replace chunk[2] with a duplicate of chunk[0]
-        # so the sorted order has a gap: indices [0, 0, 1, 3] → position 1 expects idx=1, gets 0.
+        # Build a 4-chunk sequence, then replace chunk[2]'s index with 4 (out of range)
+        # so the sorted order has a gap: indices [0, 1, 3, 4] → position 2 expects idx=2, gets 3.
         frame = BleFrame(seq=0, cmd=0x01, payload=b"x" * 60).encode()
         chunks = _chunk_frame(frame)
         assert len(chunks) == 4, "Expected 4 chunks for this test payload"
 
         total = chunks[0][1]  # == 4
-        # Duplicate chunk[0]'s index in position 2: [0,4,...] replaces [2,4,...]
-        dup_chunk = bytes([0, total]) + chunks[2][2:]
-        tampered = [chunks[0], chunks[1], dup_chunk, chunks[3]]
-        # After sorting by index: indices = [0, 0, 1, 3] — position 1 gets index 0, expected 1
+        # Replace chunk[2]'s index from 2 to 4 — gives unique indices [0, 1, 4, 3]
+        # After sort: [0, 1, 3, 4] — position 2 expects idx=2, gets 3
+        bad_chunk = bytes([4, total]) + chunks[2][2:]
+        tampered = [chunks[0], chunks[1], bad_chunk, chunks[3]]
         with pytest.raises(PairingError, match="sequence gap"):
             _reassemble_chunks(tampered)
 
