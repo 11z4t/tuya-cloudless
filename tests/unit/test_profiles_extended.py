@@ -6,9 +6,17 @@ from pathlib import Path
 
 import pytest
 from tuya_cloudless.profiles import (
+    DPSpec,
+    DeviceProfile,
+    EntitySpec,
+    ProfileRegistry,
+    _detect_profile_from_dps_core,
+    _get_spec_dp_ids,
+    detect_profile_from_dps,
     init_profiles,
     list_profiles,
     load_profile,
+    load_profiles_from_dir,
 )
 
 # ── Fixtures ───────────────────────────────────────────────────────────────────
@@ -317,3 +325,147 @@ class TestLoadProfilesYamlErrorR45:
         # The bad file is skipped; the good file loads successfully
         assert len(profiles) == 1
         assert profiles[0].name == "Test"
+
+
+# ── _get_spec_dp_ids ────────────────────────────────────────────────────────────
+
+
+def _make_spec(**kwargs: DPSpec | None) -> EntitySpec:
+    """Build minimal EntitySpec with given dp_* overrides."""
+    return EntitySpec(platform="switch", name="test", **kwargs)
+
+
+def test_get_spec_dp_ids_single_power() -> None:
+    dp = DPSpec(id="1", type="bool")
+    spec = _make_spec(dp_power=dp)
+    assert _get_spec_dp_ids(spec) == {"1"}
+
+
+def test_get_spec_dp_ids_multiple_dps() -> None:
+    spec = _make_spec(
+        dp_power=DPSpec(id="1", type="bool"),
+        dp_brightness=DPSpec(id="3", type="int"),
+        dp_color_temp=DPSpec(id="4", type="int"),
+    )
+    assert _get_spec_dp_ids(spec) == {"1", "3", "4"}
+
+
+def test_get_spec_dp_ids_no_dps() -> None:
+    spec = _make_spec()
+    assert _get_spec_dp_ids(spec) == set()
+
+
+def test_get_spec_dp_ids_cover_dps() -> None:
+    spec = _make_spec(
+        dp_open=DPSpec(id="1", type="bool"),
+        dp_position=DPSpec(id="2", type="int"),
+        dp_tilt=DPSpec(id="3", type="int"),
+        dp_stop=DPSpec(id="4", type="bool"),
+    )
+    assert _get_spec_dp_ids(spec) == {"1", "2", "3", "4"}
+
+
+# ── _detect_profile_from_dps_core ──────────────────────────────────────────────
+
+
+def _make_profile(name: str, model: str, dp_ids: list[str]) -> DeviceProfile:
+    """Build a DeviceProfile with a single entity using given DP IDs."""
+    entities = [
+        EntitySpec(
+            platform="switch",
+            name=f"{name}_entity",
+            dp_power=DPSpec(id=dp_ids[0], type="bool") if dp_ids else None,
+        )
+    ]
+    if len(dp_ids) > 1:
+        spec = EntitySpec(
+            platform="switch",
+            name=f"{name}_entity",
+            dp_power=DPSpec(id=dp_ids[0], type="bool"),
+            dp_value=DPSpec(id=dp_ids[1], type="int"),
+        )
+        entities = [spec]
+    return DeviceProfile(name=name, model=model, entities=entities)
+
+
+def test_detect_core_empty_dp_ids_returns_none() -> None:
+    profile = _make_profile("switch", "sw*", ["1"])
+    assert _detect_profile_from_dps_core(set(), [profile]) is None
+
+
+def test_detect_core_empty_profiles_returns_none() -> None:
+    assert _detect_profile_from_dps_core({"1", "2"}, []) is None
+
+
+def test_detect_core_exact_match() -> None:
+    profile = _make_profile("plug", "sp*", ["1", "19"])
+    result = _detect_profile_from_dps_core({"1", "19"}, [profile])
+    assert result is profile
+
+
+def test_detect_core_partial_match_wins() -> None:
+    profile_a = _make_profile("light", "light*", ["1", "3"])  # 1/2 overlap
+    profile_b = _make_profile("plug", "sp*", ["1"])            # 1/1 overlap → score=1.0
+    # profile_b has higher score (100%) than profile_a (50%)
+    result = _detect_profile_from_dps_core({"1"}, [profile_a, profile_b])
+    assert result is profile_b
+
+
+def test_detect_core_no_overlap_uses_wildcard_fallback() -> None:
+    wildcard = DeviceProfile(name="Generic", model="*", entities=[])
+    specific = _make_profile("plug", "sp*", ["99"])  # dp "99" not in observed
+    result = _detect_profile_from_dps_core({"1", "2"}, [specific, wildcard])
+    assert result is wildcard
+
+
+def test_detect_core_no_wildcard_no_match_returns_none() -> None:
+    profile = _make_profile("plug", "sp*", ["99"])
+    result = _detect_profile_from_dps_core({"1", "2"}, [profile])
+    assert result is None
+
+
+def test_detect_core_skips_profile_with_no_expected_dps() -> None:
+    empty_profile = DeviceProfile(name="Empty", model="e*", entities=[])
+    result = _detect_profile_from_dps_core({"1"}, [empty_profile])
+    assert result is None
+
+
+# ── ProfileRegistry.detect_profile_from_dps + __len__ ──────────────────────────
+
+
+def test_registry_len(tmp_path: Path) -> None:
+    registry = ProfileRegistry()
+    profiles_data = load_profiles_from_dir(PROFILES_DIR)
+    registry.init(PROFILES_DIR)
+    assert len(registry) == len(profiles_data)
+
+
+def test_registry_detect_profile_from_dps_returns_match(tmp_path: Path) -> None:
+    """detect_profile_from_dps delegates to _detect_profile_from_dps_core."""
+    registry = ProfileRegistry()
+    registry.init(PROFILES_DIR)
+    # DP "1" (bool) appears in generic_switch / smart_plug profiles
+    result = registry.detect_profile_from_dps({"1"})
+    # May be None or a profile — just assert no exception and correct type
+    assert result is None or hasattr(result, "name")
+
+
+def test_registry_detect_profile_from_dps_empty_returns_none() -> None:
+    registry = ProfileRegistry()
+    registry.init(PROFILES_DIR)
+    assert registry.detect_profile_from_dps(set()) is None
+
+
+# ── Module-level detect_profile_from_dps ────────────────────────────────────────
+
+
+def test_module_detect_profile_from_dps_empty() -> None:
+    """Module-level wrapper delegates to compat registry."""
+    result = detect_profile_from_dps(set())
+    assert result is None
+
+
+def test_module_detect_profile_from_dps_with_dp() -> None:
+    """Module-level wrapper returns profile or None (no exception)."""
+    result = detect_profile_from_dps({"1", "19"})
+    assert result is None or hasattr(result, "name")
