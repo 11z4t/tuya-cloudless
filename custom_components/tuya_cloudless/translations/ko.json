@@ -124,6 +124,16 @@
         "data": {
           "setup_mode": "Setup method"
         }
+      },
+      "ble_ha_url": {
+        "title": "Enter your Home Assistant URL",
+        "description": "Enter the HTTPS address your browser uses to reach Home Assistant (for example `https://homeassistant.local:8123` or your Nabu Casa URL). This is needed so Web Bluetooth can run in a secure context.",
+        "data": {
+          "ha_url": "Home Assistant URL"
+        },
+        "data_description": {
+          "ha_url": "Must start with https://"
+        }
       }
     },
     "error": {
@@ -137,7 +147,8 @@
       "unknown": "예상치 못한 오류 — Home Assistant 로그를 확인하세요",
       "invalid_ha_url": "유효한 주소를 입력하세요, 예: http://homeassistant.local:8123",
       "invalid_local_key_chars": "보안 키에 잘못된 문자가 포함되어 있습니다 (인쇄 가능한 ASCII여야 합니다)",
-      "invalid_ip_address": "잘못된 IP 주소 형식"
+      "invalid_ip_address": "잘못된 IP 주소 형식",
+      "invalid_ha_url_https": "The URL must start with https:// — Web Bluetooth requires a secure context"
     },
     "abort": {
       "already_configured": "이 기기는 이미 설정되어 있습니다",

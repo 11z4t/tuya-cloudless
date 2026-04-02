@@ -124,6 +124,16 @@
         "data": {
           "setup_mode": "Setup method"
         }
+      },
+      "ble_ha_url": {
+        "title": "Enter your Home Assistant URL",
+        "description": "Enter the HTTPS address your browser uses to reach Home Assistant (for example `https://homeassistant.local:8123` or your Nabu Casa URL). This is needed so Web Bluetooth can run in a secure context.",
+        "data": {
+          "ha_url": "Home Assistant URL"
+        },
+        "data_description": {
+          "ha_url": "Must start with https://"
+        }
       }
     },
     "error": {
@@ -137,7 +147,8 @@
       "unknown": "Uventet fejl — tjek Home Assistant-loggen for detaljer",
       "invalid_ha_url": "Indtast en gyldig adresse, f.eks. http://homeassistant.local:8123",
       "invalid_local_key_chars": "Sikkerhedsnøglen indeholder ugyldige tegn (skal være printbar ASCII)",
-      "invalid_ip_address": "Ugyldigt IP-adresseformat"
+      "invalid_ip_address": "Ugyldigt IP-adresseformat",
+      "invalid_ha_url_https": "The URL must start with https:// — Web Bluetooth requires a secure context"
     },
     "abort": {
       "already_configured": "Denne enhed er allerede konfigureret",

@@ -274,7 +274,7 @@ def decode_frame(
     # Payload sits between header and CRC (4 bytes before suffix)
     payload_start = _STRUCT_HEADER.size
     payload_end = suffix_offset - 4  # exclude CRC
-    if payload_end < payload_start:
+    if payload_end < payload_start:  # pragma: no cover — unreachable after length>=8 guard
         raise MalformedPacketError("Frame has no space for payload between header and CRC")
 
     raw_payload = data[payload_start:payload_end]
